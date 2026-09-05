@@ -20,13 +20,16 @@
 |   |   |-- goals.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\goals.js
 |   |   |-- position.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\position.js
 |   |   |-- proven-models.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\proven-models.js
-|   |   |-- reporting.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\reporting.js
+|   |   |-- reporting-core.js
+|   |   |-- reporting-insights.js
+|   |   |-- reporting-periods.js
+|   |   |-- reporting-print.js
 |   |   |-- spend-breakdown.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\spend-breakdown.js
 |   |   |-- spendable-categories.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\spendable-categories.js
 |   |   |-- tag-totals.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\tag-totals.js
 |   |   |-- transaction-splits.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\transaction-splits.js
 |   |   |-- treemap-layout.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\analysis\treemap-layout.js
-|   |-- app.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\app.js
+|   |-- app-controller.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\app-controller.js
 |   |-- core
 |   |   |-- icons.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\core\icons.js
 |   |   |-- shared-helpers.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\core\shared-helpers.js
@@ -48,6 +51,9 @@
 |   |   |-- accounts-render.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\ui\accounts-render.js
 |   |   |-- activity-render.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\ui\activity-render.js
 |   |   |-- ahead-render.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\ui\ahead-render.js
+|   |   |-- app-goals.js
+|   |   |-- app-intake.js
+|   |   |-- app-messages.js
 |   |   |-- available-now-preview.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\ui\available-now-preview.js
 |   |   |-- cards-render.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\ui\cards-render.js
 |   |   |-- category-picker.js  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\application\ui\category-picker.js
@@ -82,7 +88,13 @@
 |   |   |-- icon-maskable-512.png  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\interface\icons\icon-maskable-512.png
 |   |-- income-chart.css  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\interface\income-chart.css
 |   |-- manifest.json  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\interface\manifest.json
-|   |-- styles.css  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\interface\styles.css
+|   |-- controls.css
+|   |-- dashboard.css
+|   |-- feature-additions.css
+|   |-- foundation.css
+|   |-- print.css
+|   |-- responsive.css
+|   |-- workspace-refinements.css
 |   |-- treemap.css  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\interface\treemap.css
 |-- launcher
 |   |-- Launch.cmd  ->  C:\Users\TA832BK\OneDrive - EY\Documents\Coding Projects\pfa\launcher\Launch.cmd

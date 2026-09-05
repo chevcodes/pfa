@@ -1,12 +1,12 @@
 /* Electron main process (desktop shell).
  *
  * Owns everything the browser cannot: real file-system access and folder
- * watching via chokidar. The renderer runs the identical shared UI (app.js)
+ * watching via chokidar. The renderer runs the identical shared UI (app-controller.js)
  * and reaches these capabilities only through the narrow, context-isolated
  * bridge defined in electron-preload.cjs. The renderer never gets raw Node.
  *
  * This file is CommonJS (.cjs) on purpose, even though the rest of the
- * project (app.js, the build scripts) runs as ES modules ("type": "module"
+ * project (app-controller.js, the build scripts) runs as ES modules ("type": "module"
  * in package.json). Electron's sandboxed preload bridge is only reliably
  * supported as CommonJS, so the main process and preload are kept as a
  * matched CommonJS pair using the .cjs extension - Node always treats .cjs
@@ -36,7 +36,7 @@ let localServer = null;
 /* ---------------------------------------------------------------------
  * Serve the renderer over http://127.0.0.1 instead of file://.
  *
- * Why: app.js uses fetch('../settings/config.json') and import('../third-party/pdf.min.mjs')
+ * Why: app-controller.js uses fetch('../settings/config.json') and import('../third-party/pdf.min.mjs')
  * and registers a service worker. Under the file:// protocol, Chromium
  * gives every file its own opaque origin, so fetch() of a sibling file is
  * blocked by CORS and service workers refuse to register at all (they
@@ -44,7 +44,7 @@ let localServer = null;
  * files over a local HTTP server - the same thing "npm run web" already
  * does - removes this whole class of failure, and also sidesteps known
  * Chromium issues loading file:// pages from inside OneDrive-synced
- * folders. Nothing else changes: every path in app.js/config.json/
+ * folders. Nothing else changes: every path in app-controller.js/config.json/
  * manifest.json is relative, so it resolves the same way either way.
  * ------------------------------------------------------------------- */
 const MIME = {

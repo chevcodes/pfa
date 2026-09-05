@@ -92,22 +92,27 @@ uninstalled web pages.
 
 ```text
 application/
-  app.js                 Application bootstrap and shared UI orchestration
-  read-statements.js     PDF parsing, format detection, and reconciliation
-  categorise.js          Merchant and category rule processing
-  reporting.js           Insights, CSV, history, and print-report generation
-  storage.js             IndexedDB persistence
-  accounts-render.js     Bank-account ledger rendering
-  cards-render.js        Credit-card ledger rendering
-  category-picker.js     Category correction UI
-  data-export.js         Export menu orchestration
-  manage-data.js         Data deletion and reset UI
-  shared-helpers.js      Shared parsing and formatting helpers
+  app-controller.js      Application bootstrap and shared UI orchestration
+  analysis/
+    reporting-core.js       Row summaries and shared rendering helpers
+    reporting-periods.js    Period, coverage, recurring, and payoff analysis
+    reporting-insights.js   Goals, foreign spending, and insight analysis
+    reporting-print.js      Printable-report orchestration
+  statements/            PDF parsing, reconciliation, and categorisation
+  core/                  IndexedDB persistence and shared helpers
+  ui/                    View renderers, goal control, and statement intake
+  output/                CSV, history, and printable-report output
 interface/
-  index.html             Browser/PWA shell
-  styles.css             Application styling and themes
+  foundation.css         Tokens, document shell, and navigation
+  dashboard.css          Dashboard and transaction surfaces
+  controls.css           Secondary details, overlays, and messages
+  responsive.css         Responsive layout and touch rules
+  print.css              Printable-report rules
+  feature-additions.css  Later additive component rules
+  workspace-refinements.css  Final cascade overrides
   manifest.json          PWA metadata
-  service-worker.js      Offline application-shell caching
+index.html               Browser/PWA shell
+service-worker.js        Offline application-shell caching
 desktop-app/
   electron-main.cjs      Electron process, localhost server, and folder watch
   electron-preload.cjs   Context-isolated desktop bridge
@@ -121,8 +126,8 @@ launcher/                Windows launch scripts and logs
 
 The main configuration surface is `settings/config.json`. Change application
 behavior in the relevant `application/` module and presentation in
-`interface/styles.css`. Keep statement parsing changes close to
-`application/read-statements.js` and add a representative validation case when
+the relevant stylesheet under `interface/`. Keep statement parsing changes close to
+`application/statements/read-statements.js` and add a representative validation case when
 test infrastructure is available.
 
 ## Privacy and limitations

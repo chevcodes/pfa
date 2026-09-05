@@ -28,14 +28,16 @@
 import {
   projectCashFlow,
   nextStatementNudge,
-  GOAL_TYPES,
-  describeGoal,
-  computeScenario,
   typicalMonthlyOutflow,
   ymToday,
   monthName,
   runwayDays,
-} from '../analysis/reporting.js';
+} from '../analysis/reporting-periods.js';
+import {
+  GOAL_TYPES,
+  describeGoal,
+  computeScenario,
+} from '../analysis/reporting-insights.js';
 import {
   analyseIncomePattern,
   analyseBankActivity,
@@ -308,7 +310,7 @@ export function createAheadRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconRepeat()), 'Payments expected')
+        el('h3', { class: 'card-title' }, icon(iconRepeat()), 'Expected payments')
       )
     );
 
@@ -477,7 +479,7 @@ export function createAheadRenderer(ctx) {
    * description, a live progress reading, and a change/clear action.
    * ======================================================================== */
   function renderGoalForm() {
-    const box = el('div', {});
+    const box = el('div', { class: 'goal-form' });
     const typeList = el('div', { class: 'goal-choices' });
     // Short title + plain one-line description per choice, supplied here so
     // GOAL_TYPES stays the single measured-goal source untouched. Three
@@ -508,9 +510,14 @@ export function createAheadRenderer(ctx) {
           'button',
           {
             class: 'goal-choice' + (_goalDraftType === t.id ? ' current' : ''),
+            type: 'button',
+            'aria-pressed': _goalDraftType === t.id ? 'true' : 'false',
             onclick: () => {
               _goalDraftType = t.id;
               render();
+              const field = document.getElementById('goal-draft-input');
+              field?.focus({ preventScroll: true });
+              field?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             },
           },
           el('span', { class: 'goal-choice-ic' }, icon(meta.icon)),
@@ -527,15 +534,19 @@ export function createAheadRenderer(ctx) {
         input = el('input', {
           type: 'number',
           class: 'name-field',
+          id: 'goal-draft-input',
           placeholder: 'Number of days',
+          'aria-label': 'Cushion days',
           min: '1',
         });
-      else if (type.unit === 'date') input = el('input', { type: 'date', class: 'name-field' });
+      else if (type.unit === 'date') input = el('input', { type: 'date', class: 'name-field', id: 'goal-draft-input', 'aria-label': 'Target date' });
       else
         input = el('input', {
           type: 'number',
           class: 'name-field',
+          id: 'goal-draft-input',
           placeholder: 'Amount',
+          'aria-label': 'Monthly spending limit',
           min: '1',
         });
       const confirm = () => {
@@ -564,8 +575,8 @@ export function createAheadRenderer(ctx) {
       box.append(
         el(
           'div',
-          { class: 'manage-actions', style: 'margin-bottom:10px' },
-          input,
+          { class: 'manage-actions goal-draft-step' },
+          el('label', { class: 'field-label' }, el('span', {}, type.unit === 'date' ? 'Target date' : type.unit === 'days' ? 'Cushion days' : 'Monthly limit'), input),
           el('button', { class: 'btn sm', onclick: confirm }, 'Set this goal'),
           el('button', { class: 'btn sm ghost', onclick: cancelDraft }, 'Cancel')
         )
@@ -605,11 +616,11 @@ export function createAheadRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconFlag()), 'Goal setting')
+        el('h3', { class: 'card-title' }, icon(iconFlag()), 'Your goal')
       )
     );
     if (!state.goal) {
-      sec.append(el('p', { class: 'muted small' }, 'Choose a goal to track.'));
+      sec.append(el('p', { class: 'muted small goal-intro' }, 'Choose one goal. You can change it whenever you need to.'));
       sec.append(renderGoalForm());
       return sec;
     }
@@ -721,8 +732,8 @@ export function createAheadRenderer(ctx) {
                 },
               },
               boundaryConfig && boundaryConfig.kind !== 'none'
-                ? 'Change safe line'
-                : 'Set a safe line'
+                ? 'Change safety floor'
+                : 'Set a safety floor'
             )
           )
         );
@@ -792,21 +803,21 @@ export function createAheadRenderer(ctx) {
       return el(
         'p',
         { class: 'muted small' },
-        'No safe line is set yet. Set one so a contribution can be checked against it.'
+        'No safety floor is set yet. Set one so a contribution can be checked against it.'
       );
     }
     if (boundaryConfig.kind === 'chosen') {
       return el(
         'p',
         { class: 'muted small' },
-        `Safe line: keep at least ${bankMoney(boundaryConfig.value)}.`
+        `Safety floor: keep at least ${bankMoney(boundaryConfig.value)}.`
       );
     }
     if (boundaryConfig.kind === 'calculated') {
       return el(
         'p',
         { class: 'muted small' },
-        `Safe line: your regular commitments plus ${boundaryConfig.cushionDays} day${boundaryConfig.cushionDays === 1 ? '' : 's'} of typical spending.`
+        `Safety floor: your regular commitments plus ${boundaryConfig.cushionDays} day${boundaryConfig.cushionDays === 1 ? '' : 's'} of typical spending.`
       );
     }
     return null;
@@ -817,7 +828,7 @@ export function createAheadRenderer(ctx) {
     const options = [
       { kind: 'chosen', label: 'A number I choose' },
       { kind: 'calculated', label: 'Commitments plus a cushion of days' },
-      { kind: 'none', label: 'No safe line (clear it)' },
+      { kind: 'none', label: 'No safety floor (clear it)' },
     ];
     const typeList = el('div', {
       class: 'picker-list',
@@ -855,7 +866,7 @@ export function createAheadRenderer(ctx) {
                 _boundaryDraftKind = null;
               },
             },
-            'Clear safe line'
+            'Clear safety floor'
           )
         )
       );
@@ -888,7 +899,7 @@ export function createAheadRenderer(ctx) {
           'div',
           { class: 'manage-actions', style: 'margin-bottom:10px' },
           input,
-          el('button', { class: 'btn sm', onclick: confirm }, 'Save safe line')
+          el('button', { class: 'btn sm', onclick: confirm }, 'Save safety floor')
         )
       );
     }
@@ -994,14 +1005,14 @@ export function createAheadRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconChart()), 'Test a decision')
+        el('h3', { class: 'card-title' }, icon(iconChart()), 'Try a change')
       )
     );
     sec.append(
       el(
         'p',
         { class: 'muted small' },
-        'Try spending less in a category and see how your safety net changes.'
+        'Adjust one spending category to see how long your cash could last.'
       )
     );
 
@@ -1171,7 +1182,7 @@ export function createAheadRenderer(ctx) {
   }
 
   function renderAhead() {
-    const wrap = el('div', { class: 'accounts-wrap accounts-grid' });
+    const wrap = el('div', { class: 'accounts-wrap accounts-grid view-forecast' });
     const cfg = Object.assign({ minMonthsForForecast: 2, horizonDays: 21 }, state.cfg.ahead || {});
     const months = bankMonthsList();
     let goalPlaced = false;

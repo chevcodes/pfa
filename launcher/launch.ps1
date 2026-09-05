@@ -122,7 +122,7 @@ function Test-Deps    { Test-Path -LiteralPath (Join-Path $ProjectRoot 'node_mod
 function Test-Vendor  { Test-Path -LiteralPath (Join-Path $ProjectRoot 'third-party\pdf.min.mjs') }
 function Test-Desktop { Test-Path -LiteralPath (Join-Path $ProjectRoot 'node_modules\electron\dist\electron.exe') }
 function Test-Core {
-    foreach ($f in 'index.html','application\app.js','settings\config.json','package.json') {
+    foreach ($f in 'index.html','application\app-controller.js','settings\config.json','package.json') {
         if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $f))) { return $false }
     }
     return $true

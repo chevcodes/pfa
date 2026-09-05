@@ -22,21 +22,30 @@
  * root location.
  */
 
-const VERSION = 'pfa-v0.1';
+const VERSION = 'pfa-v0.3';
 
 const CODE = [
   './',
   './index.html',
 
   // Stylesheets - actively edited, so CODE (network-first), never ASSETS.
-  './interface/styles.css',
+  './interface/foundation.css',
+  './interface/dashboard.css',
+  './interface/controls.css',
+  './interface/responsive.css',
+  './interface/print.css',
+  './interface/feature-additions.css',
+  './interface/workspace-refinements.css',
   './interface/glass.css',
   './interface/treemap.css',
   './interface/income-chart.css',
   './interface/flow-chart.css',
 
   // Application entry point
-  './application/app.js',
+  './application/app-controller.js',
+  './application/ui/app-goals.js',
+  './application/ui/app-intake.js',
+  './application/ui/app-messages.js',
 
   // application/core/
   './application/core/icons.js',
@@ -63,7 +72,10 @@ const CODE = [
   './application/analysis/goals.js',
   './application/analysis/position.js',
   './application/analysis/proven-models.js',
-  './application/analysis/reporting.js',
+  './application/analysis/reporting-core.js',
+  './application/analysis/reporting-periods.js',
+  './application/analysis/reporting-insights.js',
+  './application/analysis/reporting-print.js',
   './application/analysis/spend-breakdown.js',
   './application/analysis/spendable-categories.js',
   './application/analysis/tag-totals.js',

@@ -1,0 +1,608 @@
+/* ---------- Responsive tiers ---------- */
+@media (max-width: 639px) {
+  /* Single-row header: brand truncates, Add stays labelled, Export and theme
+     collapse to icons (their labels are hidden, glyphs shown via .nav-ic). */
+  :root {
+    --card-pad-x: 18px;
+    --card-pad-y: 16px;
+  }
+  .topbar {
+    gap: 8px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-bottom: 10px;
+  }
+  .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .top-actions {
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+  .nav-ic {
+    display: inline-flex;
+  }
+  #export-btn .caret {
+    display: none;
+  }
+  #export-btn {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  #theme-btn.icon-btn {
+    min-width: 44px;
+  }
+  .menu {
+    min-width: min(
+      280px,
+      calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right))
+    );
+  }
+  .btn .btn-label {
+    display: none;
+  }
+  .btn.primary .btn-label {
+    display: none;
+  }
+  .btn,
+  .btn.sm,
+  .menu-item,
+  .cat-tag-btn,
+  .chip,
+  .f-check,
+  .period-select,
+  .mini,
+  .filters input:not([type='checkbox']):not([type='radio']),
+  .filters select {
+    min-height: var(--tap-lg);
+  }
+  .btn {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+  .btn.sm {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .menu-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+  .cat-tag-btn {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .chip {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .f-check {
+    padding: 10px 10px;
+  }
+  .period-bar {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .period-left,
+  .period-range,
+  .filters,
+  .chips {
+    width: 100%;
+  }
+  .period-left {
+    flex-wrap: wrap;
+  }
+  .period-select,
+  .mini,
+  .filters input:not([type='checkbox']):not([type='radio']),
+  .filters select {
+    width: 100%;
+  }
+  /* The period selector is a low-frequency chooser, not a primary input, so on
+     phones it hugs its label instead of spanning the row, sits at a calmer 40px
+     height, and lets "Showing <month>" share the same line. Filters and chips
+     in the explorer keep their full-width behaviour; this is scoped to the
+     period bar only. */
+  .period-bar .period-left {
+    width: auto;
+  }
+  .period-bar .period-range {
+    width: auto;
+    margin-left: auto;
+  }
+  .period-bar .period-select {
+    width: auto;
+    max-width: 100%;
+    min-height: var(--tap-min);
+    font-size: 14px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .filters {
+    gap: 10px;
+  }
+  .f-search {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .f-num {
+    width: min(100%, 120px);
+  }
+  /* Min and Max share one row with the dash inline between them, never stranded. */
+  .f-range {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .filters .f-range input.f-num {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+  .f-range .muted {
+    flex: 0 0 auto;
+  }
+  /* 16px text on every focusable field stops iOS Safari auto-zooming (and the
+     layout jump) when a field is tapped. Padding, height and chevrons unchanged. */
+  .filters input:not([type='checkbox']):not([type='radio']),
+  .filters select,
+  .period-select,
+  .mini,
+  .mobile-sort-field,
+  .pass {
+    font-size: 16px;
+  }
+  .f-check {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  /* Checkboxes stay real ~20px controls (the full-width / 44px / 16px field
+     rules now exclude them); the label sits immediately to the right,
+     left-aligned, inside the comfortable 44px-tall .f-check row. */
+  .filters input[type='checkbox'],
+  .filters input[type='radio'] {
+    width: 20px;
+    height: 20px;
+    min-height: 0;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .mobile-sort {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 2px 0 10px;
+  }
+  .mobile-sort .muted {
+    width: 100%;
+  }
+  .mobile-sort-field {
+    flex: 1 1 180px;
+    min-height: var(--tap-min);
+    padding: 8px 30px 8px 12px;
+    border: 1px solid var(--edge);
+    border-radius: 9px;
+    background: var(--panel);
+    color: var(--fg);
+    font-size: 16px; /* 16px avoids iOS focus-zoom */
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: var(--select-chevron);
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+  .mobile-sort-dir {
+    min-width: 96px;
+    justify-content: center;
+  }
+  .mobile-context {
+    display: block;
+    margin: 4px 0 0;
+  }
+  .wrap {
+    padding-top: 14px;
+    gap: 14px;
+  }
+  .hero {
+    padding: var(--card-pad-y) var(--card-pad-x);
+  }
+  .hero-head {
+    flex-direction: column;
+  }
+  .hero-title {
+    font-size: 20px;
+  }
+  .hero-figure {
+    min-width: 0;
+  }
+  .hero-amount {
+    font-size: 30px;
+  }
+  .hero-body {
+    gap: 14px 24px;
+  }
+  .row2 {
+    grid-template-columns: 1fr;
+  }
+  .trend-bars {
+    gap: 6px;
+    height: 132px;
+  }
+  .table-wrap.sticky table.grid thead th {
+    position: static;
+  }
+  table.grid.tx thead {
+    display: none;
+  }
+  table.grid.tx,
+  table.grid.tx tbody,
+  table.grid.tx tr,
+  table.grid.tx td {
+    display: block;
+    width: 100%;
+  }
+  table.grid.tx tbody tr.tx-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name amount'
+      'ledger date';
+    column-gap: 12px;
+    row-gap: 3px;
+    align-items: baseline;
+    border: 0;
+    border-top: 1px solid var(--edge);
+    border-radius: 0;
+    margin: 0;
+    padding: 12px 0;
+    min-height: var(--tap-lg);
+  }
+  table.grid.tx tbody tr.tx-row:first-child {
+    border-top: 0;
+  }
+  table.grid.tx tr.tx-row td {
+    border: 0;
+    padding: 0;
+  }
+  /* Cell order in the merged ledger table: 1 date, 2 description (rich -
+     name, category/tag line, review reason all nested inside), 3 ledger,
+     4 amount. */
+  table.grid.tx tr.tx-row td:nth-child(2) {
+    grid-area: name;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+  }
+  table.grid.tx tr.tx-row td:nth-child(4) {
+    grid-area: amount;
+    position: static;
+    top: auto;
+    right: auto;
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 680;
+    font-size: 15px;
+  }
+  table.grid.tx tr.tx-row td:nth-child(3) {
+    grid-area: ledger;
+    min-width: 0;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  table.grid.tx tr.tx-row td:nth-child(1) {
+    grid-area: date;
+    text-align: right;
+    white-space: nowrap;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  table.grid.tx td[data-label]::before {
+    content: none;
+  }
+  /* The category on the row stays tappable (it opens the picker), but it must
+     not reclaim the height the coarse-pointer 44px target would add here; the
+     whole row is already a large tap target that opens the detail panel. */
+  table.grid.tx tr.tx-row button.cat-tag-btn {
+    min-height: 0;
+    padding: 0;
+  }
+  /* Top places: same cohesive-rows treatment as the transaction list - a
+     hairline divider between rows inside the one parent card, matching spacing
+     and type scale, rather than nested cards. */
+  .merch thead {
+    display: none;
+  }
+  table.grid.merch,
+  table.grid.merch tbody,
+  table.grid.merch td {
+    display: block;
+    width: 100%;
+  }
+  .merch tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name  total'
+      'cat   times'
+      'avg   share';
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: baseline;
+    border: 0;
+    border-top: 1px solid var(--edge);
+    border-radius: 0;
+    margin: 0;
+    padding: 12px 0;
+    min-height: var(--tap-lg);
+  }
+  .merch tbody tr:first-child {
+    border-top: 0;
+  }
+  .merch tbody tr:has(.show-more) {
+    display: block;
+    border-top: 0;
+    padding: 10px 0 0;
+    min-height: 0;
+  }
+  .merch tbody tr td {
+    border: 0;
+    padding: 0;
+  }
+  /* Row 1: place name (wraps on word boundaries) + prominent total, right. */
+  .merch td:nth-child(1) {
+    grid-area: name;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+  }
+  .merch td:nth-child(4) {
+    grid-area: total;
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 680;
+    font-size: 14px;
+  }
+  /* Row 2: category + times count. */
+  .merch td:nth-child(2) {
+    grid-area: cat;
+    color: var(--dim);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .merch td:nth-child(3) {
+    grid-area: times;
+    text-align: right;
+    white-space: nowrap;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  .merch td:nth-child(3)::before {
+    content: 'Times ';
+  }
+  /* Row 3: average and share as one small muted secondary line. */
+  .merch td:nth-child(5),
+  .merch td:nth-child(6) {
+    color: var(--dim);
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .merch td:nth-child(5) {
+    grid-area: avg;
+    text-align: left;
+  }
+  .merch td:nth-child(6) {
+    grid-area: share;
+    text-align: right;
+  }
+  .merch td:nth-child(5)::before {
+    content: 'Avg ';
+  }
+  .merch td:nth-child(6)::before {
+    content: 'Share ';
+  }
+  table.grid.banktx thead {
+    display: none;
+  }
+  table.grid.banktx,
+  table.grid.banktx tbody,
+  table.grid.banktx tr,
+  table.grid.banktx td {
+    display: block;
+    width: 100%;
+  }
+  table.grid.banktx tbody tr {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name  name     name  name  amount'
+      'flow  account  pair  .     date';
+    column-gap: 8px;
+    row-gap: 1px;
+    align-items: baseline;
+    border: 0;
+    border-top: 1px solid var(--edge);
+    border-radius: 0;
+    margin: 0;
+    padding: 9px 0;
+    min-height: 0;
+  }
+  table.grid.banktx tbody tr:first-child {
+    border-top: 0;
+  }
+  table.grid.banktx td {
+    border: 0;
+    padding: 0;
+  }
+  table.grid.banktx td:has(.desc) {
+    display: contents;
+  }
+  table.grid.banktx .desc {
+    grid-area: name;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+    font-size: 13.5px;
+  }
+  table.grid.banktx td.num.amt {
+    grid-area: amount;
+    position: static;
+    top: auto;
+    right: auto;
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  table.grid.banktx td:has(.ktag) {
+    grid-area: flow;
+    min-width: 0;
+    color: var(--dim);
+    font-size: 11px;
+  }
+  table.grid.banktx td.muted.nowrap {
+    grid-area: account;
+    justify-self: start;
+    text-align: left;
+    color: var(--dim);
+    font-size: 11px;
+  }
+  table.grid.banktx td.num.muted {
+    grid-area: account;
+    justify-self: start;
+    text-align: left;
+    color: var(--dim);
+    font-size: 11px;
+  }
+  table.grid.banktx .linkbtn.small {
+    grid-area: pair;
+    justify-self: start;
+    align-self: baseline;
+    font-size: 11px;
+    padding: 0;
+    min-height: 0;
+  }
+  table.grid.banktx td:first-child {
+    grid-area: date;
+    text-align: right;
+    white-space: nowrap;
+    color: var(--dim);
+    font-size: 11px;
+  }
+  table.grid.banktx tbody tr:has(.show-more) {
+    display: block;
+    border-top: 0;
+    padding: 10px 0 0;
+    min-height: 0;
+  }
+  table.grid.banktx tbody tr.tx-detail {
+    display: block;
+    border-top: 0;
+  }
+  .tx-detail td {
+    display: block;
+  }
+  .toast,
+  .install-banner {
+    max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+}
+
+@media (min-width: 640px) {
+  .table-wrap.sticky {
+    max-height: min(55vh, 720px);
+    overflow: auto;
+  }
+}
+
+@media (min-width: 960px) {
+  .row2 {
+    grid-template-columns: 1.35fr 1fr;
+  }
+  /* Overview's row2 (the "Cards"/"Accounts" routing-card pair) is a DIFFERENT
+     use of the same .row2 molecule from Cards' insight/attention pair, but the
+     bare `.row2` rule above is unscoped, so it was also giving Overview's two
+     routing cards the 1.35fr/1fr split meant for Cards - an unequal, unbalanced
+     width for what is a plain 50/50 navigational choice with no reason for one
+     card to be wider. `.accounts-wrap > .row2` matches ONLY when row2 is a
+     direct child of an .accounts-wrap element - true for Overview (whose wrap
+     is plain .accounts-wrap) and never true for Cards (whose row2 sits under
+     #app.wrap) or Accounts (which never renders a .row2 at all). Two classes
+     (0,2,0) outrank the bare .row2 rule (0,1,0) above, so this wins regardless
+     of source order, restoring an even split for Overview only.
+     align-items:stretch closes the matching height gap: cardsCard always gets
+     one more line than acctCard when card history exists (the "$X spent
+     across your card history" line has no Accounts-side equivalent), so at
+     align-items:start (the base .row2 rule) the shorter Accounts card always
+     stops early, leaving a bare gap beside the taller Cards card - the same
+     defect class as Cards' own insight/attention row2, fixed the same way. */
+  .accounts-wrap > .row2 {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+}
+
+@media (pointer: fine) {
+  .btn,
+  .btn.sm,
+  .menu-item,
+  .cat-tag-btn,
+  .chip,
+  .f-check,
+  .period-select,
+  .mini,
+  .filters input,
+  .filters select {
+    min-height: auto;
+  }
+  .btn.sm {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .menu-item {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .cat-tag-btn {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .chip {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+  .f-check {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .period-select,
+  .mini,
+  .filters input,
+  .filters select {
+    min-height: 0;
+  }
+}
+
+@media (pointer: coarse) and (min-width: 640px) {
+  .btn,
+  .btn.sm,
+  .menu-item,
+  .cat-tag-btn,
+  .chip,
+  .f-check,
+  .period-select,
+  .mini,
+  .filters input:not([type='checkbox']):not([type='radio']),
+  .filters select {
+    min-height: var(--tap-lg);
+  }
+}
+

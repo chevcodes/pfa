@@ -1,0 +1,678 @@
+/* ---------- Printable report ----------
+   A dedicated report (#print-report), built on demand, replaces the interactive
+   dashboard for print / PDF. It always prints on a light, high-contrast scheme
+   regardless of the on-screen theme, and never shows buttons, hover states or
+   other controls that do nothing on paper. */
+.print-only {
+  display: none;
+}
+
+@page {
+  size: auto;
+  margin: 14mm 12mm 16mm;
+}
+
+@media print {
+  .topbar-stack,
+  .topbar,
+  .period-bar,
+  #ledger-switch,
+  #app,
+  #footer,
+  #toast,
+  #busy,
+  #install,
+  .overlay,
+  .tip {
+    display: none !important;
+  }
+  html,
+  body {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  html:not([data-report-theme='dark']),
+  html:not([data-report-theme='dark']) body {
+    background: #fff !important;
+  }
+  html[data-report-theme='dark'],
+  html[data-report-theme='dark'] body {
+    background: var(--bg) !important;
+  }
+  .print-only {
+    display: block;
+  }
+}
+
+/* The report can also be revealed on screen while a print is in progress
+   (html.printing) so browsers that render the print preview from the live DOM
+   pick it up. It carries its own colours and never inherits the dark theme. */
+html.printing .topbar-stack,
+html.printing .topbar,
+html.printing .period-bar,
+html.printing #ledger-switch,
+html.printing #app,
+html.printing #footer,
+html.printing #install {
+  display: none !important;
+}
+html.printing .print-only {
+  display: block;
+}
+
+.rp {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  color: #1b2430;
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  width: 100%;
+  max-width: 190mm;
+  margin: 0 auto;
+  padding: 0 0 24mm;
+}
+.rp * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.rp .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rp .strong {
+  font-weight: 700;
+}
+.rp .nowrap {
+  white-space: nowrap;
+}
+.rp .rp-wrap {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Header */
+.rp-header {
+  border-bottom: 2px solid #1b2430;
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+.rp-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f6cbd;
+  font-weight: 700;
+  font-size: 11pt;
+}
+.rp-brand .rp-ic {
+  color: #0f6cbd;
+}
+.rp-title {
+  font-size: 22pt;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  margin: 4px 0 6px;
+  color: #10161f;
+}
+.rp-meta {
+  font-size: 9pt;
+  color: #5a6675;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.rp-meta-period {
+  font-weight: 700;
+  color: #1b2430;
+}
+.rp-dot {
+  color: #b7c0cc;
+}
+.rp-privacy {
+  font-size: 8.5pt;
+  color: #6b7684;
+  margin-top: 6px;
+}
+/* Screen-only print guidance under the report header: guides on screen, never
+   printed (the @media print rule below hides it on paper / in the saved PDF). */
+.rp-print-hint {
+  font-size: 8.5pt;
+  color: #6b7684;
+  margin-top: 4px;
+}
+@media print {
+  .rp-print-hint {
+    display: none;
+  }
+}
+
+/* Section scaffolding - even vertical rhythm between sections and a consistent
+   heading gap, so the report reads as one measured document on any page width. */
+.rp-block {
+  margin: 0 0 20px;
+}
+.rp-block:last-child {
+  margin-bottom: 0;
+}
+.rp-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13pt;
+  font-weight: 750;
+  color: #10161f;
+  margin: 0 0 11px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e2e7ee;
+}
+.rp-h .rp-ic {
+  color: #0f6cbd;
+  flex: none;
+}
+.rp-note {
+  font-size: 8.5pt;
+  color: #6b7684;
+  margin: 8px 0 0;
+}
+.rp-empty {
+  font-size: 10pt;
+  color: #6b7684;
+  font-style: italic;
+  margin: 4px 0;
+}
+.rp-scope {
+  font-size: 9pt;
+  color: #40495a;
+  font-weight: 650;
+  margin: 0 0 8px;
+}
+.rp-avoid {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Swatch + label (colour is always paired with text for B/W printing) */
+.rp-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: baseline;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.rp-swatch-wrap {
+  display: inline-flex;
+  align-items: baseline;
+}
+.rp-inline-cat {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+/* Key summary - fluid so it reflows to 2-up or 1-up on a narrow page/preview
+   (e.g. a 390px "Save as PDF") instead of overflowing off the sheet. */
+.rp-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.rp-sum {
+  border: 1px solid #dfe4ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfcfe;
+  break-inside: avoid;
+}
+.rp-sum-lead {
+  background: #f2f7fd;
+  border-color: #cfe0f4;
+  border-left: 3px solid #1f6feb;
+}
+.rp-sum-label {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7684;
+  font-weight: 650;
+}
+.rp-sum-value {
+  font-size: 15pt;
+  font-weight: 800;
+  color: #10161f;
+  margin-top: 3px;
+}
+.rp-sum-sub {
+  font-size: 8.5pt;
+  color: #5a6675;
+  margin-top: 3px;
+}
+.rp-sum-sub.tone-up {
+  color: #b3421a;
+}
+.rp-sum-sub.tone-down {
+  color: #1f7a4d;
+}
+
+/* Trend chart - the SVG scales to its container width (it keeps its own
+   preserveAspectRatio); nothing beside it forces a minimum width. */
+.rp-chart-wrap {
+  width: 100%;
+  overflow: hidden;
+}
+.rp-chart {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.rp-axis {
+  font-size: 8.2pt;
+  fill: #6b7684;
+}
+.rp-axis-avg {
+  font-size: 8pt;
+  fill: #4a5566;
+  font-weight: 650;
+}
+.rp-mini {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 8.6pt;
+}
+.rp-mini th {
+  text-align: left;
+  color: #6b7684;
+  font-weight: 650;
+  border-bottom: 1px solid #e2e7ee;
+  padding: 3px 6px;
+}
+.rp-mini td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #f0f3f7;
+}
+.rp-mini tr.rp-inperiod td {
+  font-weight: 700;
+  color: #12539c;
+}
+
+/* Category ranking - fluid columns: the name may shrink/wrap and the bar
+   flexes, so long category names and the amount never push the row past the
+   page edge on a narrow sheet. No fixed 165/92/44px widths. */
+.rp-cats {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.rp-cat {
+  display: grid;
+  grid-template-columns: minmax(84px, 1.4fr) minmax(48px, 2fr) auto auto;
+  align-items: center;
+  gap: 6px 10px;
+}
+.rp-cat-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.rp-cat-bar {
+  background: #eef1f6;
+  border-radius: 4px;
+  height: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+.rp-cat-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.rp-cat-amt {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rp-cat-pct {
+  color: #6b7684;
+}
+.rp-cat-review {
+  color: #7a8494;
+}
+.rp-cat-review .rp-cat-fill {
+  opacity: 0.5;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 255, 255, 0.6) 3px,
+    rgba(255, 255, 255, 0.6) 5px
+  );
+}
+
+/* Tables (merchant + transactions) */
+.rp-table-wrap {
+  width: 100%;
+}
+.rp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+.rp-table thead {
+  display: table-header-group;
+}
+.rp-table th {
+  text-align: left;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #5a6675;
+  font-weight: 700;
+  border-bottom: 1.5px solid #cdd5df;
+  padding: 6px 8px;
+  background: #f6f8fb;
+}
+.rp-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eef1f6;
+  vertical-align: top;
+}
+.rp-table tbody tr,
+.rp-table tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.rp-table .rp-fx {
+  font-size: 8pt;
+  color: #7a8494;
+  margin-top: 1px;
+}
+.rp-credit {
+  color: #1f7a4d;
+}
+.rp-tx td {
+  vertical-align: top;
+}
+
+/* Notable patterns */
+.rp-insights {
+  margin: 0;
+  padding-left: 18px;
+}
+.rp-insights li {
+  margin: 0 0 6px;
+  font-size: 10pt;
+  break-inside: avoid;
+}
+
+/* Footer repeats on each printed page */
+.rp-footer {
+  position: fixed;
+  bottom: 4mm;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 8pt;
+  color: #8a94a2;
+  padding-top: 4px;
+  border-top: 1px solid #e2e7ee;
+}
+@media screen {
+  html.printing .rp-footer {
+    position: static;
+  }
+}
+
+/* The saved PDF and physical print, when the report resolved to dark, carry
+   the same theme tokens the on-screen preview already uses. print-color-adjust
+   is already set on .rp, so the dark panel fills render when Background
+   graphics is on. Keyed on data-report-theme so an auto user who saw dark gets
+   a dark PDF, and a light (or auto->light) user is untouched by this block. */
+@media print {
+  html[data-report-theme='dark'] .rp {
+    color: var(--fg);
+    background: var(--panel);
+  }
+  html[data-report-theme='dark'] .rp-header {
+    border-bottom-color: var(--fg);
+  }
+  html[data-report-theme='dark'] .rp-title,
+  html[data-report-theme='dark'] .rp-sum-value {
+    color: var(--fg);
+  }
+  html[data-report-theme='dark'] .rp-brand,
+  html[data-report-theme='dark'] .rp-brand .rp-ic,
+  html[data-report-theme='dark'] .rp-h .rp-ic {
+    color: var(--accent);
+  }
+  html[data-report-theme='dark'] .rp-meta,
+  html[data-report-theme='dark'] .rp-privacy,
+  html[data-report-theme='dark'] .rp-note,
+  html[data-report-theme='dark'] .rp-empty,
+  html[data-report-theme='dark'] .rp-cat-pct,
+  html[data-report-theme='dark'] .rp-sum-label,
+  html[data-report-theme='dark'] .rp-sum-sub,
+  html[data-report-theme='dark'] .rp-cat-review,
+  html[data-report-theme='dark'] .rp-table .rp-fx {
+    color: var(--dim);
+  }
+  html[data-report-theme='dark'] .rp-axis,
+  html[data-report-theme='dark'] .rp-axis-avg {
+    fill: var(--dim);
+  }
+  html[data-report-theme='dark'] .rp-meta-period,
+  html[data-report-theme='dark'] .rp-scope {
+    color: var(--fg);
+  }
+  html[data-report-theme='dark'] .rp-dot {
+    color: var(--edge);
+  }
+  html[data-report-theme='dark'] .rp-h {
+    color: var(--fg);
+    border-bottom-color: var(--edge);
+  }
+  html[data-report-theme='dark'] .rp-sum {
+    border-color: var(--edge);
+    background: var(--panel-2);
+  }
+  html[data-report-theme='dark'] .rp-sum-lead {
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--edge));
+  }
+  html[data-report-theme='dark'] .rp-mini th {
+    color: var(--dim);
+    border-bottom-color: var(--edge);
+  }
+  html[data-report-theme='dark'] .rp-mini td {
+    border-bottom-color: var(--edge);
+  }
+  html[data-report-theme='dark'] .rp-mini tr.rp-inperiod td {
+    color: var(--accent);
+  }
+  html[data-report-theme='dark'] .rp-cat-bar {
+    background: var(--panel-2);
+  }
+  html[data-report-theme='dark'] .rp-table th {
+    color: var(--dim);
+    border-bottom-color: var(--edge);
+    background: var(--panel-2);
+  }
+  html[data-report-theme='dark'] .rp-table td {
+    border-bottom-color: var(--edge);
+  }
+  html[data-report-theme='dark'] .rp-sum-sub.tone-up {
+    color: var(--up);
+  }
+  html[data-report-theme='dark'] .rp-sum-sub.tone-down,
+  html[data-report-theme='dark'] .rp-credit {
+    color: var(--down);
+  }
+  html[data-report-theme='dark'] .rp-footer {
+    color: var(--dim);
+    border-top-color: var(--edge);
+  }
+}
+
+/* On-screen report cohesion.
+   The SAVED PDF must stay light on white (deliberate, for ink and legibility),
+   so the base .rp-* colours above are fixed light values and an explicit
+   @media print block below re-asserts them. But the ON-SCREEN report - the
+   state the person sees on the phone before/after printing (html.printing) -
+   adopts the app's current theme tokens so it feels part of the dark app
+   instead of a jarring light slab. This whole block is scoped to @media screen,
+   so it never touches the printed output. */
+@media screen {
+  html.printing #print-report {
+    padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 24px
+      calc(12px + env(safe-area-inset-left));
+    background: var(--bg);
+  }
+  html.printing .rp {
+    color: var(--fg);
+    background: var(--panel);
+  }
+  html.printing .rp-header {
+    border-bottom-color: var(--fg);
+  }
+  html.printing .rp-title,
+  html.printing .rp-sum-value {
+    color: var(--fg);
+  }
+  html.printing .rp-brand,
+  html.printing .rp-brand .rp-ic,
+  html.printing .rp-h .rp-ic {
+    color: var(--accent);
+  }
+  html.printing .rp-meta,
+  html.printing .rp-privacy,
+  html.printing .rp-note,
+  html.printing .rp-empty,
+  html.printing .rp-cat-pct,
+  html.printing .rp-sum-label,
+  html.printing .rp-sum-sub,
+  html.printing .rp-cat-review,
+  html.printing .rp-table .rp-fx {
+    color: var(--dim);
+  }
+  html.printing .rp-axis,
+  html.printing .rp-axis-avg {
+    fill: var(--dim);
+  }
+  html.printing .rp-meta-period,
+  html.printing .rp-scope {
+    color: var(--fg);
+  }
+  html.printing .rp-dot {
+    color: var(--edge);
+  }
+  html.printing .rp-h {
+    color: var(--fg);
+    border-bottom-color: var(--edge);
+  }
+  html.printing .rp-sum {
+    border-color: var(--edge);
+    background: var(--panel-2);
+  }
+  html.printing .rp-sum-lead {
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--edge));
+  }
+  html.printing .rp-mini th {
+    color: var(--dim);
+    border-bottom-color: var(--edge);
+  }
+  html.printing .rp-mini td {
+    border-bottom-color: var(--edge);
+  }
+  html.printing .rp-mini tr.rp-inperiod td {
+    color: var(--accent);
+  }
+  html.printing .rp-cat-bar {
+    background: var(--panel-2);
+  }
+  html.printing .rp-table th {
+    color: var(--dim);
+    border-bottom-color: var(--edge);
+    background: var(--panel-2);
+  }
+  html.printing .rp-table td {
+    border-bottom-color: var(--edge);
+  }
+  html.printing .rp-sum-sub.tone-up {
+    color: var(--up);
+  }
+  html.printing .rp-sum-sub.tone-down,
+  html.printing .rp-credit {
+    color: var(--down);
+  }
+  html.printing .rp-footer {
+    color: var(--dim);
+    border-top-color: var(--edge);
+  }
+}
+
+/* Output follows the resolved report theme. When the app resolves to light
+   (data-report-theme="light", set at print time, including auto->light), the
+   report keeps the fixed light literals below, so a light PDF is unchanged.
+   When it resolves to dark, the themed token block (further below, now applied
+   in print too) governs, so the PDF is dark - matching what the person saw. */
+@media print {
+  html[data-report-theme='light'] .rp {
+    color: #1b2430;
+    background: #fff;
+  }
+  html[data-report-theme='light'] .rp-header {
+    border-bottom-color: #1b2430;
+  }
+  html[data-report-theme='light'] .rp-title,
+  html[data-report-theme='light'] .rp-sum-value {
+    color: #10161f;
+  }
+  html[data-report-theme='light'] .rp-h {
+    color: #10161f;
+    border-bottom-color: #e2e7ee;
+  }
+  html[data-report-theme='light'] .rp-sum {
+    background: #fbfcfe;
+    border-color: #dfe4ec;
+  }
+  html[data-report-theme='light'] .rp-sum-lead {
+    background: #f2f7fd;
+    border-color: #cfe0f4;
+    border-left: 3px solid #1f6feb;
+  }
+  html[data-report-theme='light'] .rp-cat-bar {
+    background: #eef1f6;
+  }
+  html[data-report-theme='light'] .rp-table th {
+    color: #5a6675;
+    background: #f6f8fb;
+    border-bottom-color: #cdd5df;
+  }
+  html[data-report-theme='light'] .rp-table td {
+    border-bottom-color: #eef1f6;
+  }
+  html[data-report-theme='light'] .rp-footer {
+    color: #8a94a2;
+    border-top-color: #e2e7ee;
+  }
+}
+
+/* reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+

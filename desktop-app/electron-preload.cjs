@@ -1,7 +1,7 @@
 /* Electron preload - the only bridge between the shared UI and the desktop.
  *
  * Context isolation is on, so the renderer sees just this small, explicit API
- * and never Node itself. app.js checks for window.ccDesktop to decide whether
+ * and never Node itself. app-controller.js checks for window.ccDesktop to decide whether
  * folder features are available; on the phone that object is simply absent and
  * the identical code falls back to the Add-statement file picker.
  *

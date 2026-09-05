@@ -1,7 +1,7 @@
 /* Minimal static file server for the browser (PWA) version - no dependencies,
  * no build step. Serves the project root exactly as the installed PWA would
- * load it: index.html, interface/styles.css,
- * application/app.js, settings/config.json, interface/manifest.json,
+ * load it: index.html, interface/split base stylesheets,
+ * application/app-controller.js, settings/config.json, interface/manifest.json,
  * interface/service-worker.js, interface/icons/ and third-party/ are all
  * reachable at their real relative paths.
  *

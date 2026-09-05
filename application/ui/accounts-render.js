@@ -20,11 +20,13 @@ import {
 } from '../analysis/bank-analysis.js';
 import { smartTitle } from '../statements/categorise.js';
 import {
-  missingMonths,
   appendExpandable,
+} from '../analysis/reporting-core.js';
+import { renderExplainer } from '../analysis/reporting-periods.js';
+import {
+  missingMonths,
   buildBankAppropriateInsights,
-  renderExplainer,
-} from '../analysis/reporting.js';
+} from '../analysis/reporting-insights.js';
 import {
   formatMoney,
   smoothScrollToEl,

@@ -20,7 +20,10 @@
  *  not attempted anywhere in this app.
  * ======================================================================== */
 
-import { normaliseEair, medianRecentPayment } from './reporting.js';
+import {
+  normaliseEair,
+  medianRecentPayment,
+} from './reporting-periods.js';
 
 // deps: { classifiedBank, overviewModel, typicalMonthlyOutflow, ymToday,
 //         analyseBankActivity, bankFlowOverTime, state }

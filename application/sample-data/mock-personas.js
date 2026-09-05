@@ -15,13 +15,17 @@ import {
 import {
   buildRows,
   summarise,
+} from '../analysis/reporting-core.js';
+import {
   detectRecurring,
   cardBehaviourState,
   buildStatementCoverage,
   isPeriodFullyCovered,
   resolvePeriod,
+} from '../analysis/reporting-periods.js';
+import {
   buildBankAppropriateInsights,
-} from '../analysis/reporting.js';
+} from '../analysis/reporting-insights.js';
 import {
   roundMoney,
   withConfigDefaults,

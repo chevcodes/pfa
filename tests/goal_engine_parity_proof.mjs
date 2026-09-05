@@ -53,7 +53,7 @@
  *  requireCtx comment already documents for ctx wiring. Kept deliberately
  *  tiny and simple to minimise that risk.
  * ======================================================================== */
-import { computeGoalProgress } from '../application/analysis/reporting.js';
+import { computeGoalProgress } from '../application/analysis/reporting-insights.js';
 import { goalProgress, buildGoalModel } from '../application/analysis/goals.js';
 import { buildNewEngineProgressCtx } from '../application/analysis/goal-progress-ctx.js';
 

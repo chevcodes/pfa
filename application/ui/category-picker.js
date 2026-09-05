@@ -14,7 +14,9 @@
  * still calls from txTable and renderAttention.
  */
 
-import { orderCategoriesForPicker } from '../analysis/reporting.js';
+import {
+  orderCategoriesForPicker,
+} from '../analysis/reporting-core.js';
 import {
   merchantRuleKeyFromDescription,
   upsertCategoryRule,

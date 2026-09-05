@@ -18,12 +18,18 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Finance" />
-    <link rel="stylesheet" href="./interface/styles.css" />
+    <link rel="stylesheet" href="./interface/foundation.css" />
+    <link rel="stylesheet" href="./interface/dashboard.css" />
+    <link rel="stylesheet" href="./interface/controls.css" />
+    <link rel="stylesheet" href="./interface/responsive.css" />
+    <link rel="stylesheet" href="./interface/print.css" />
+    <link rel="stylesheet" href="./interface/feature-additions.css" />
+    <link rel="stylesheet" href="./interface/workspace-refinements.css" />
     <link rel="stylesheet" href="./interface/glass.css" />
     <link rel="stylesheet" href="./interface/treemap.css" />
     <link rel="stylesheet" href="./interface/income-chart.css" />
     <link rel="stylesheet" href="./interface/flow-chart.css" />
-    <link rel="modulepreload" href="./application/app.js" />
+    <link rel="modulepreload" href="./application/app-controller.js" />
   </head>
   <body>
     <a class="skip-link" href="#app">Skip to content</a>
@@ -133,7 +139,7 @@
               ></span>
             </button>
             <div id="export-menu" class="menu" hidden>
-              <div class="menu-label">Export</div>
+              <div class="menu-label">Transactions and reports</div>
               <button id="exp-csv" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
                   ><svg
@@ -148,7 +154,7 @@
                   >
                     <path d="M12 15V3M8 7l4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" /></svg
                 ></span>
-                <span>Export transactions (CSV)&hellip;</span>
+                <span>Download transactions (CSV)&hellip;</span>
               </button>
               <button id="exp-print" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
@@ -168,7 +174,7 @@
                 <span>Print / Save as PDF</span>
               </button>
               <div class="menu-sep"></div>
-              <div class="menu-label">Category rules</div>
+              <div class="menu-label">Category setup</div>
               <button id="exp-rules-export" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
                   ><svg
@@ -183,7 +189,7 @@
                   >
                     <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg
                 ></span>
-                <span>Export rules</span>
+                <span>Download category rules</span>
               </button>
               <label id="exp-rules-import" class="menu-item file-trigger file-menu-item">
                 <span class="menu-ic" aria-hidden="true"
@@ -200,7 +206,7 @@
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <path d="M14 2v6h6" /></svg
                 ></span>
-                <span>Import rules</span>
+                <span>Load category rules</span>
                 <input
                   id="exp-rules-input"
                   class="file-trigger-input"
@@ -209,7 +215,7 @@
                 />
               </label>
               <div class="menu-sep"></div>
-              <div class="menu-label">Backup</div>
+              <div class="menu-label">Private backup</div>
               <button id="exp-export" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
                   ><svg
@@ -225,7 +231,7 @@
                     <rect x="5" y="11" width="14" height="9" rx="2" />
                     <path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg
                 ></span>
-                <span>Export encrypted history</span>
+                <span>Download encrypted backup</span>
               </button>
               <label id="exp-import" class="menu-item file-trigger file-menu-item">
                 <span class="menu-ic" aria-hidden="true"
@@ -242,7 +248,7 @@
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <path d="M14 2v6h6" /></svg
                 ></span>
-                <span>Import encrypted history</span>
+                <span>Restore encrypted backup</span>
                 <input
                   id="exp-import-input"
                   class="file-trigger-input"
@@ -252,6 +258,32 @@
               </label>
             </div>
           </div>
+
+          <button
+            id="privacy-btn"
+            class="btn icon-btn"
+            title="Hide figures"
+            aria-label="Hide figures"
+            aria-pressed="false"
+          >
+            <span class="btn-ic nav-ic" aria-hidden="true"
+              ><svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+                <circle cx="12" cy="12" r="2.75" />
+                <path class="privacy-slash" d="M4 4l16 16" />
+              </svg></span
+            >
+            <span class="btn-label" id="privacy-label">Hide</span>
+          </button>
 
           <button id="theme-btn" class="btn icon-btn" title="Theme: Auto" aria-label="Theme: Auto">
             <span class="btn-ic nav-ic" aria-hidden="true"
@@ -290,8 +322,13 @@
 
     <main id="app" class="wrap" tabindex="-1">
       <div class="app-loading" role="status" aria-live="polite">
-        <span class="spin" aria-hidden="true"></span>
-        <span class="muted">Reading your data&hellip;</span>
+        <span class="app-loading-mark" aria-hidden="true">
+          <span class="spin"></span>
+        </span>
+        <span class="app-loading-copy">
+          <strong>Opening your private workspace</strong>
+          <span class="muted">Reading saved statements on this device&hellip;</span>
+        </span>
       </div>
     </main>
 
@@ -303,9 +340,12 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <div id="busy" class="busy" aria-hidden="true">
-      <div class="busy-card">
+      <div class="busy-card" role="status" aria-live="polite">
         <span class="busy-spin" aria-hidden="true"></span>
-        <span class="busy-msg">Working&hellip;</span>
+        <span class="busy-copy">
+          <strong class="busy-msg">Working&hellip;</strong>
+          <span class="busy-sub">Keep this window open. Your files stay on this device.</span>
+        </span>
       </div>
     </div>
 
@@ -340,10 +380,10 @@
             '<div class="empty-icon"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>' +
             '<h2>The app could not start</h2>' +
             '<div class="empty-lines">' +
-            '<p class="muted">Something the app needs did not load. This is usually temporary.</p>' +
+            '<p class="muted">A required app file did not load. Check your connection, then try again.</p>' +
             '<p class="muted">Nothing saved on this device has changed.</p>' +
             '</div>' +
-            '<button class="btn primary lg" type="button" onclick="location.reload()">Reload</button>' +
+            '<div class="empty-actions"><button class="btn primary lg" type="button" onclick="location.reload()">Try again</button></div>' +
             '</section>';
         }
 
@@ -393,6 +433,6 @@
         );
       }
     </script>
-    <script type="module" src="./application/app.js"></script>
+    <script type="module" src="./application/app-controller.js"></script>
   </body>
 </html>

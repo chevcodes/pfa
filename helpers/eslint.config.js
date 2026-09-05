@@ -104,7 +104,7 @@ export default defineConfig([
         {
           name: 'navigator',
           message:
-            'Proven-model modules must be environment-free. Keep browser APIs in ui/ or app.js.',
+            'Proven-model modules must be environment-free. Keep browser APIs in ui/ or app-controller.js.',
         },
       ],
       'no-restricted-imports': [
@@ -112,9 +112,9 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['**/reporting.js', '**/bank-analysis.js'],
+              group: ['**/reporting-*.js', '**/bank-analysis.js'],
               message:
-                'Proven-model modules must not import the legacy analysis lineage (reporting.js / bank-analysis.js). Port the small pure helper you need locally, as G did with projectCardPayoff.',
+                'Proven-model modules must not import the legacy analysis lineage (reporting-* / bank-analysis.js). Port the small pure helper you need locally, as G did with projectCardPayoff.',
             },
           ],
         },
@@ -130,18 +130,18 @@ export default defineConfig([
         {
           selector: "CallExpression[callee.name='bootUI']",
           message:
-            'bootUI() belongs only in app.js. This looks like a lossy-paste fragment leaked into a module.',
+            'bootUI() belongs only in app-controller.js. This looks like a lossy-paste fragment leaked into a module.',
         },
         {
           selector: "MemberExpression[object.name='window'][property.name='__pfaBoot']",
           message:
-            'window.__pfaBoot is app.js boot plumbing. It should never appear in a render or analysis module.',
+            'window.__pfaBoot is app-controller.js boot plumbing. It should never appear in a render or analysis module.',
         },
         {
           selector:
             "CallExpression[callee.property.name='addEventListener'][arguments.0.value='DOMContentLoaded']",
           message:
-            'DOMContentLoaded wiring belongs in app.js, not a module. Likely a paste fragment.',
+            'DOMContentLoaded wiring belongs in app-controller.js, not a module. Likely a paste fragment.',
         },
       ],
     },

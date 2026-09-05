@@ -1,4 +1,5 @@
-import { summarise, analysePeriod } from '../application/analysis/reporting.js';
+import { summarise } from '../application/analysis/reporting-core.js';
+import { analysePeriod } from '../application/analysis/reporting-periods.js';
 import { spendBreakdown } from '../application/analysis/spend-breakdown.js';
 import { makeSplit } from '../application/analysis/transaction-splits.js';
 

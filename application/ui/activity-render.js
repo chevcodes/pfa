@@ -35,15 +35,17 @@ import {
 import {
   reviewReasonText,
   appendExpandable,
+  renderShareBar,
+  renderInsightList,
+} from '../analysis/reporting-core.js';
+import {
   buildIncomeHero,
   buildIncomeCaption,
   detectMidMonthPace,
   pairCardRefunds,
   mergedMoneyMovedRanking,
-  renderShareBar,
   rankInsights,
-  renderInsightList,
-} from '../analysis/reporting.js';
+} from '../analysis/reporting-insights.js';
 import { splitsByTxnId, validateSplit } from '../analysis/transaction-splits.js';
 import {
   analyseBankActivity,
@@ -252,7 +254,7 @@ export function createActivityRenderer(ctx) {
     if (!p || !p.from || !p.to) return null;
     const m = provenModels.committedFlexibleFor({ from: p.from, to: p.to });
     if (!m) return null;
-    const sec = el('section', { class: 'card lead' });
+    const sec = el('section', { class: 'card lead activity-primary' });
     sec.append(
       el(
         'div',
@@ -1133,35 +1135,57 @@ export function createActivityRenderer(ctx) {
 
 
   function renderActivityTabs() {
+    const ids = ['analysis', 'transactions'];
+    const labels = { analysis: 'Analysis', transactions: 'Transactions' };
     const strip = el('div', {
       class: 'ledger-tabs activity-tabs',
       role: 'tablist',
       'aria-label': 'Activity views',
     });
-    const mkTab = (id, label) =>
+    const activate = (id) => {
+      if (state.activityTab === id) return;
+      state.activityTab = id;
+      trackUsage('activity-tab-' + id);
+      render();
+      requestAnimationFrame(() => document.getElementById('activity-tab-' + id)?.focus());
+    };
+    const mkTab = (id) =>
       el(
         'button',
         {
+          id: 'activity-tab-' + id,
           class: 'ledger-tab' + (state.activityTab === id ? ' active' : ''),
           role: 'tab',
+          tabindex: state.activityTab === id ? '0' : '-1',
           'aria-selected': state.activityTab === id ? 'true' : 'false',
-          onclick: () => {
-            if (state.activityTab !== id) {
-              state.activityTab = id;
-              trackUsage('activity-tab-' + id);
-              render();
-            }
-          },
+          'aria-controls': 'activity-panel',
+          onclick: () => activate(id),
         },
-        label
+        labels[id]
       );
-    strip.append(mkTab('analysis', 'Analysis'), mkTab('transactions', 'Transactions'));
+    strip.append(...ids.map(mkTab));
+    strip.addEventListener('keydown', (e) => {
+      const current = ids.indexOf(state.activityTab);
+      let next = current;
+      if (e.key === 'ArrowRight') next = (current + 1) % ids.length;
+      else if (e.key === 'ArrowLeft') next = (current - 1 + ids.length) % ids.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = ids.length - 1;
+      else return;
+      e.preventDefault();
+      activate(ids[next]);
+    });
 
     return strip;
   }
 
   function renderAnalysisTab() {
-    const wrap = el('div', { class: 'accounts-wrap accounts-grid' });
+    const wrap = el('div', {
+      class: 'accounts-wrap accounts-grid activity-analysis',
+      id: 'activity-panel',
+      role: 'tabpanel',
+      'aria-labelledby': 'activity-tab-analysis',
+    });
     const a = analysis();
     const bankRecs = bankRecordsInPeriod(classifiedBank());
     const cardRows = periodRows();
@@ -1256,12 +1280,12 @@ export function createActivityRenderer(ctx) {
     const current = state.bankAccount || 'all';
     const bankTotal = analyseBankActivity(classifiedBank()).closingBalance;
 
-    const sec = el('section', { class: 'card' });
+    const sec = el('section', { class: 'card acct-slicer-card' });
     sec.append(
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Show one account')
+        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Filter by account')
       )
     );
     const slicer = el('div', {
@@ -1338,7 +1362,12 @@ export function createActivityRenderer(ctx) {
       : isOneBank
         ? bankRecsAll.filter((r) => r.account === selected)
         : bankRecsAll;
-    const wrap = el('div', { class: 'accounts-wrap' });
+    const wrap = el('div', {
+      class: 'accounts-wrap activity-transactions',
+      id: 'activity-panel',
+      role: 'tabpanel',
+      'aria-labelledby': 'activity-tab-transactions',
+    });
     if (!cardRows.length && !bankRecs.length) {
       wrap.append(
         el(
@@ -1362,11 +1391,24 @@ export function createActivityRenderer(ctx) {
     const search = el('input', {
       type: 'search',
       class: 'f-search',
-      placeholder: 'Search transactions - name, category, amount, or custom label',
+      placeholder: 'Name, category, amount, or custom label',
       'aria-label': 'Search transactions',
       value: _txSearch,
     });
-    wrap.append(el('div', { class: 'tx-filters' }, search));
+    const clearSearch = el('button', {
+      class: 'btn sm ghost tx-search-clear',
+      hidden: _txSearch ? null : '',
+      type: 'button',
+    }, 'Clear');
+    wrap.append(
+      el('div', { class: 'tx-filters' },
+        el('label', { class: 'field-label tx-search-field' },
+          el('span', {}, 'Search transactions'),
+          search
+        ),
+        clearSearch
+      )
+    );
 
     if (isOneBank) {
       wrap.append(
@@ -1399,15 +1441,23 @@ export function createActivityRenderer(ctx) {
     };
     search.addEventListener('input', () => {
       _txSearch = search.value;
+      clearSearch.hidden = !_txSearch;
       trackUsage('activity-tx-search');
       rebuildLedger();
+    });
+    clearSearch.addEventListener('click', () => {
+      _txSearch = '';
+      search.value = '';
+      clearSearch.hidden = true;
+      rebuildLedger();
+      search.focus();
     });
     rebuildLedger();
     return wrap;
   }
   function renderActivity() {
     trackUsage('view-activity');
-    const wrap = el('div', { class: 'accounts-wrap' });
+    const wrap = el('div', { class: 'accounts-wrap activity-view' });
     wrap.append(renderActivityTabs());
 
     wrap.append(

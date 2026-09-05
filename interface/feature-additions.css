@@ -1,0 +1,1343 @@
+/* ---------------------------------------------------------------------------
+ * v14 additions: report exit, passphrase confirm, picker filter, review
+ * dismissal, and the data-management controls. Presentation only.
+ * ------------------------------------------------------------------------- */
+
+/* Always-visible way out of the on-screen report. Excluded from the printed
+ * page / saved PDF via @media print below, so it never appears on paper. */
+.report-close {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  z-index: 95;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  min-height: 40px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+}
+.report-close:hover {
+  background: var(--panel-2);
+}
+.report-close .report-close-x {
+  display: inline-flex;
+}
+@media print {
+  .report-close {
+    display: none !important;
+  }
+}
+
+/* Passphrase mismatch note (export dialog only). */
+.pass-note {
+  margin: -4px 0 12px;
+  color: var(--warn);
+  font-size: 12.5px;
+}
+
+/* Category picker: type-to-filter box and empty state. */
+.picker-filter {
+  width: 100%;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 14px;
+}
+.picker-empty {
+  padding: 6px 4px 10px;
+}
+
+/* Two actions on an optional "To review" item. */
+.attn-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex: none;
+}
+
+/* Danger button variant, reusing the base .btn shape. */
+.btn.danger {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--edge));
+}
+.btn.danger:hover {
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+  border-color: var(--warn);
+}
+
+/* Data-management block inside the secondary "Data & lifetime totals" card. */
+/* Manage data - its own card on the dashboard (always visible). */
+/* Manage-data action buttons, now inside the "Data & settings" details
+   section (see .secondary .sec-section above). */
+.manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.name-field {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--fg);
+  font-size: 14px;
+}
+
+/* Remove-statement list rows. */
+.stmt-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-top: 1px solid var(--edge);
+}
+.stmt-row:first-child {
+  border-top: 0;
+}
+.stmt-body {
+  flex: 1;
+  font-size: 13.5px;
+}
+.stmt-body .strong {
+  font-weight: 650;
+  word-break: break-word;
+}
+
+/* First-run lines. */
+.empty-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 14px;
+}
+
+@media (max-width: 460px) {
+  .attn-actions {
+    width: 100%;
+    margin-top: 8px;
+  }
+  .attention .attn-item {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * v17 additions: shared foreign tag, capped explorer with "Show more", Escape/
+ * focus-safe overlays presented as bottom sheets on phones, a keyboard-aware
+ * category picker, a one-handed back-to-filters affordance, and the import
+ * privacy line. Presentation/interaction only; desktop density is unchanged.
+ * ------------------------------------------------------------------------- */
+
+/* Spent abroad now uses the one shared catTag. Cap the tag so a long category
+   name can never push the fixed grid columns off a narrow row. */
+.foreign-row .cat-tag {
+  min-width: 0;
+}
+.foreign-row .cat-tag .cat-tag-name {
+  max-width: 34vw;
+}
+
+/* "Show more" / "Show all" control under the capped explorer table. */
+.show-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 2px 2px;
+}
+.show-more .muted {
+  margin-right: auto;
+}
+.card.tx-collapsed > :not(.card-head) {
+  display: none;
+}
+
+/* Import progress: the quiet privacy reassurance line. */
+.prog-privacy {
+  margin: -6px 0 12px;
+}
+
+/* One-handed back-to-filters control for a long, expanded list. Hidden on
+   desktop / fine pointers; shown only on coarse pointers, safe-area aware. */
+.to-filters {
+  display: none;
+}
+@media (pointer: coarse) {
+  .to-filters {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    position: sticky;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    margin: 10px 0 2px auto;
+    padding: 9px 14px;
+    min-height: var(--tap-lg);
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    color: var(--fg);
+    font-weight: 650;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* Larger touch target for the tap-to-change category tag on coarse pointers,
+   without inflating the desktop row. */
+@media (pointer: coarse) {
+  button.cat-tag-btn {
+    min-height: var(--tap-lg);
+    padding: 6px 2px;
+  }
+}
+
+/* ---- Bottom-sheet overlays on phones (desktop stays a centred modal) ---- */
+@media (max-width: 639px) {
+  .overlay.sheet {
+    place-items: end center;
+    padding: 0;
+  }
+  .overlay.sheet .picker {
+    width: 100%;
+    max-width: 100%;
+    max-height: 55vh;
+    overflow: auto;
+    border-radius: 18px 18px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    padding: 16px calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom))
+      calc(16px + env(safe-area-inset-left));
+    animation: sheet-up 0.18s ease-out;
+  }
+  /* Keyboard-aware picker: the heading and the type-to-filter input stay pinned
+     to the top of the sheet while the list scrolls beneath, so the filter and
+     the top matches are never hidden behind the iOS keyboard. */
+  .overlay.sheet .picker-head,
+  .overlay.sheet .picker-filter {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--panel);
+  }
+  .overlay.sheet .picker-head {
+    padding-top: 2px;
+  }
+  .overlay.sheet .picker-filter {
+    margin-top: 0;
+  }
+  .overlay.sheet .picker-list {
+    max-height: none;
+  }
+  /* 16px inputs so iOS never zoom-jumps when the field is focused. */
+  .picker-filter,
+  .pass,
+  .name-field {
+    font-size: 16px;
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .overlay.sheet .picker {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * v18 additions: desktop two-column dashboard grid, larger desktop typography,
+ * and the desktop-only empty-state drop hint. Presentation only; everything
+ * here is gated at >=960px / >=1000px so phone layout, sizing and the mobile
+ * card reflow below ~960px are completely unchanged.
+ * ------------------------------------------------------------------------- */
+
+/* Part C - comfortable financial typography on a wide screen. Phones (<=639px)
+   keep 14px and the current hero sizing; 640-959px is unchanged too. */
+@media (min-width: 960px) {
+  body {
+    font-size: 15px;
+  }
+  table.grid {
+    font-size: 15px;
+  }
+  .hero-amount {
+    font-size: 46px;
+    font-weight: 800;
+  }
+}
+
+/* Part B - a desktop-only two-column grid over the EXISTING #app DOM order
+   (pure CSS, no JS/markup change). Naturally paired cards sit side by side:
+   "Where it went" beside "Top places", and "Spent abroad" beside "Regular
+   payments". Hero, the insights row, the trend and the full transaction
+   explorer stay full width. Cards are matched by a stable inner hook via
+   :has() (the app already targets Safari 16.4+, so :has() is available), and
+   the vertical sequence is preserved with `order`. A generous base order keeps
+   any card that is momentarily just a placeholder (e.g. an empty period) in a
+   sane mid position rather than jumping the queue, and the grid tolerates a
+   missing pair member (Spent abroad / Regular payments are conditional) - the
+   remaining card simply takes one column and the next full-width row follows,
+   leaving no broken gap. */
+@media (min-width: 1000px) {
+  #app.wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+    gap: 16px;
+  }
+  /* ORDERING CONTRACT: content default (order:90); support (.secondary) pinned
+     last at order:99 below. Matches .accounts-grid so both grids sort content
+     first, support last, by one shared convention. */
+  #app.wrap > * {
+    grid-column: 1 / -1;
+    order: 90;
+  }
+  #app.wrap > .hero {
+    order: 1;
+  }
+  #app.wrap > .row2 {
+    order: 2;
+    align-items: stretch;
+  }
+  #app.wrap > .card:has(.catlist) {
+    order: 3;
+    grid-column: auto;
+  } /* Where it went */
+  #app.wrap > .card:has(table.grid.merch) {
+    order: 4;
+    grid-column: auto;
+  } /* Top places */
+  #app.wrap > .card:has(.foreign-list) {
+    order: 5;
+    grid-column: auto;
+  } /* Spent abroad */
+  #app.wrap > .card:has(.recurring-list) {
+    order: 6;
+    grid-column: auto;
+  } /* Regular payments */
+  #app.wrap > .card-fitness {
+    order: 7;
+  } /* How your card is doing (own full-width row) */
+  #app.wrap > .card:has(.trend) {
+    order: 8;
+  }
+  #app.wrap > .card:has(.recent-list) {
+    order: 9;
+  }
+  #app.wrap > #explorer {
+    order: 10;
+  }
+  #app.wrap > .manage {
+    order: 98;
+  }
+  #app.wrap > .secondary {
+    order: 99;
+    /* No margin-top here: the grid's own row-gap (18px at this width, via the
+       shared #app.wrap/.accounts-wrap.accounts-grid column-gap/row-gap rule
+       below) already provides even spacing above EVERY card, Data & settings
+       included. The margin-top this rule used to carry stacked on top of
+       that gap rather than replacing it, doubling the space above this one
+       card versus every other gap on the same page - the exact inconsistency
+       this fix removes. */
+  }
+}
+
+
+@media (min-width: 1000px) {
+  .accounts-wrap.accounts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+    gap: var(--card-gap); /* same 16px rhythm as the single-column stack */
+  }
+  /* One explicit order per card, matching the DOM append sequence in
+     accounts-render.js, so the desktop grid and the <1000px flex column read the
+     same top-to-bottom flow with a single source of truth. Cards are full width
+     by default; only the Where/Who pair drops to a single column. CSS `order`
+     overrides DOM order, so the append order alone could not move these on
+     desktop - each card needs its own order here. */
+  /* ORDERING CONTRACT (shared with #app.wrap above): content cards fall through
+     to this default; SUPPORT (.secondary / Data & settings) is pinned AFTER it
+     below, so support always sorts last regardless of tab or DOM position. The
+     default is deliberately a high number so no content card can outrank the
+     support pin - the inverse of the earlier bug where .secondary sat at 11,
+     below this default, and floated to the top of Position. */
+  .accounts-wrap.accounts-grid > * {
+    grid-column: 1 / -1;
+    order: 90;
+  }
+
+  /* Paired compact cards: two .half cards sit side by side in the 2-col grid.
+     A pair is only marked (by pairCards) when BOTH cards exist, so a lone card
+     keeps the full-width default and never leaves an empty half-column. Below
+     1000px this media block is inactive and .half is inert - the wrap is a
+     flex column and every card stacks, so mobile stays a clean single stack.
+     Specificity (0,4,0) beats the > * default (0,2,0). */
+  /* A paired tile that holds a scrolling list (marked .half-fill by
+     pairCards) lays its own body out as a column, so the list can grow into
+     the height the stretched grid gives the tile. Without this the tile is
+     the right height but its list keeps its natural short size, leaving empty
+     room below - the "scrollbar plus empty space" state that means a height
+     has gone wrong. This is the single place the fill behaviour lives, so any
+     future paired list inherits it for free. */
+  .accounts-wrap.accounts-grid > .card.half-fill {
+    display: flex;
+    flex-direction: column;
+    /* On the desktop pair the ceiling lives on the CARD (which sets the
+       paired row's height); the inner .pair-scroll window is then told to
+       fill the card fully (the child rule below), rather than stopping at its
+       own baseline cap. Without that override the window capped itself and
+       stranded dead space while the list refused the gifted height. Capping
+       the card and filling the window means the pair never grows past a
+       comfortable screen's worth AND the shorter card's list spreads to fill
+       with no void. The phone / unpaired case keeps .pair-scroll's own
+       baseline cap; this block does not run below 1000px. */
+    max-height: min(55vh, 720px);
+  }
+  .accounts-wrap.accounts-grid > .card.half-fill .pair-scroll {
+    max-height: 100%;
+  }
+  .accounts-wrap.accounts-grid > .card.half {
+    grid-column: auto;
+    /* No fixed order: a .half pair sits in DOM order (the default order:90),
+       side by side where it was appended - so pairs never jump above earlier
+       full-width content (the Overview/Forecast bug the old order:50 caused).
+       Adjacency is guaranteed by pairCards appending the two halves together;
+       the only thing that ever broke it was the stale .card:has(.trend) order
+       rule below, now removed. Stretched (not start) so both halves of a pair
+       always match the taller card's height - a shorter card's rounded bottom
+       edge must meet the same baseline as its neighbour, never float above
+       empty space. */
+    align-self: stretch;
+  }
+
+  .accounts-wrap.accounts-grid > .hero {
+    order: 1;
+  }
+  .accounts-wrap.accounts-grid > .card.insights {
+    order: 2;
+  }
+  .accounts-wrap.accounts-grid > .card.acct-inflow {
+    order: 3;
+    grid-column: auto;
+  }
+  .accounts-wrap.accounts-grid > .card.acct-outflow {
+    order: 4;
+    grid-column: auto;
+  }
+  .accounts-wrap.accounts-grid > .card.acct-review {
+    order: 5;
+  }
+
+  .accounts-wrap.accounts-grid > .card.acct-slicer-card {
+    order: 7;
+  }
+  .accounts-wrap.accounts-grid > #acct-tx {
+    order: 8;
+  }
+  .accounts-wrap.accounts-grid > .card.acct-mine-card {
+    order: 9;
+  }
+}
+
+/* Part E - quiet desktop hint under the empty-state button (drag-and-drop is
+   already wired; this only makes it discoverable). Never shown on phone. */
+.empty-drop-hint {
+  margin: 2px 0 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Bank Accounts ledger (Phase 1). A minimal, read-only cash-flow and balance
+ * view, reusing the card dashboard's card/hero/table styles so the two ledgers
+ * feel like one product. Only the ledger switch, the internal-transfer tint
+ * and the reconciliation line are new. Presentation only.
+ * ------------------------------------------------------------------------- */
+/* The view switcher now lives INSIDE the period bar (a centre slot built by
+   renderPeriodBar), so on desktop it shares that one sticky row - centred
+   between the period selector on the left and the "Showing <period>" label on
+   the right. A plain, transparent flex item here (the segmented-pill look lives
+   on .ledger-tabs); the mobile block below detaches it to a fixed bottom bar. */
+.ledger-switch {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+.ledger-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
+  -webkit-backdrop-filter: saturate(1.5) blur(18px);
+  backdrop-filter: saturate(1.5) blur(18px);
+  /* Softer capsule: a quiet neutral hairline and a faint white top light,
+     so the pill reads as gentle glass rather than a firm blue-edged control. */
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
+}
+.ledger-tab {
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-weight: 650;
+  font-size: 13.5px;
+  padding: 8px 18px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  min-height: 40px;
+}
+.ledger-tab:hover {
+  color: var(--fg);
+}
+.ledger-tab.active {
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 639px) {
+  /* Cards / Accounts / Overview move to a fixed bottom bar, in the thumb's
+     easy reach, instead of a row that scrolls under the header. Hidden for
+     single-ledger users (host stays [hidden]), so this styling is inert then. */
+  .ledger-switch {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    margin: 0;
+    padding: 6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom))
+      calc(8px + env(safe-area-inset-left));
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(10px);
+    backdrop-filter: saturate(1.4) blur(10px);
+    border-top: 1px solid var(--edge);
+    border-bottom: 0;
+  }
+
+  .ledger-tabs {
+    display: flex;
+    width: 100%;
+    gap: 4px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+  }
+  .ledger-tab {
+    flex: 1 1 0;
+    min-height: 48px;
+    justify-content: center;
+    border-radius: 12px;
+  }
+
+  /* The switch is a child of #period-bar now; that bar's backdrop-filter would
+     otherwise become the containing block for the fixed bottom bar, pinning the
+     tabs under the header instead of the viewport bottom. Drop the blur on
+     mobile (the bar keeps its semi-opaque background) so the fixed bar anchors
+     to the viewport exactly as before. */
+  /* The blur is dropped on mobile (see the containing-block reason below),
+     but .period-bar's base background is only 60% opaque - on desktop the
+     blur compensates, frosting whatever scrolls under it. With no blur here,
+     that 60% let scrolled-under content (the Overview narrative) bleed
+     straight through. Raise the fill to fully opaque on mobile ONLY, so the
+     bar genuinely occludes content beneath it; desktop's frosted 60% is
+     untouched. */
+  .period-bar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--bg);
+  }
+
+  body.has-bottom-nav {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  body.has-bottom-nav #toast.show {
+    bottom: calc(var(--dock-nav) + env(safe-area-inset-bottom));
+  }
+  body.has-bottom-nav .install-banner.show {
+    bottom: calc(var(--dock-nav) + env(safe-area-inset-bottom));
+  }
+}
+
+.accounts-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+}
+.banktx tbody tr.bank-internal td {
+  color: var(--dim);
+}
+.ktag.k-internal .kdot {
+  background: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+.recon-ok {
+  color: var(--good);
+  font-weight: 650;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.recon-warn {
+  color: var(--warn);
+  font-weight: 650;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* Directional flow arrow (renderFlowArrow): the one shared indicator for which
+   way money moved relative to an account - IN (up, calm green) or OUT (down,
+   warm). Reads the SAME --flow-in / --flow-out tokens as the .ktag.k-in /
+   .ktag.k-out dots, so the two never disagree. Colour is never the only signal:
+   the arrow SHAPE (up vs down) also carries the direction (legible for colour-
+   vision deficiencies), and it always sits beside a signed amount and a worded
+   aria-label. It marks DIRECTION, not a good/bad verdict. */
+.flow-arrow {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.flow-arrow svg {
+  width: 13px;
+  height: 13px;
+}
+.flow-arrow.in {
+  color: var(--flow-in);
+} /* money in  - balance up   - calm green */
+.flow-arrow.out {
+  color: var(--flow-out);
+} /* Cash outflow - balance down - warm        */
+.fact-flow {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Per-account selector in the Accounts view. A selectable account row; the
+ * running-balance column is only meaningful for a single account, so choosing
+ * one here makes that column legible. */
+.acct-row {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.acct-row:hover {
+  background: var(--panel-2);
+}
+.acct-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.acct-row.selected {
+  background: color-mix(in srgb, var(--accent, #4f86f7) 14%, transparent);
+}
+.banktx td.muted.nowrap {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+ * Search-first "All transactions" and the light "Recent activity"
+ * glance. The explorer leads with a full-width search field, keeps Month and
+ * Category one tap away, and defers Type, an amount range, Foreign and To
+ * review into a native <details> disclosure. Recent is a short list with no
+ * table chrome. Purely additive.
+ * ------------------------------------------------------------------------- */
+.tx-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.tx-filters .f-search {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 14px;
+}
+.tx-filters .f-search:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.tx-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tx-quick select {
+  flex: 1 1 auto;
+  min-width: 160px;
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 9px 30px 9px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+details.tx-more {
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--panel);
+}
+details.tx-more > summary {
+  list-style: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--dim);
+}
+details.tx-more > summary::-webkit-details-marker {
+  display: none;
+}
+details.tx-more > summary::after {
+  content: '';
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  opacity: 0.6;
+}
+details.tx-more[open] > summary {
+  color: var(--fg);
+  border-bottom: 1px solid var(--edge);
+}
+details.tx-more[open] > summary::after {
+  transform: rotate(45deg);
+}
+.tx-more-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.tx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.tx-field-label {
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.tx-more-body select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 9px 30px 9px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 13px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.tx-more-body .f-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tx-more-body .f-num {
+  width: 92px;
+  padding: 9px 11px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 13px;
+}
+.tx-more-body .f-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--dim);
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+/* Account filter on the Activity Transactions tab: a subordinate control that
+   reads as "filter the list below by account", never as a second row of tabs.
+   The quiet "Account" label prefixes a flowing row of last-4 chips (the chips
+   reuse .ledger-tab, so they inherit the app's active/hover/focus language).
+   Wraps on a phone; the label drops above the chips there. */
+.activity-account-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+}
+.activity-account-label {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 650;
+  color: var(--dim);
+  flex: none;
+}
+.activity-account-filter .activity-accounts {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 639px) {
+  .activity-account-filter {
+    gap: 6px;
+  }
+  .activity-account-filter .activity-accounts {
+    flex-basis: 100%;
+  }
+}
+/* Recent activity: a light glance, not a table. */
+.recent-list {
+  display: flex;
+  flex-direction: column;
+}
+.recent-item {
+  padding: 11px 0;
+  border-top: 1px solid var(--edge);
+}
+.recent-item:first-child {
+  border-top: 0;
+}
+.recent-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recent-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-amt {
+  font-weight: 680;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.recent-amt.credit {
+  color: var(--down);
+}
+.recent-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 3px;
+}
+.recent-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+  font-size: 12px;
+  min-width: 0;
+}
+.recent-cat .cat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.recent-cat-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-date {
+  white-space: nowrap;
+}
+.recent-seeall {
+  margin-top: 14px;
+}
+@media (max-width: 639px) {
+  .tx-quick select {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 16px;
+    min-height: var(--tap-min);
+    font-weight: 550;
+  }
+  .tx-filters .f-search {
+    font-size: 16px;
+    min-height: var(--tap-min);
+  }
+  .tx-more-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .tx-more-body .tx-field {
+    width: 100%;
+  }
+  .tx-more-body select {
+    width: 100%;
+    font-size: 16px;
+    min-height: var(--tap-min);
+  }
+  .tx-more-body .f-range {
+    width: 100%;
+  }
+  .tx-more-body .f-range .f-num {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    font-size: 16px;
+    min-height: var(--tap-min);
+  }
+  .tx-more-body .f-check {
+    width: 100%;
+    min-height: var(--tap-min);
+  }
+  details.tx-more > summary {
+    min-height: var(--tap-min);
+  }
+}
+/* ---------------------------------------------------------------------------
+ * Account-statements trust panel (Data & settings). A short, scannable status
+ * block - verdict pill, three tiles (accuracy / coverage / freshness), a
+ * completeness note, then one row per account - so a person can confirm their
+ * imported history is complete, accurate and current at a glance, instead of
+ * scrolling a flat per-statement list. Reuses existing tokens; scoped classes,
+ * so nothing else is affected.
+ * ------------------------------------------------------------------------- */
+.sec-subhead.stmt-head {
+  justify-content: space-between;
+}
+.stmt-head .stmt-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Calm "all good" pill, the twin of the existing .pill.caution used for warnings. */
+.pill.ok {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--good) 35%, transparent);
+}
+.stmt-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 2px 0 12px;
+}
+.stmt-stat {
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+}
+.stmt-stat-value {
+  font-size: 16px;
+  font-weight: 720;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.stmt-stat-label {
+  font-size: 11.5px;
+  color: var(--dim);
+  margin-top: 3px;
+}
+.stmt-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.stmt-dot.good {
+  background: var(--good);
+}
+.stmt-dot.warn {
+  background: var(--warn);
+}
+.stmt-note {
+  margin: 0 0 12px;
+}
+/* Per-account rows: legacy .stmt-row treatment, harmless if reused; the panel
+   now renders tiles via .stmt-grid below. */
+.stmt-accounts .stmt-row {
+  align-items: center;
+}
+.stmt-accounts .stmt-dot {
+  margin-top: 0;
+}
+
+/* Per-account tiles: peer objects a person scans and compares, so they wrap
+   into as many columns as fit (min 220px each) on desktop and collapse to a
+   single column on a phone. Reuses the existing panel-2 / edge / radius tokens
+   and the shared .stmt-dot / .recon-ok / .recon-warn health treatment, so no
+   new colour vocabulary is introduced. Scoped classes; nothing else changes. */
+.stmt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 2px 0 4px;
+}
+.stmt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.stmt-card.attn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--edge));
+  background: color-mix(in srgb, var(--warn) 7%, var(--panel-2));
+}
+.stmt-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.stmt-card-name {
+  font-weight: 680;
+  font-size: 13.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stmt-card-meta {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.stmt-card-health {
+  font-size: 12.5px;
+  margin-top: 1px;
+}
+@media (max-width: 639px) {
+  .stmt-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Data & settings is a support / administration area, not a primary workflow,
+ * so on every tab it reads as clearly subordinate to the finance content above
+ * it: a quieter surface and no lifted shadow, still a full-width collapsed
+ * card at the bottom. Scoped to the standalone card (Overview / Accounts),
+ * where it is a direct .card.secondary; the Cards tab folds the same actions
+ * into renderSecondary and is unaffected.
+ * ------------------------------------------------------------------------- */
+/* (background consolidated to the single .card.secondary rule later in this
+   file, matched to glass.css - the 60% here was always overridden and is
+   removed so the drawer tone has one source, not three.) */
+.card.secondary > summary {
+  color: var(--dim);
+}
+.card.secondary[open] > summary {
+  color: var(--fg);
+}
+
+/* Data & settings now lives inside the Accounts wrapper. On the desktop
+   Accounts grid, pin it to the last order and full width so it always sits
+   below every finance card. Below 1000px the wrapper is a flex column and the
+   last-child DOM position already puts it at the bottom, so this is desktop-only. */
+@media (min-width: 1000px) {
+  /* Data & settings: always last on this grid (content-first, support-last). */
+  .accounts-wrap.accounts-grid > .secondary {
+    order: 99;
+    grid-column: 1 / -1;
+    /* No margin-top: the grid's own gap (18px at this width) already sits
+       between every row, this card included, once it is genuinely the last
+       grid item. Adding a second margin on top of that gap was what doubled
+       the space above this one card relative to every other gap on the same
+       page (Cash in and out to Needs attention, Needs attention to Where to
+       next) - removing it makes Data & settings obey the same single shared
+       rhythm as everything above it, on every tab this wrapper is used on
+       (Overview, Forecast, Position). */
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Back-to-top: a floating affordance revealed after ~1 viewport of scroll, the
+ * desktop complement to the now top-pinned view switcher. Fixed bottom-right,
+ * calm until needed (opacity + pointer-events, so it is inert while hidden),
+ * and lifted above the mobile bottom nav via body.has-bottom-nav so the two
+ * never overlap. Hidden entirely on print. Reuses existing tokens; scoped class.
+ * ------------------------------------------------------------------------- */
+.to-top {
+  position: fixed;
+  right: calc(18px + env(safe-area-inset-right));
+  bottom: calc(var(--dock-edge) + env(safe-area-inset-bottom));
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: var(--tap-lg);
+  height: var(--tap-lg);
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: var(--fg);
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s,
+    transform 0.2s,
+    background 0.15s;
+}
+.to-top.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.to-top:hover {
+  background: var(--panel-2);
+}
+.to-top:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Sit above the mobile bottom nav (and a raised toast) when the fixed bar is on
+   screen, so nothing stacks on top of the nav. */
+body.has-bottom-nav .to-top {
+  bottom: calc(var(--dock-toast) + env(safe-area-inset-bottom));
+}
+@media print {
+  .to-top {
+    display: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .to-top {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Accounts income-and-spending trend (renderBankTrend): a two-series monthly
+ * chart, money in beside Cash outflow, on its own classes so it never touches the
+ * shared single-bar .trend-bar / .trend-col primitives. Colours reuse the
+ * --flow-in / --flow-out money-direction tokens, matching the account arrows.
+ * ------------------------------------------------------------------------- */
+.acct-trend-legend {
+  display: flex;
+  gap: 16px;
+  margin: -4px 0 10px;
+}
+.acct-trend-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.acct-trend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.acct-trend-swatch.in {
+  background: var(--flow-in);
+}
+.acct-trend-swatch.out {
+  background: var(--flow-out);
+}
+.acct-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 150px;
+  padding-top: 6px;
+}
+.acct-trend-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.acct-trend-pair {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+}
+.acct-trend-bar {
+  width: 100%;
+  max-width: 15px;
+  border-radius: 4px 4px 0 0;
+  transition: transform 0.1s;
+}
+.acct-trend-bar.in {
+  background: color-mix(in srgb, var(--flow-in) 55%, var(--panel-2));
+}
+.acct-trend-bar.out {
+  background: color-mix(in srgb, var(--flow-out) 55%, var(--panel-2));
+}
+.acct-trend-col.in-period .acct-trend-bar.in {
+  background: var(--flow-in);
+}
+.acct-trend-col.in-period .acct-trend-bar.out {
+  background: var(--flow-out);
+}
+.acct-trend-col:hover .acct-trend-bar {
+  transform: translateY(-2px);
+}
+.acct-trend-mlabel {
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+@media (max-width: 639px) {
+  .acct-trend-bars {
+    gap: 6px;
+    height: 132px;
+  }
+  .acct-trend-bar {
+    max-width: 12px;
+  }
+}
+
+/* Keep the floating up-arrow off the transaction data. It was overlapping the
+   date of the lowest visible row; this lifts it clear above the bottom tab bar
+   so it never sits on real content. */
+@media (max-width: 639px) {
+  body.has-bottom-nav .to-top {
+    bottom: calc(var(--dock-raised) + env(safe-area-inset-bottom));
+    right: calc(14px + env(safe-area-inset-right));
+  }
+}
+
+@media (max-width: 639px) {
+  .filters .f-search {
+    min-height: var(--tap-min);
+    padding: 7px 12px;
+  }
+  .filters .f-check {
+    min-height: var(--tap-min);
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .filters .f-check input[type='checkbox'] {
+    width: 17px;
+    height: 17px;
+  }
+  .tx-quick select,
+  .tx-more-body select,
+  .mobile-sort-field {
+    font-size: 13.5px;
+    font-weight: 550;
+    min-height: var(--tap-min);
+  }
+  .tx-quick select,
+  .tx-more-body select {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .mobile-sort-field {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+
+.show-more.show-more-multi {
+  gap: 8px;
+}
+.show-more.show-more-multi > [hidden] {
+  display: none;
+}
+.show-more.show-more-multi .btn.ghost:last-child {
+  margin-left: auto;
+}
+
+@media (max-width: 639px) {
+  .install-banner.show {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 10px;
+    text-align: left;
+  }
+  .install-banner.show > span:not(.install-icon) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .install-banner.show > button {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
+  }
+  #toast.show ~ .install-banner.show {
+    bottom: calc(var(--dock-raised) + env(safe-area-inset-bottom));
+  }
+  body.has-bottom-nav #toast.show ~ .install-banner.show {
+    bottom: calc(var(--dock-nav-toast) + env(safe-area-inset-bottom));
+  }
+}
+

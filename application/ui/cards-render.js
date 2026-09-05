@@ -13,25 +13,29 @@
  * insights card both still call them.
  */
 import {
-  detectIncompleteMonth,
   detectPeriodNewMerchants,
-  missingMonths,
-  foreignSummary,
   attentionItems,
+  appendExpandable,
+  renderShareBar,
+} from '../analysis/reporting-core.js';
+import {
+  detectIncompleteMonth,
   analysisForWindow,
   insightDriver,
   cardBehaviourState,
   projectCardPayoff,
   cardPayoffSeries,
-  appendExpandable,
-  renderShareBar,
+  normaliseEair,
+  medianRecentPayment,
   renderExplainer,
+} from '../analysis/reporting-periods.js';
+import {
+  missingMonths,
+  foreignSummary,
   rankInsights,
   effectiveForeignRate,
   averageForeignRates,
-  normaliseEair,
-  medianRecentPayment,
-} from '../analysis/reporting.js';
+} from '../analysis/reporting-insights.js';
 import { merchantLabel } from '../statements/categorise.js';
 import { merchantRuleKeyFromDescription } from '../../settings/category-rules.js';
 // classifyInternalTransfers is no longer imported here directly: both call

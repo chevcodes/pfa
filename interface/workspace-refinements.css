@@ -1,0 +1,984 @@
+/* ===========================================================================
+ * UNIFIED MESSAGING MODEL + Overview close  (consumer-first redesign)
+ *
+ * One voice, three homes. Every way the app speaks to the person now routes
+ * through one of three tiers with a single shared look, dismiss gesture and
+ * accessibility behaviour, instead of the previous scatter of one-off strips
+ * (the sticky "Welcome back" band, the install prompt, the backup reminder,
+ * the confirmation toast, the first-run and drop hints), each of which lived
+ * wherever was convenient and looked unlike the others.
+ *
+ *   Tier 1  .status-line  - ambient status. Quiet, informational, no forced
+ *                           action. Belongs to the CONTENT column (placed as
+ *                           the first child of the content wrap), so it aligns
+ *                           with the cards and never sits in the sticky nav
+ *                           seam and never shoves the page down.
+ *   Tier 2  .offer         - a genuine take-it-or-leave-it offer (install,
+ *                           back up). One floating card, low and thumb-reachable,
+ *                           clearly dismissible, shown ONE AT A TIME.
+ *   Tier 3  .toast         - immediate feedback after an action (+ undo). Already
+ *                           lived at the bottom centre; now shares the voice.
+ *
+ * All three use .msg-dismiss for a single, comfortably sized close control, and
+ * inherit the reduced-motion / reduced-transparency contracts at the foot of
+ * the file and in glass.css. Solid-first: this block is fully legible with
+ * glass.css stripped out.
+ * ------------------------------------------------------------------------- */
+
+/* ---- Overview: the story's closing line, folded INTO the story card ----
+   Previously "Open Right Now" / "Open Ahead" were two loose buttons appended
+   to the page background beneath the card. They are the natural next step of
+   the narrative, so they now close the story card itself, under a quiet
+   lead-in, separated by a hairline so they read as "here is where to go next"
+   rather than orphaned controls. */
+/* Overview's compact action pair: no top divider or extra padding - it holds a
+   label + two buttons, so the card should be tight, not a hollow panel. */
+
+
+.overview-next-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+@media (max-width: 639px) {
+  .overview-next-actions {
+    flex-direction: column;
+  }
+  .overview-next-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ---- Shared dismiss control (all tiers) ----
+   One clear, comfortably sized close gesture the person learns once. Replaces
+   the tiny bespoke circle the old greeting used. */
+.msg-dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.msg-dismiss:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+.msg-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.msg-dismiss svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- Tier 1: ambient status line (in the content column) ----
+   Placed by the app as the first child of the content wrap (#app.wrap /
+   .accounts-wrap), so it aligns to the same width as the cards, sits in the
+   flow (never over the sticky bars), and simply is not rendered when there is
+   nothing worth saying - the person then lands straight on their figures. */
+.status-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  color: var(--fg);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.status-line-ic {
+  flex: none;
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.status-line.tone-good .status-line-ic {
+  color: var(--good);
+}
+.status-line.tone-watch .status-line-ic {
+  color: var(--warn);
+}
+.status-line-body {
+  flex: 1;
+  min-width: 0;
+}
+.status-line-body .strong {
+  font-weight: 650;
+}
+.status-line-body .status-line-sub {
+  color: var(--dim);
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+.status-line .msg-dismiss {
+  margin: -4px -4px -4px 0;
+}
+
+/* ---- Tier 2: the offer card (one floating surface, one at a time) ----
+   Bottom-centre, thumb-reachable, safe-area aware. The app shows at most one
+   offer at a time (install OR back up, never stacked). Shares the toast's dock
+   variables so the two never collide. */
+.offer {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--dock-edge) + env(safe-area-inset-bottom));
+  transform: translate(-50%, 24px);
+  z-index: 65;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92vw, 560px);
+  padding: 12px 12px 12px 16px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow-lg);
+  font-size: 13.5px;
+  line-height: 1.45;
+  opacity: 0;
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+.offer.show {
+  display: flex;
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.offer-ic {
+  flex: none;
+  display: inline-flex;
+  color: var(--accent);
+}
+.offer-body {
+  flex: 1;
+  min-width: 0;
+}
+.offer-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* When a toast is on screen with an offer, lift the offer clear of it. */
+#toast.show ~ .offer.show {
+  bottom: calc(var(--dock-toast) + env(safe-area-inset-bottom));
+}
+@media (max-width: 639px) {
+  .offer {
+    max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+  .offer.show {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 10px;
+  }
+  .offer-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+  body.has-bottom-nav .offer.show {
+    bottom: calc(var(--dock-nav) + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---- Retrofit the surfaces the app still emits today onto the shared voice,
+   so unification is visible immediately even before the emit-side is routed
+   through the new tiers. The install banner IS an offer; give it the offer's
+   entrance so the two are indistinguishable. */
+.install-banner {
+  border-radius: 16px;
+}
+.install-banner.show {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+/* ---- Accessibility + motion contracts for the messaging model ----
+   Reduced motion: keep the state change, drop the slide. */
+@media (prefers-reduced-motion: reduce) {
+  .offer,
+  .install-banner.show {
+    transition: none !important;
+  }
+  .offer.show {
+    transform: translate(-50%, 0) !important;
+  }
+}
+
+/* ===========================================================================
+ * v19 - consumer-first finance-workspace refinement
+ *
+ * Implements the reviewed plan. CSS only: no markup, wording, calculation,
+ * stored data, print output or behaviour changes. Appended last so it settles
+ * ties by source order; higher-specificity selectors are used only where a
+ * base rule must be beaten deliberately. Surface elevation for the lead vs
+ * supporting cards and the chart marks live in glass.css (which loads last);
+ * everything here is layout, navigation, typography, lists, tables, the
+ * greeting, mobile and light-mode - none of which glass.css contests.
+ * ------------------------------------------------------------------------- */
+
+/* Local tokens (additive) */
+:root {
+  --workspace-max: 1180px;
+  --section-gap: 18px;
+  --hairline: color-mix(in srgb, var(--fg) 8%, transparent);
+  --hairline-soft: color-mix(in srgb, var(--fg) 5%, transparent);
+  --soft-hover: color-mix(in srgb, var(--accent) 7%, var(--panel-2));
+  --focus-soft: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+[data-theme='dark'] {
+  --hairline: color-mix(in srgb, var(--fg) 10%, transparent);
+  --hairline-soft: color-mix(in srgb, var(--fg) 6%, transparent);
+  --soft-hover: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme='auto'] {
+    --hairline: color-mix(in srgb, var(--fg) 10%, transparent);
+    --hairline-soft: color-mix(in srgb, var(--fg) 6%, transparent);
+    --soft-hover: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+  }
+}
+
+/* --- Plan 3: workspace and reading measure --- */
+.wrap,
+.footer {
+  max-width: var(--workspace-max);
+}
+.wrap {
+  gap: var(--section-gap);
+  padding-top: clamp(18px, 2.4vw, 30px);
+  padding-bottom: 56px;
+}
+.accounts-wrap {
+  gap: var(--section-gap);
+}
+.card > p.muted,
+.overview-story,
+.explainer-body,
+.vm-detail-body,
+.vm-reconcile {
+  max-width: 76ch;
+}
+
+/* --- Plan 2: the two sticky bars read as one calm layer. Only their own
+   borders/shadows are softened here; the original blur, stacking and the
+   in-flow greeting inside .topbar-stack are left exactly as shipped, so the
+   greeting keeps pushing the page down on show and never overlaps the tabs. --- */
+.topbar {
+  border-bottom: 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
+}
+.period-bar {
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.period-icon {
+  opacity: 0.72;
+}
+.period-showing {
+  opacity: 0.78;
+}
+.brand-mark {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 8px 24px -16px var(--accent);
+}
+
+/* --- Plan 9: one compact control family + one focus language --- */
+.btn,
+.period-select,
+.mini,
+.filters input,
+.filters select,
+.tx-quick select,
+.tx-more-body select,
+.tx-more-body .f-num,
+.name-field,
+.pass,
+.picker-filter {
+  border-color: var(--hairline);
+}
+.btn {
+  font-weight: 650;
+}
+.btn:not(.primary):not(.danger) {
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+}
+.btn:hover,
+.btn.ghost:hover {
+  background: var(--soft-hover);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--edge));
+}
+.btn:focus-visible,
+.period-select:focus-visible,
+.mini:focus-visible,
+.filters input:focus-visible,
+.filters select:focus-visible,
+.tx-quick select:focus-visible,
+.tx-more-body select:focus-visible,
+.tx-more-body .f-num:focus-visible,
+.name-field:focus-visible,
+.pass:focus-visible,
+.picker-filter:focus-visible,
+.acct-mine-input:focus-visible,
+.tx-filters .f-search:focus {
+  outline: 0;
+  box-shadow: var(--focus-soft);
+}
+.btn.primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 92%, #fff),
+    var(--accent-dark)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 10px 26px -18px var(--accent);
+}
+.btn.primary:hover {
+  filter: brightness(1.03) saturate(1.02);
+}
+
+/* --- Plan 2/4: destination tabs - quiet shell, obvious current tab --- */
+.ledger-tabs {
+  gap: 2px;
+  padding: 3px;
+  border-color: var(--hairline);
+}
+.ledger-tab {
+  min-height: 38px;
+  padding: 8px 17px;
+  color: color-mix(in srgb, var(--dim) 90%, var(--fg));
+  transition:
+    color 0.16s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.ledger-tab:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.ledger-tab.active {
+  color: var(--fg);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent),
+    0 5px 14px -10px #000;
+}
+.ledger-tab:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-soft);
+}
+
+/* --- Plan 6: financial typography --- */
+body {
+  letter-spacing: -0.005em;
+}
+.hero-title {
+  font-size: clamp(21px, 1.8vw, 25px);
+  letter-spacing: -0.025em;
+}
+.hero-amount,
+.vm-number,
+.fact-value,
+.sec-value,
+.cat-amt,
+.num,
+.amt,
+.recent-amt,
+.foreign-amt,
+.share-bar-total,
+.commit-amt,
+.recurring-amt,
+.overview-beat-lead {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.hero-amount,
+.vm-number {
+  text-wrap: balance;
+}
+.muted {
+  color: color-mix(in srgb, var(--dim) 92%, var(--fg));
+}
+.small {
+  line-height: 1.45;
+}
+.card-head {
+  margin-bottom: 18px;
+}
+.card-title {
+  font-size: 15.5px;
+}
+
+/* --- Plan 7: Overview pacing --- */
+.overview-story {
+  gap: 10px;
+  margin-top: 18px;
+}
+.overview-beat {
+  color: var(--dim);
+  line-height: 1.6;
+}
+.overview-beat-lead {
+  max-width: 34ch;
+  margin: 12px 0;
+  font-size: clamp(25px, 2.6vw, 34px);
+  line-height: 1.22;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.overview-next {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top-color: var(--hairline-soft);
+}
+.overview-next-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+/* --- Plan 5: repeated content scans as one list, not nested cards --- */
+.insight,
+.catrow,
+.recurring-row,
+.commit-row,
+.acct-row,
+.foreign-row,
+.recent-item {
+  border-color: transparent;
+  box-shadow: none;
+}
+.insight {
+  background: transparent;
+  padding-inline: 10px;
+}
+.insight + .insight,
+.recent-item + .recent-item {
+  border-top: 1px solid var(--hairline-soft);
+}
+.insight:hover,
+.catrow:hover,
+button.recurring-row:hover,
+button.commit-row:hover,
+.acct-row:hover,
+.foreign-row:hover {
+  transform: none;
+  background: var(--soft-hover);
+  border-color: transparent;
+}
+.insight-icon {
+  width: 28px;
+  height: 28px;
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+  border-color: var(--hairline-soft);
+}
+.insight-go {
+  transition:
+    transform 0.16s ease,
+    color 0.16s ease;
+}
+.insight:hover .insight-go {
+  transform: translateX(2px);
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* --- Plan 12: tables - clearer header, quieter rules --- */
+table.grid th {
+  padding-top: 8px;
+  padding-bottom: 9px;
+  color: var(--dim);
+  background: color-mix(in srgb, var(--panel-2) 52%, transparent);
+  border-bottom-color: var(--hairline);
+}
+table.grid td {
+  border-bottom-color: var(--hairline-soft);
+}
+.table-wrap.sticky table.grid thead th {
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.grid tbody tr.clickable:hover,
+.grid tbody tr.selected {
+  background: var(--soft-hover);
+}
+
+/* --- Plan 8: chart scaffolding that lives in this file recedes --- */
+.trend-avg {
+  border-top-color: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.share-bar-track,
+.commit-bar {
+  background: color-mix(in srgb, var(--panel-2) 78%, transparent);
+}
+
+/* --- Plan 11: Data & settings truly recedes and never leads --- */
+/* Matches glass.css's .card.secondary tone (panel-2 55%) so the Data & settings
+   drawer reads ONE tone whether the glass layer is active or a reduced-
+   transparency / no-backdrop-filter user is on the solid fallback. Previously
+   this solid path was 48% while the glass path was 55%, so the same drawer
+   rendered two different tones by transparency mode. */
+.card.secondary {
+  background: color-mix(in srgb, var(--panel-2) 55%, var(--panel));
+  border-color: var(--hairline-soft);
+  box-shadow: none;
+}
+.card.secondary > summary {
+  min-height: 52px;
+  color: color-mix(in srgb, var(--dim) 92%, var(--fg));
+}
+.card.secondary:hover {
+  border-color: var(--hairline);
+}
+.secondary[open] > summary {
+  border-bottom-color: var(--hairline-soft);
+}
+
+/* --- Plan 13: floating menus/messages share one calm elevation --- */
+.menu {
+  padding: 7px;
+  border-radius: 14px;
+}
+.menu-item {
+  border-radius: 10px;
+}
+.menu-item:hover,
+.picker-item:hover {
+  background: var(--soft-hover);
+}
+
+/* --- Plan 14: page ending --- */
+.footer {
+  margin-top: 4px;
+  padding-bottom: 24px;
+  color: color-mix(in srgb, var(--dim) 82%, transparent);
+  font-size: 11.5px;
+}
+
+/* --- Plan 10: the greeting is intentionally left to the original in-flow
+   treatment (mounted inside .topbar-stack, pushing the page down on show and
+   collapsing on dismiss). That approach never overlaps the navigation, so it
+   is respected here rather than overridden. --- */
+
+/* --- Plan 15: desktop density --- */
+@media (min-width: 1000px) {
+  #app.wrap,
+  .accounts-wrap.accounts-grid {
+    column-gap: 18px;
+    row-gap: 18px;
+  }
+  #app.wrap > .hero,
+  .accounts-wrap.accounts-grid > .hero {
+    min-height: 250px;
+  }
+  .hero-body {
+    gap: 20px clamp(44px, 6vw, 86px);
+  }
+}
+
+/* --- Plan 13/16: mobile - content first, stable reachable navigation --- */
+@media (max-width: 639px) {
+  :root {
+    --section-gap: 12px;
+  }
+  body {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+  .wrap {
+    padding-top: 12px;
+  }
+  .period-showing {
+    display: none;
+  }
+  .hero-title {
+    font-size: 20px;
+  }
+  .overview-beat {
+    font-size: 14px;
+  }
+  .overview-beat-lead {
+    font-size: 24px;
+    max-width: none;
+  }
+  .ledger-tab {
+    min-height: 50px;
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+  .to-top {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+/* --- Plan 15: touch comfort --- */
+@media (pointer: coarse) {
+  .menu-item,
+  .picker-item,
+  .catrow,
+  button.recurring-row,
+  button.commit-row,
+  .acct-row {
+    min-height: 44px;
+  }
+}
+
+/* --- Plan 15: reduced motion (mirrors the app's contract) --- */
+@media (prefers-reduced-motion: reduce) {
+  .ledger-tab,
+  .insight-go {
+    transition: none !important;
+  }
+}
+
+/* --- Plan 14: light mode calibrated on its own, not dark values on white.
+   Softer background pools, near-neutral hairlines, gentler control fills. --- */
+[data-theme='light'] body {
+  background:
+    radial-gradient(
+      1100px 720px at 74% -12%,
+      color-mix(in srgb, var(--accent) 8%, transparent),
+      transparent
+    ),
+    radial-gradient(
+      900px 640px at 8% 24%,
+      color-mix(in srgb, var(--accent-deep) 6%, transparent),
+      transparent
+    ),
+    var(--bg);
+  background-attachment: fixed;
+}
+[data-theme='light'] {
+  --hairline: color-mix(in srgb, var(--fg) 11%, transparent);
+  --hairline-soft: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+@media (prefers-color-scheme: light) {
+  [data-theme='auto'] body {
+    background:
+      radial-gradient(
+        1100px 720px at 74% -12%,
+        color-mix(in srgb, var(--accent) 8%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        900px 640px at 8% 24%,
+        color-mix(in srgb, var(--accent-deep) 6%, transparent),
+        transparent
+      ),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  [data-theme='auto'] {
+    --hairline: color-mix(in srgb, var(--fg) 11%, transparent);
+    --hairline-soft: color-mix(in srgb, var(--fg) 7%, transparent);
+  }
+}
+
+/* --- Plan 15: reduced transparency keeps the new hierarchy without blur --- */
+@media (prefers-reduced-transparency: reduce) {
+  .table-wrap.sticky table.grid thead th {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: var(--panel) !important;
+  }
+}
+
+
+.privacy-slash {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+:root[data-privacy="on"] .privacy-slash {
+  opacity: 1;
+}
+:root[data-privacy="on"] #privacy-btn {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--edge));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+.app-loading {
+  min-height: min(54vh, 460px);
+  flex-direction: column;
+  text-align: center;
+}
+.app-loading-mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 11%, var(--panel-2));
+}
+.app-loading-copy,
+.busy-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.app-loading-copy strong,
+.busy-copy strong {
+  color: var(--fg);
+}
+.busy-card {
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 18px 20px;
+}
+.busy-sub {
+  max-width: 34ch;
+}
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.period-live {
+  min-width: 0;
+}
+.period-live-title {
+  overflow: hidden;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#app.view-enter {
+  animation: view-enter 0.2s ease-out;
+}
+@keyframes view-enter {
+  from {
+    opacity: 0.72;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.coverage-note {
+  padding-block: 14px;
+  border-style: dashed;
+}
+.overview-actions,
+.overview-attention {
+  min-height: 0;
+}
+.overview-next-actions .btn {
+  flex: 1 1 150px;
+  justify-content: center;
+}
+.activity-tabs {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  border-radius: 0;
+  background: transparent;
+}
+.activity-tabs .ledger-tab {
+  min-width: 132px;
+  border-bottom: 2px solid transparent;
+  border-radius: 10px 10px 0 0;
+  box-shadow: none;
+}
+.activity-tabs .ledger-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: none;
+}
+.activity-analysis > .activity-primary {
+  order: -2;
+}
+.activity-analysis > .card.insights {
+  order: -1;
+}
+.tx-filters {
+  flex-direction: row;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 650;
+}
+.tx-search-field {
+  flex: 1;
+}
+.tx-search-clear {
+  flex: none;
+}
+.position-add-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(130px, 0.8fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.position-add-fields .mini,
+.position-add-fields .name-field {
+  width: 100%;
+  min-height: 40px;
+}
+.position-remove {
+  min-width: 72px;
+  justify-content: center;
+}
+.goal-intro {
+  margin-top: 0;
+}
+.goal-draft-step {
+  align-items: end;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.goal-draft-step .field-label {
+  flex: 1 1 180px;
+}
+.goal-draft-step .name-field {
+  width: 100%;
+}
+.goal-choice[aria-pressed="true"] {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.view-forecast .card.empty,
+.view-position .card.empty {
+  grid-column: 1 / -1;
+}
+@media (max-width: 639px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .brand {
+    flex: 1 0 100%;
+  }
+  .top-actions {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    gap: 6px;
+  }
+  .top-actions .menu-wrap {
+    position: static;
+  }
+  .top-actions .menu {
+    left: 0;
+    right: 0;
+    width: 100%;
+    min-width: 0;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+  }
+  .top-actions .btn,
+  #theme-btn.icon-btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 7px;
+    justify-content: center;
+  }
+  .top-actions .btn .btn-label,
+  .top-actions .btn.primary .btn-label {
+    display: inline;
+    overflow: hidden;
+    font-size: 11.5px;
+    text-overflow: ellipsis;
+  }
+  #export-btn .caret {
+    display: none;
+  }
+  .period-bar {
+    min-height: 54px;
+  }
+  .period-live-title {
+    max-width: 150px;
+  }
+  .empty-drop-desktop {
+    display: none;
+  }
+  .overview-next-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .overview-next-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+  .activity-tabs {
+    width: 100%;
+  }
+  .activity-tabs .ledger-tab {
+    min-width: 0;
+    min-height: 44px;
+  }
+  .tx-filters {
+    align-items: end;
+  }
+  .tx-search-field .f-search {
+    min-height: 44px;
+  }
+  .position-add-fields {
+    grid-template-columns: 1fr;
+  }
+  .position-add-fields .btn,
+  .goal-draft-step .btn {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .position-remove {
+    min-height: 44px;
+  }
+  .goal-choice {
+    min-height: 72px;
+    padding: 11px 12px;
+  }
+  .goal-draft-step {
+    align-items: stretch;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app.view-enter,
+  .privacy-slash {
+    animation: none;
+    transition: none;
+  }
+}
+
+.field-label .name-field,
+.field-label .mini {
+  flex: none;
+  width: 100%;
+  max-width: none;
+  min-height: 40px;
+}
+@media (max-width: 639px) {
+  .field-label .name-field,
+  .field-label .mini {
+    min-height: 44px;
+  }
+}

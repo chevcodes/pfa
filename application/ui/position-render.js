@@ -34,8 +34,8 @@
  *   - the summary export keeps each figure's source, and is labelled a personal
  *     summary, not a lender-approved statement.
  */
-import { requireCtx } from '../core/shared-helpers.js';
-import { renderShareBar } from '../analysis/reporting.js';
+import { requireCtx, formatDisplayDate } from '../core/shared-helpers.js';
+import { renderShareBar } from '../analysis/reporting-core.js';
 
 export function createPositionRenderer(ctx) {
   requireCtx(
@@ -54,6 +54,7 @@ export function createPositionRenderer(ctx) {
       'toast',
       'smoothScrollToEl',
       'drillToAccount',
+      'pickStatements',
     ],
     'createPositionRenderer'
   );
@@ -70,6 +71,7 @@ export function createPositionRenderer(ctx) {
     NET_WORTH_CLASSES,
     smoothScrollToEl,
     drillToAccount,
+    pickStatements,
   } = ctx;  // Optional icons: used when present, degraded gracefully when not (so this
   // renderer never crashes if the icon set lacks one of these names).
   const iconStore = ctx.iconStore || iconInfo;
@@ -222,7 +224,7 @@ export function createPositionRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconStore()), 'Recorded net worth')
+        el('h3', { class: 'card-title' }, icon(iconStore()), 'Your recorded net worth')
       )
     );
     sec.append(renderVM(nwModel.lead));
@@ -300,7 +302,10 @@ export function createPositionRenderer(ctx) {
         select.value = kind + ':' + cls;
         select.dispatchEvent(new Event('change'));
       }
+      const disclosure = document.getElementById('position-add-disclosure');
+      if (disclosure) disclosure.open = true;
       smoothScrollToEl('#position-add-disclosure');
+      requestAnimationFrame(() => disclosure?.querySelector('input[type="number"]')?.focus());
     }
     const gapClasses = [
       ...notIncluded.assets.map((c) => ({ cls: c, kind: 'asset' })),
@@ -358,7 +363,7 @@ export function createPositionRenderer(ctx) {
         if (l.rateStale) meta.push('rate may be out of date');
       } else {
         if (l.stale) meta.push('may be out of date');
-        else if (l.lastReviewed) meta.push(l.lastReviewed);
+        else if (l.lastReviewed) meta.push(formatDisplayDate(l.lastReviewed));
       }
       const amtText = (isConverted ? '\u2248 ' : '') + formatLineAmount(l);
       const kids = [
@@ -373,7 +378,7 @@ export function createPositionRenderer(ctx) {
           el(
             'button',
             {
-              class: 'linkbtn',
+              class: 'btn sm ghost position-remove',
               title: 'Remove',
               'aria-label': `Remove ${label}`,
               onclick: () => removeAsset(l.id),
@@ -511,11 +516,11 @@ export function createPositionRenderer(ctx) {
     body.append(
       el(
         'div',
-        { class: 'manage-actions', style: 'flex-wrap:wrap;gap:8px' },
-        classSel,
-        nameInput,
-        amountInput,
-        el('button', { class: 'btn sm', onclick: save }, 'Add')
+        { class: 'position-add-fields' },
+        el('label', { class: 'field-label' }, el('span', {}, 'Type'), classSel),
+        el('label', { class: 'field-label' }, el('span', {}, 'Name'), nameInput),
+        el('label', { class: 'field-label' }, el('span', {}, 'Amount'), amountInput),
+        el('button', { class: 'btn sm', onclick: save }, 'Add to position')
       )
     );
     box.append(body);
@@ -524,11 +529,17 @@ export function createPositionRenderer(ctx) {
 
   async function removeAsset(id) {
     if (!id) return;
+    const prior = state.manualAssets.find((item) => item.id === id);
     await Store.manualAssets.delete(id);
     state.manualAssets = await Store.manualAssets.all();
     trackUsage('position-remove-asset');
     render();
-    toast('Removed.');
+    toast(prior ? `Removed ${prior.label}.` : 'Removed.', prior ? async () => {
+      await Store.manualAssets.put(prior);
+      state.manualAssets = await Store.manualAssets.all();
+      render();
+      toast(`Restored ${prior.label}.`);
+    } : null);
   }
 
   function formatLineAmount(l) {
@@ -556,7 +567,7 @@ export function createPositionRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconList()), 'For a financial conversation')
+        el('h3', { class: 'card-title' }, icon(iconList()), 'Shareable financial summary')
       )
     );
 
@@ -594,7 +605,7 @@ export function createPositionRenderer(ctx) {
               trackUsage('position-copy-summary');
             },
           },
-          'Copy summary'
+          'Copy financial summary'
         )
       )
     );
@@ -629,7 +640,7 @@ export function createPositionRenderer(ctx) {
   /* ---- the destination ---- */
   function renderPosition() {
     trackUsage('view-position');
-    const wrap = el('div', { class: 'accounts-wrap accounts-grid' });
+    const wrap = el('div', { class: 'accounts-wrap accounts-grid view-position' });
     // No bank data -> nothing reconciled to stand on. A card-only device still
     // has a card balance, so guard on there being ANY position to show.
     const hasBank = (state.bankRecords || []).length > 0;
@@ -638,12 +649,14 @@ export function createPositionRenderer(ctx) {
       const empty = el(
         'section',
         { class: 'card empty' },
+        el('div', { class: 'empty-icon', html: iconStore() }),
         el('h2', {}, 'No position yet'),
         el(
           'p',
           { class: 'muted' },
-          'Import a bank or card statement and your cash, debt and net-worth picture appears here.'
-        )
+          'Add a bank or card statement and your cash, debt and net-worth picture appears here.'
+        ),
+        el('button', { class: 'btn primary', onclick: pickStatements }, 'Add statement')
       );
       wrap.append(empty);
       return wrap;

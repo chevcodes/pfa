@@ -16,13 +16,17 @@
  * section (the plan's own Overview element) is a later stage, not built here.
  */
 import {
-  periodCoverageNote,
-  buildAttentionItems,
   renderAttentionList,
   isUnrecognised,
+} from '../analysis/reporting-core.js';
+import {
+  periodCoverageNote,
+  buildAttentionItems,
+} from '../analysis/reporting-periods.js';
+import {
   detectPossibleDuplicates,
   detectCategorySpikes,
-} from '../analysis/reporting.js';
+} from '../analysis/reporting-insights.js';
 import { requireCtx, formatDisplayDate } from '../core/shared-helpers.js';
 import { createAvailableNow } from './available-now-preview.js';
 import { pairCards } from './chart-helpers.js';
@@ -83,7 +87,7 @@ export function createOverviewRenderer(ctx) {
   });
 
   function renderOverview() {
-    const wrap = el('div', { class: 'accounts-wrap accounts-grid' });
+    const wrap = el('div', { class: 'accounts-wrap accounts-grid view-overview' });
     const { recs, cardSummary, rollAllTrend } = overviewModel();
 
     // Shared-window empty state: neither ledger has activity in the selected
@@ -136,9 +140,10 @@ export function createOverviewRenderer(ctx) {
     // direction and the ahead/short balance at a glance - the plan's "recent
     // movement" element. Reads rollAllTrend (the full-history trend), moves no
     // total, so cross_screen_consistency stays green by construction.
+    let flowCard = null;
     const flowChart = renderFlowChart(rollAllTrend);
     if (flowChart) {
-      const chartCard = el('section', { class: 'card' });
+      const chartCard = el('section', { class: 'card overview-flow' });
       chartCard.append(
         el(
           'div',
@@ -147,14 +152,14 @@ export function createOverviewRenderer(ctx) {
         )
       );
       chartCard.append(flowChart);
-      wrap.append(chartCard);
+      flowCard = chartCard;
     }
 
     // 3) Honest partial-data note when the period's coverage is incomplete -
     // the "partial data never looks complete" rule, kept.
     const covNote = periodCoverageNote(state.coverage, resolved());
     if (covNote) {
-      const noteCard = el('section', { class: 'card' });
+      const noteCard = el('section', { class: 'card coverage-note' });
       noteCard.append(el('p', { class: 'muted small', style: 'margin:0' }, covNote));
       wrap.append(noteCard);
     }
@@ -164,12 +169,12 @@ export function createOverviewRenderer(ctx) {
     // Header matches every other card's card-head/card-title/icon convention
     // so this reads as a true peer of "Needs attention" beside it, not a
     // leftover label style from the retired narrative-era Overview.
-    const next = el('section', { class: 'card' });
+    const next = el('section', { class: 'card overview-actions' });
     next.append(
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Where to next')
+        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Quick actions')
       )
     );
     const nextActions = el('div', { class: 'overview-next-actions' });
@@ -183,7 +188,7 @@ export function createOverviewRenderer(ctx) {
             switchLedgerView('activity');
           },
         },
-        'Open Activity'
+        'Review activity'
       )
     );
     if (state.bankRecords.length) {
@@ -197,7 +202,7 @@ export function createOverviewRenderer(ctx) {
               switchLedgerView('ahead');
             },
           },
-          'Open Forecast'
+          'Check forecast'
         )
       );
     }
@@ -207,6 +212,7 @@ export function createOverviewRenderer(ctx) {
     // desktop (both are compact - one calm line and two buttons - so stacking
     // them full-width wasted a row each). The flow chart above stays full-width.
     pairCards(wrap, attnCard, next);
+    if (flowCard) wrap.append(flowCard);
 
     return wrap;
   }

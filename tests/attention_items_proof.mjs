@@ -3,7 +3,7 @@
  * expected severity order, from a fixed synthetic input. Guards the "one
  * resolver, read identically" promise: a future edit that silently changed
  * what one screen shows would change this fixture's output and fail here. */
-import { buildAttentionItems } from '../application/analysis/reporting.js';
+import { buildAttentionItems } from '../application/analysis/reporting-periods.js';
 
 let pass = 0,
   fail = 0;

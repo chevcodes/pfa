@@ -1,6 +1,6 @@
 import { cleanBankCounterparty } from '../statements/read-statements.js';
 import { merchantRuleKeyFromDescription } from '../../settings/category-rules.js';
-import { isUnrecognised } from '../analysis/reporting.js';
+import { isUnrecognised } from '../analysis/reporting-core.js';
 
 /* ===========================================================================
  * 9) CSV export

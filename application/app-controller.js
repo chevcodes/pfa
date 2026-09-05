@@ -35,46 +35,18 @@ import {
 import {
   MONTHS_SHORT,
   fnv1a,
-  monthKey,
   roundMoney,
   formatMoney,
-  formatDisplayDate,
   smoothScrollToTop,
   smoothScrollToEl,
   drillToTransactions as drillToTransactionsPure,
   withConfigDefaults,
-  yieldToBrowser,
   DEV_SIGNATURE,
   LOCAL_DEV_HOSTS,
   bankRowsInapplicable as bankRowsInapplicablePure,
   cardRowsInapplicable as cardRowsInapplicablePure,
 } from './core/shared-helpers.js';
-import {
-  parseStatementLines,
-  extractLines,
-  statementContentHash,
-  parseCardStatementSummary,
-  splitCardStatements,
-  setBankDescriptorCleanupRules,
-  parseBankStatementLines,
-  detectStatementFormat,
-  reconcileBankStatement,
-  bankTransactionIdentity,
-  bankStatementHash,
-  transactionIdentity,
-  cardStatementHash,
-  cardAccountsFromLines,
-  mergeBankTransactions,
-  mergeTransactions,
-  reconcileCardStatement,
-  cardStatementHealth,
-  detectCardStatementFormat,
-  parseNcbStatementLines,
-  splitNcbStatements,
-  buildNcbStatementRecord,
-  scotiaCardHolderFirstName,
-  scotiaBankHolderFirstName,
-} from './statements/read-statements.js';
+import { setBankDescriptorCleanupRules } from './statements/read-statements.js';
 import {
   bankFlowOverTime,
   detectBankStandingDebits,
@@ -90,6 +62,14 @@ import {
   summarise,
   attentionItems,
   orderCategoriesForPicker,
+  buildHeroSection,
+  renderInsightList,
+  renderShareBar,
+  MONEY_IN_PALETTE,
+  MONEY_OUT_PALETTE,
+  SHARE_PALETTE,
+} from './analysis/reporting-core.js';
+import {
   monthName,
   detectIncompleteMonth,
   resolvePeriod,
@@ -97,26 +77,20 @@ import {
   analysisForWindow,
   ymToday,
   detectRecurring,
-  foreignSummary,
-  missingMonths,
   monthlyCommitmentsTotal,
   typicalMonthlyOutflow,
-  runwayDays,
-  createPrintReports,
-  buildBankAppropriateInsights,
-  buildHeroSection,
-  renderInsightList,
-  renderExplainer,
-  renderShareBar,
-  MONEY_IN_PALETTE,
-  MONEY_OUT_PALETTE,
-  SHARE_PALETTE,
   buildStatementCoverage,
-  normaliseEair,
-  medianRecentPayment,
-  computeGoalProgress,
+  renderExplainer,
+} from './analysis/reporting-periods.js';
+import {
+  foreignSummary,
+  missingMonths,
+  buildBankAppropriateInsights,
   describeGoal,
-} from './analysis/reporting.js';
+} from './analysis/reporting-insights.js';
+import {
+  createPrintReports,
+} from './analysis/reporting-print.js';
 import {
   iconUp,
   iconDown,
@@ -152,7 +126,6 @@ import { createOverviewRenderer } from './ui/overview-render.js';
 import { createProvenModels } from './analysis/proven-models.js';
 import { ensureMigrated } from './analysis/goal-migrate.js';
 import { evaluateGoal } from './analysis/goals.js';
-import { buildNewEngineProgressCtx as buildNewEngineProgressCtxPure } from './analysis/goal-progress-ctx.js';
 import { makeIntention } from './analysis/category-intentions.js';
 import { makeTag } from './analysis/tag-totals.js';
 import {
@@ -166,6 +139,9 @@ import { createForecastChartRenderer } from './ui/forecast-chart-render.js';
 import { createIncomeChartRenderer } from './ui/income-chart-render.js';
 import { createFlowChartRenderer } from './ui/flow-chart-render.js';
 import { createActivityRenderer } from './ui/activity-render.js';
+import { createGoalController } from './ui/app-goals.js';
+import { createStatementIntake } from './ui/app-intake.js';
+import { createAppMessages } from './ui/app-messages.js';
 
 import { makeManualAsset, NET_WORTH_CLASSES } from './analysis/position.js';
 import { categoryTotalsWithSplits, splitsByTxnId } from './analysis/transaction-splits.js';
@@ -962,11 +938,17 @@ function bootUI() {
 
   function render() {
     const app = $('#app');
+    const previousView = app.dataset.view || '';
     app.innerHTML = '';
     const hasCard = state.records.length > 0;
     const hasBank = state.bankRecords.length > 0;
     const views = availableViews();
     if (views.length && !views.includes(state.view)) state.view = views[0];
+    app.dataset.view = state.view;
+    if (previousView && previousView !== state.view) {
+      app.classList.remove('view-enter');
+      requestAnimationFrame(() => app.classList.add('view-enter'));
+    }
     if (state.records.length) {
       recompute();
       buildCategoryColours();
@@ -1391,260 +1373,13 @@ function bootUI() {
     return _cmVal;
   }
 
-  /* ===================================================================
-   * Round 4 (Where you're headed): goal-setting, its monthly honest
-   * follow-up, and the small persisted log that follow-up writes to.
-   * computeGoalProgress/describeGoal (reporting.js) do the actual judging;
-   * everything here is orchestration - building the right data bundle for
-   * whichever goal type is active, persisting the goal itself, and
-   * recording one frozen entry per genuinely new complete month.
-   * =================================================================== */
-  async function setGoal(type, params) {
-    state.goal = {
-      type,
-      params,
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-    await Store.setMeta('financeGoal', state.goal);
-    render();
-  }
-  async function clearGoal() {
-    // The goal itself is cleared; goalLog (the historical record of past
-    // months' honest checks) is deliberately left intact, exactly like
-    // closing a chapter without erasing what already happened in it.
-    state.goal = null;
-    await Store.setMeta('financeGoal', null);
-    render();
-  }
-  // Restore a previously-cleared goal EXACTLY as it was - crucially keeping
-  // its ORIGINAL createdAt, not today's date. setGoal() always stamps a fresh
-  // createdAt (correct when genuinely setting a new goal), but an undo must
-  // preserve the original, or the monthly-check gate (checkMonthlyGoalIfDue's
-  // `month < createdMonth` test) would silently shift and a month already
-  // logged under the old goal could be re-evaluated. So this restores the
-  // whole stored object directly rather than routing through setGoal.
-  async function restoreGoal(goalObject) {
-    if (!goalObject) return;
-    state.goal = goalObject;
-    await Store.setMeta('financeGoal', goalObject);
-    render();
-  }
-
-  // The data bundle computeGoalProgress needs for a specific goal type.
-  // 'runway' and 'clear-card' both read LIVE current figures - genuinely "how
-  // are things right now" readings, since reconstructing either honestly for
-  // an arbitrary past month would need a fragile historical balance
-  // rebuild this app does not attempt. 'spend-ceiling' instead reads the
-  // ACTUAL completed month's real total spend for the given month - the one
-  // goal type with a genuinely knowable historical fact, so it uses it.
-  // Step 3 (goal-system migration): the new engine's equivalent of
-  // goalDataForMonth, above - builds the exact progressCtx shape goals.js's
-  // goalProgress expects. Proven byte-identical to the inline block it
-  // replaces (previously duplicated inside ahead-render.js's live
-  // comparison card) via parity_proof_ctx.mjs, on identical mock inputs,
-  // including proof that the `month` parameter genuinely changes the
-  // spend-ceiling reading rather than being ignored.
-  //
-  // Unlike the OLD inline block (which self-computed "latest month with
-  // ANY data" for spend-ceiling), this takes month as an EXPLICIT required
-  // parameter for spend-ceiling - the caller supplies it, matching
-  // goalDataForMonth's own existing contract exactly. This is a deliberate
-  // fix, not a preserved quirk: both callers below now pass the SAME
-  // "latest COMPLETE month" concept the rest of the app already uses
-  // (resolvePeriod({type:'latest-complete'})), closing the gap the
-  // comparison card's own comment previously flagged as a known
-  // simplification.
-  //
-  // cushion/clear-card remain LIVE-ONLY (month is accepted but ignored for
-  // them), matching goalDataForMonth's own accepted design: reconstructing
-  // an honest historical cash position or card balance for an arbitrary
-  // past month is not attempted anywhere in this app.
-  // Extracted to goal-progress-ctx.js (application/analysis/) so it is a
-  // real, importable, top-level function - useful for goal_engine_parity_
-  // proof.mjs to import directly, and matching the pattern already
-  // established by goal-migrate.js/goals.js of small, pure, standalone
-  // analysis files. This wrapper just supplies this closure's own live
-  // bindings as explicit deps; the actual logic (and its own detailed
-  // comment on the month-parameter design) now lives in that file.
-  function buildNewEngineProgressCtx(migratedGoal, opts = {}) {
-    return buildNewEngineProgressCtxPure(migratedGoal, opts, {
-      classifiedBank,
-      overviewModel,
-      typicalMonthlyOutflow,
-      ymToday,
-      analyseBankActivity,
-      bankFlowOverTime,
-      state,
-    });
-  }
-
-  // The single place "which month counts as latest-complete for goal
-  // purposes" is resolved, shared by the live comparison card (Ahead) and
-  // the monthly log below, so the two can never silently disagree on what
-  // "this period" means for a spend-ceiling goal.
-  function latestCompleteGoalMonth() {
-    const months = allLedgerMonths();
-    if (!months.length) return null;
-    const period = resolvePeriod(
-      { type: 'latest-complete' },
-      state.rows,
-      months,
-      new Date(),
-      state.coverage
-    );
-    return period ? period.from : null;
-  }
-
-  // The new engine's goalProgress returns a strict boolean `met` for
-  // clear-card (balance <= 1) - correct for the live card, where
-  // buildGoalModel already softens an in-progress goal with
-  // tone:'neutral'/tag:'on a plan' rather than a warning. The monthly log
-  // below has no such softening layer - it maps met straight to a dot
-  // colour - so a strict boolean would show every unfinished clear-card
-  // goal as a monthly WARNING until the day it's paid off, even while
-  // genuinely on track. parity_proof.mjs proved this exact divergence
-  // empirically (old.met=null, new.met=false for the identical
-  // "in-progress, on-track" case). This restores the three real states
-  // the old engine's computeGoalProgress always distinguished, using the
-  // SAME `now` the caller already resolved its period with - never a
-  // second, independent new Date() call, so a log entry judges the
-  // deadline against one single clock, not two.
-  function threeStateMetForLog(migratedGoal, progress, now) {
-    if (migratedGoal.type !== 'clear-card') return progress.met;
-    if (progress.current <= 1) return true;
-    const targetMs = Date.parse(migratedGoal.targetDate);
-    if (Number.isFinite(targetMs) && now.getTime() > targetMs) return false;
-    return null; // still trying, deadline not yet passed
-  }
-
-  function goalDataForMonth(goal, month) {
-    if (!goal) return null;
-    if (goal.type === 'runway' || goal.type === 'cushion') {
-      const cb = classifiedBank();
-      const cashPosition = analyseBankActivity(cb).closingBalance;
-      const asum = state.allSummary;
-      const rollAllTrend = analyseRollup({
-        bankRecords: cb,
-        cardSpendTotal: 0,
-        cardSpendByMonth: asum ? asum.by_month : {},
-        cardStatements: [],
-      }).trend;
-      const monthlyOutflow = typicalMonthlyOutflow(rollAllTrend, ymToday());
-      return { runwayDays: runwayDays(cashPosition, monthlyOutflow) };
-    }
-    if (goal.type === 'clear-card') {
-      const roll = overviewModel().roll;
-      const latestStmt = (state._cardStatements || [])
-        .slice()
-        .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)))
-        .pop();
-      const eairFrac = latestStmt ? normaliseEair(latestStmt.eair) : null;
-      const typicalPayment = medianRecentPayment(state._cardStatements || []);
-      return {
-        cardOwed: roll.cardOwed,
-        eairFrac,
-        typicalPayment,
-        now: new Date(),
-      };
-    }
-    if (goal.type === 'spend-ceiling') {
-      if (!month) return null;
-      const cardSpendForMonth =
-        state.allSummary && state.allSummary.by_month ? state.allSummary.by_month[month] || 0 : 0;
-      const bankTrend = bankFlowOverTime(classifiedBank());
-      const bankRow = bankTrend.find((t) => t.month === month);
-      const bankSpendForMonth = bankRow ? bankRow.moneyOut : 0;
-      return {
-        monthSpend: roundMoney(cardSpendForMonth + bankSpendForMonth),
-        monthLabel: monthName(month),
-      };
-    }
-    return null;
-  }
-
-  // The monthly, honest follow-up (plan section 6.2, third bullet): fires
-  // once per genuinely NEW complete month, appending a FROZEN record to
-  // state.goalLog so a past month's verdict can never quietly change later
-  // just because the goal was since altered. A month is checked at most
-  // once (the log is searched for an existing entry first), and never a
-  // month before the goal existed, so setting or changing a goal can never
-  // retroactively grade history that predates it.
-  function checkMonthlyGoalIfDue() {
-    if (!state.goal) return;
-    const months = allLedgerMonths();
-    if (!months.length) return;
-    // ONE Date instance for this whole check - reused below for the
-    // three-state clear-card derivation, never a second independent
-    // new Date() call, so "has the deadline passed" is judged against the
-    // same clock the period itself was resolved against.
-    const now = new Date();
-    const period = resolvePeriod(
-      { type: 'latest-complete' },
-      state.rows,
-      months,
-      now,
-      state.coverage
-    );
-    if (!period) return;
-    const month = period.from;
-    if (state.goalLog.some((g) => g.month === month)) return;
-    const createdMonth = monthKey(state.goal.createdAt);
-    if (month < createdMonth) return;
-
-    // Step 3: repointed at the new engine. ensureMigrated() runs on a local
-    // copy - never mutates the stored state.goal - matching the same
-    // non-destructive discipline goal-migrate.js's own contract already
-    // established. state.goal itself is left exactly as-is; only what
-    // feeds this ONE log entry now comes from the proven engine.
-    const migrated = ensureMigrated(state.goal);
-    if (!migrated) return;
-    const progressCtx = buildNewEngineProgressCtx(migrated, { month });
-    if (!progressCtx) return;
-    const evaluated = evaluateGoal(migrated, progressCtx, state.cfg);
-    if (!evaluated) return;
-
-    const met = threeStateMetForLog(migrated, evaluated.progress, now);
-    const headline = evaluated.model.detail;
-
-    // Flat fields from the MIGRATED shape (targetDays/targetDate/amount),
-    // never a stale .params blob - a goal set under the old shape is
-    // migrated above before being evaluated, so every future log entry
-    // stores the same field names the new engine (and the live card)
-    // already read, closing the shape gap the old log entry (type +
-    // params) would otherwise have carried forward indefinitely.
-    state.goalLog = [
-      ...state.goalLog,
-      {
-        month,
-        type: migrated.type,
-        targetDays: migrated.targetDays ?? null,
-        targetDate: migrated.targetDate ?? null,
-        amount: migrated.amount ?? null,
-        met,
-        headline,
-      },
-    ].slice(-24);
-    Store.setMeta('financeGoalLog', state.goalLog);
-  }
-
-  // Round 4: Overview's beat 11 needs a LIVE "how is this going right now"
-  // reading, separate from checkMonthlyGoalIfDue's once-a-month FROZEN log
-  // entry above - reuses the exact same goalDataForMonth/computeGoalProgress
-  // pair rather than a second, possibly drifting reading. For 'spend-ceiling'
-  // (the one type that needs a specific month), this reads the latest
-  // complete month, matching how the rest of the app already frames "the
-  // month we can currently trust" (detectIncompleteMonth/latestCompleteMonth).
-  function liveGoalProgress() {
-    if (!state.goal) return null;
-    const months = allLedgerMonths();
-    const period = months.length
-      ? resolvePeriod({ type: 'latest-complete' }, state.rows, months, new Date(), state.coverage)
-      : null;
-    const data = goalDataForMonth(state.goal, period ? period.from : null);
-    if (!data) return null;
-    return computeGoalProgress(state.goal, data, bankMoney, formatDisplayDate);
-  }
-
+  let setGoal;
+  let clearGoal;
+  let restoreGoal;
+  let buildNewEngineProgressCtx;
+  let latestCompleteGoalMonth;
+  let checkMonthlyGoalIfDue;
+  let liveGoalProgress;
   // The honest check on whether LAST month's intention actually happened
   /* ---- empty state ---- */
   function renderEmpty() {
@@ -1654,7 +1389,7 @@ function bootUI() {
       el(
         'p',
         { class: 'muted' },
-        'Add a Scotia PDF statement and your spending appears straight away.'
+        'Add a supported bank or card statement PDF and your money picture appears straight away.'
       )
     );
     lines.append(
@@ -1679,14 +1414,14 @@ function bootUI() {
     // sentence, so it sits here as fine print alongside the drop-hint rather
     // than stacked mid-page between the pitch and the privacy line.
     wrap.append(
-      el('p', { class: 'muted small empty-drop-hint' }, 'or drop PDFs anywhere on this window')
+      el('p', { class: 'muted small empty-drop-hint empty-drop-desktop' }, 'or drop PDFs anywhere on this window')
     );
     if (!isIOS() && !isStandalone()) {
       wrap.append(
         el(
           'p',
           { class: 'muted small empty-drop-hint' },
-          'Also supports NCB credit-card statements. Bank statements are Scotia-only for now.'
+          'Supports Scotiabank bank and credit-card statements, plus NCB credit-card statements.'
         )
       );
     }
@@ -1770,6 +1505,24 @@ function bootUI() {
     bar.innerHTML = '';
     const months = allLedgerMonths();
     if (!months.length) return; // nothing imported in either ledger yet
+    if (state.view === 'position' || state.view === 'ahead') {
+      const isPosition = state.view === 'position';
+      bar.append(
+        el(
+          'div',
+          { class: 'period-left period-live' },
+          el('span', { class: 'period-icon', html: iconCal() }),
+          el('span', { class: 'period-live-title' }, isPosition ? 'Position today' : 'Forecast from today')
+        ),
+        el('div', { id: 'ledger-switch', class: 'ledger-switch', hidden: '' }),
+        el(
+          'div',
+          { class: 'period-showing muted small' },
+          isPosition ? 'Latest recorded balances' : 'Uses current balances and expected payments'
+        )
+      );
+      return;
+    }
     const opts = [
       ['latest-complete', 'Latest complete month'],
       ['current-month', 'Current month'],
@@ -2271,742 +2024,59 @@ function bootUI() {
     openOverlay(overlay);
   }
 
-  /* ===================================================================
-   * Intake (manual + desktop)
-   * =================================================================== */
-  async function pickStatements() {
-    trackUsage('add-statement');
-    const input = $('#add-input');
-    if (input) input.click();
-  }
+  const {
+    isStandalone,
+    isIOS,
+    maybeOfferInstall,
+    maybeOfferBackup,
+    maybeOfferFirstRunHint,
+    maybeGreetReturning,
+    maybeWelcomeFirstTime,
+  } = createAppMessages({
+    state,
+    $,
+    el,
+    allLedgerMonths,
+    icon,
+    iconX,
+    iconPhone,
+    iconAlert,
+    iconChart,
+    iconInfo,
+  });
 
-  async function onAddInputChange(e) {
-    const input = e.currentTarget;
-    const files = [...(input.files || [])];
-    if (!files.length) return;
-    await ingestFiles(files);
-    input.value = '';
-  }
-
-  async function learnFirstName(name, source) {
-    if (!name) return;
-    const rank = { manual: 2, card: 1, bank: 0 };
-    if (state.firstName && (rank[source] || 0) <= (rank[state.firstNameSource] || 0)) return;
-    state.firstName = name;
-    state.firstNameSource = source;
-    await Store.setMeta('firstName', name);
-    await Store.setMeta('firstNameSource', source);
-  }
-
-  async function setFirstNameManual(name) {
-    const clean = String(name == null ? '' : name)
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 40);
-    state.firstName = clean || null;
-    state.firstNameSource = clean ? 'manual' : null;
-    await Store.setMeta('firstName', state.firstName);
-    await Store.setMeta('firstNameSource', state.firstNameSource);
-  }
-
-  async function ingestFiles(files) {
-    const list = [...files];
-    if (await Store.getMeta('mockPersonaLoaded', null)) {
-      await Store.clearTransactions();
-      await Store.clearStatements();
-      await Store.clearBankTransactions();
-      await Store.clearBankStatements();
-      await Store.clearCardStatements();
-      await Store.setMeta('mockPersonaLoaded', null);
-      await Store.setMeta('bankCardAccounts', []);
-      await Store.setMeta('bankMyAccounts', []);
-      await Store.setMeta('bankConfirmedIncomeIds', []);
-      await Store.setMeta('bankRefundIncomeIds', []);
-      await Store.setMeta('bankSharedAccounts', []);
-      await Store.setMeta('bankHouseholdPayees', []);
-      await Store.setMeta('lastImportedFrom', null);
-      state.records = [];
-      state.bankRecords = [];
-      state._bankStatements = [];
-      state._cardStatements = [];
-      state.cardAccounts = [];
-      state.myAccounts = [];
-      state.confirmedIncomeIds = [];
-      state.refundIncomeIds = [];
-      state.sharedAccounts = [];
-      state.householdPayees = [];
-      state.bankAccount = 'all';
-      state.lastImportedFrom = null;
-      toast('Sample customer data cleared, so your imported statement is kept on its own.');
-    }
-    openProgress(list);
-    let added = 0,
-      dupes = 0,
-      failed = 0;
-    let bankAdded = 0,
-      bankDupes = 0;
-    let cardLearned = false,
-      cardStmtLearned = false;
-    const periods = [];
-    const hadCardBefore = state.records.length > 0;
-    const hadBankBefore = state.bankRecords.length > 0;
-    state.warnings = [];
-    state.bankWarnings = [];
-    try {
-      const pdfjs = await loadPdfjs();
-      for (let i = 0; i < list.length; i++) {
-        const file = list[i];
-        setProgress(i, 'reading');
-        await yieldToBrowser();
-        let lines;
-        try {
-          const buf = await file.arrayBuffer();
-          lines = await extractLines(buf.slice(0), pdfjs);
-        } catch {
-          setProgress(i, 'failed');
-          failed++;
-          state.warnings.push(
-            `${file.name} could not be read. Try re-downloading it from your bank.`
-          );
-          continue;
-        }
-        // A bank account statement now routes to the bank ledger (Phase 1). The
-        // card path below is untouched: only card statements reach it.
-        if (detectStatementFormat(lines) === 'bank') {
-          const parsed = parseBankStatementLines(lines, file.name);
-          if (!parsed.statements.length || parsed.openingBalance == null) {
-            setProgress(i, 'failed');
-            failed++;
-            state.bankWarnings.push(
-              `${file.name} looks like a bank statement but its rows could not be read.`
-            );
-            continue;
-          }
-          await learnFirstName(scotiaBankHolderFirstName(lines), 'bank');
-          const recon = reconcileBankStatement(parsed); // aggregate, for the file-level warning
-          const recs = parsed.transactions.map((t) => ({
-            ...t,
-            id: bankTransactionIdentity(t),
-          }));
-          const merged = mergeBankTransactions(state.bankRecords, recs);
-          state.bankRecords = merged.records;
-          bankAdded += merged.added;
-          // Store ONE traceable record PER STATEMENT (not per file), each with
-          // its own period, account, count, closing balance and reconcile
-          // result, deduped by a per-statement content hash. A file holding many
-          // statements now shows one honest row each, and the same statement
-          // arriving in both a consolidated and an individual PDF is stored once.
-          let newStmts = 0;
-          for (const st of parsed.statements) {
-            const stHash = bankStatementHash(st);
-            if (await Store.hasBankStatement(stHash)) continue;
-            const r = reconcileBankStatement({
-              openingBalance: st.openingBalance,
-              closingBalance: st.closingBalance,
-              transactions: st.transactions,
-            });
-            await Store.putBankStatement({
-              hash: stHash,
-              source_file: file.name,
-              account: st.account,
-              period: st.period,
-              count: st.transactions.length,
-              closingBalance: st.closingBalance,
-              reconciled: r.ok,
-              reconNote: r.balanceBreaks[0] || (r.closingOk ? '' : 'closing balance did not match'),
-              importedAt: new Date().toISOString(),
-            });
-            newStmts++;
-          }
-          if (!recon.ok)
-            state.bankWarnings.push(
-              `${file.name}: ${recon.balanceBreaks[0] || 'balance did not fully reconcile'}.`
-            );
-          if (newStmts === 0 && merged.added === 0) bankDupes++;
-          setProgress(
-            i,
-            newStmts === 0 && merged.added === 0 ? 'duplicate' : recon.ok ? 'done' : 'reconwarn',
-            merged.added
-          );
-          continue;
-        }
-        if (detectCardStatementFormat(lines) === 'ncb') {
-          for (const c of cardAccountsFromLines(lines)) {
-            if (!state.cardAccounts.includes(c)) {
-              state.cardAccounts = [...state.cardAccounts, c];
-              cardLearned = true;
-            }
-          }
-          const hash = statementContentHash(lines);
-          if (await Store.hasStatement(hash)) {
-            setProgress(i, 'duplicate');
-            dupes++;
-            continue;
-          }
-          const parsedNcb = parseNcbStatementLines(lines, file.name);
-          if (!parsedNcb.transactions.length) {
-            setProgress(i, 'failed');
-            failed++;
-            state.warnings.push(`${file.name} did not contain transactions we could read.`);
-            continue;
-          }
-          const ncbRecs = [];
-          const ncbKeys = [];
-          for (const seg of splitNcbStatements(lines)) {
-            const built = buildNcbStatementRecord(seg, file.name);
-            // A statement whose ROWS parse must store those rows even when the
-            // summary box or header key cannot be read (real pdf.js splits the
-            // masked account "xxxx1234" into "xxxx1234"). Collect transactions
-            // unconditionally; the per-statement summary/reconciliation record
-            // below stays best-effort and its absence never discards rows.
-            if (built.summary.statementKey) ncbKeys.push(built.summary.statementKey);
-            for (const t of built.transactions) {
-              // Keep the NCB identity already stamped on t (it has no reference
-              // number); only add the per-row app fields Scotiabank rows carry.
-              ncbRecs.push({
-                ...t,
-                categoryOverride: null,
-                reviewDismissed: false,
-                lastChanged: new Date().toISOString(),
-                originDevice: state.deviceId,
-              });
-            }
-            if (built.summary.previousBalance != null && built.summary.newBalance != null) {
-              await Store.putCardStatement({
-                ...built.statementRecord,
-                importedAt: new Date().toISOString(),
-              });
-              cardStmtLearned = true;
-            }
-            // Part A: runtime reconciliation gate (NCB). The statement prints its
-            // own previous and new balance, which the bank computes independently
-            // of the row list, so when both are present the signed billing sum of
-            // the rows we read must equal the printed balance movement
-            // (reconcileNcbStatement, already computed in built.reconciliation).
-            // Rows are ALWAYS stored above (never gated); a shortfall only raises
-            // a plain, visible per-file warning through the SAME state.warnings
-            // channel the other import messages use. When the balances are
-            // unreadable, recon.checked is false and no false warning is raised.
-            const recon = built.reconciliation;
-            if (recon && recon.checked && !recon.ok) {
-              const expected = money0(recon.targetDelta);
-              const got = money0(recon.computedDelta);
-              const where = built.summary.statementKey ? ` (${built.summary.statementKey})` : '';
-              state.warnings.push(
-                `${file.name}${where}: this statement did not fully add up. We expected the balance to change by ${expected}, but the transactions we read total ${got}. Some transactions may not have been read.`
-              );
-            }
-          }
-          const merged = mergeTransactions(state.records, ncbRecs);
-          state.records = merged.records;
-          added += merged.added;
-          const period = ncbKeys.length
-            ? ncbKeys.length === 1
-              ? ncbKeys[0]
-              : `${ncbKeys[0]} (+${ncbKeys.length - 1} more)`
-            : '';
-          await Store.putStatement({
-            hash,
-            source_file: file.name,
-            period,
-            importedAt: new Date().toISOString(),
-          });
-          if (period) periods.push(period);
-          setProgress(i, 'done', merged.added);
-          continue;
-        }
-        for (const c of cardAccountsFromLines(lines)) {
-          if (!state.cardAccounts.includes(c)) {
-            state.cardAccounts = [...state.cardAccounts, c];
-            cardLearned = true;
-          }
-        }
-        // Learn the person's own first name from the Scotiabank card statement's
-        // labelled cardholder text (scotiaCardHolderFirstName reads only the
-        // greeting / "CARD HOLDER (PRIMARY)" line, first token only). Only the
-        // given name is stored - no surname, address or card number. A card name
-        // outranks a bank-statement name but never a name set by hand; see
-        // learnFirstName for how the sources are ranked.
-        await learnFirstName(scotiaCardHolderFirstName(lines), 'card');
-        const hash = statementContentHash(lines);
-        if (await Store.hasStatement(hash)) {
-          setProgress(i, 'duplicate');
-          dupes++;
-          continue;
-        }
-        const parsed = parseStatementLines(lines, file.name);
-        if (!parsed.transactions.length) {
-          setProgress(i, 'failed');
-          failed++;
-          state.warnings.push(`${file.name} did not contain transactions we could read.`);
-          continue;
-        }
-        const recs = parsed.transactions.map((t) => ({
-          ...t,
-          id: transactionIdentity(t),
-          categoryOverride: null,
-          reviewDismissed: false,
-          lastChanged: new Date().toISOString(),
-          originDevice: state.deviceId,
-        }));
-        const merged = mergeTransactions(state.records, recs);
-        state.records = merged.records;
-        added += merged.added;
-        await Store.putStatement({
-          hash,
-          source_file: file.name,
-          period: parsed.period,
-          importedAt: new Date().toISOString(),
-        });
-        if (parsed.period) periods.push(parsed.period);
-        for (const seg of splitCardStatements(lines)) {
-          try {
-            const sum = parseCardStatementSummary(seg, file.name);
-            if (sum.previousBalance != null && sum.newBalance != null) {
-              const rec = reconcileCardStatement(sum);
-              if (rec.checked && !rec.ok) {
-                const expected = money0(roundMoney(sum.newBalance - sum.previousBalance));
-                const got = money0(roundMoney(sum.purchases + sum.payments));
-                const where = sum.statementKey ? ` (${sum.statementKey})` : '';
-                state.warnings.push(
-                  `${file.name}${where}: this statement did not fully add up. We expected the balance to change by ${expected}, but the transactions we read total ${got}. Some transactions may not have been read.`
-                );
-              }
-              const chash = cardStatementHash(sum);
-              if (!(await Store.hasCardStatement(chash))) {
-                const health = cardStatementHealth(sum);
-                await Store.putCardStatement({
-                  hash: chash,
-                  source_file: file.name,
-                  account: sum.account,
-                  period: sum.periodText,
-                  statementKey: sum.statementKey,
-                  periodStart: sum.periodStart,
-                  periodEnd: sum.periodEnd,
-                  previousBalance: sum.previousBalance,
-                  purchases: sum.purchases,
-                  payments: sum.payments,
-                  newBalance: sum.newBalance,
-                  creditLimit: sum.creditLimit,
-                  creditAvailable: sum.creditAvailable,
-                  minimumPayment: sum.minimumPayment,
-                  amountOwing: sum.amountOwing,
-                  interestCharges: sum.interestCharges,
-                  eair: sum.eair,
-                  utilisation: health.utilisation,
-                  revolving: health.revolving,
-                  payingInFull: health.payingInFull,
-                  reconciled: rec.ok,
-                  reconNote: rec.break || '',
-                  importedAt: new Date().toISOString(),
-                });
-                cardStmtLearned = true;
-              }
-            }
-          } catch (err) {
-            console.warn(`Card statement summary could not be read for ${file.name}:`, err);
-            state.warnings.push(
-              `${file.name}'s reconciliation summary could not be read, so health details are missing for that statement.`
-            );
-          }
-        }
-        setProgress(i, 'done', merged.added);
-      }
-      await persist();
-      if (bankAdded || bankDupes) {
-        await persistBank();
-        state._bankStatements = await Store.allBankStatements();
-      }
-      if (cardLearned) await Store.setMeta('bankCardAccounts', state.cardAccounts);
-      if (cardStmtLearned) state._cardStatements = await Store.allCardStatements();
-    } finally {
-      setTimeout(closeProgress, 700);
-    }
-    if ((!hadCardBefore && state.records.length) || (!hadBankBefore && state.bankRecords.length))
-      state.view = defaultDataView();
-    render();
-    if (!bankAdded && !added && (dupes || bankDupes) && !failed)
-      toast(`Already imported, so nothing changed.`);
-    else if (!bankAdded && !added && failed)
-      toast(`We couldn't read ${failed === 1 ? 'that statement' : 'those statements'}.`);
-    const welcomed = await maybeWelcomeFirstTime();
-    if (!welcomed) {
-      maybeOfferInstall();
-      maybeOfferBackup();
-      maybeOfferFirstRunHint();
-    }
-  }
-
-  async function persistBank() {
-    await Store.replaceBankTransactions(state.bankRecords);
-  }
-
-  // Persist the ledger-rule confirmations (income-confirmed deposits, round-trip
-  // pairs). Pure metadata, no transaction is ever changed.
-  async function persistLedgerRules() {
-    await Store.setMeta('bankConfirmedIncomeIds', state.confirmedIncomeIds || []);
-    await Store.setMeta('bankRefundIncomeIds', state.refundIncomeIds || []);
-    await Store.setMeta('bankSharedAccounts', state.sharedAccounts || []);
-    await Store.setMeta('bankHouseholdPayees', state.householdPayees || []);
-  }
-
-  /* progress dialog for imports */
-  let progressState = null;
-  function openProgress(files) {
-    const rows = files.map((f, i) =>
-      el(
-        'div',
-        { class: 'prog-row', id: 'prog-' + i },
-        el('span', { class: 'prog-name' }, f.name),
-        el('span', { class: 'prog-status', html: iconSpinner() })
-      )
-    );
-    const heavy = files.length >= 3 || files.some((f) => (f.size || 0) > 1500000);
-    const kids = [
-      el(
-        'div',
-        { class: 'picker-head' },
-        `Adding ${files.length} statement${files.length > 1 ? 's' : ''}`
-      ),
-    ];
-    if (heavy)
-      kids.push(
-        el(
-          'p',
-          { class: 'muted small prog-privacy' },
-          'A larger import can take a moment. It will finish on its own.'
-        )
-      );
-    kids.push(el('div', { class: 'prog-list' }, ...rows));
-    const box = el('div', { class: 'picker wide' }, ...kids);
-    const overlay = el('div', { class: 'overlay' }, box);
-    document.body.append(overlay);
-    progressState = overlay;
-  }
-  function setProgress(i, status, added) {
-    const row = $('#prog-' + i, progressState || document);
-    if (!row) return;
-    const s = $('.prog-status', row);
-    if (status === 'reading') s.innerHTML = iconSpinner() + ' Reading…';
-    else if (status === 'done') s.innerHTML = `<span class="ok">✓ ${added || 0} added</span>`;
-    else if (status === 'duplicate') s.innerHTML = `<span class="muted">Already imported</span>`;
-    else if (status === 'reconwarn')
-      s.innerHTML = `<span class="warnc">Added · check balance</span>`;
-    else if (status === 'failed') s.innerHTML = `<span class="warnc">Couldn't read</span>`;
-  }
-  function closeProgress() {
-    if (progressState) {
-      progressState.remove();
-      progressState = null;
-    }
-  }
-
-  async function persist() {
-    await Store.replaceTransactions(state.records);
-    await Store.setMeta('lastLocalUpdate', new Date().toISOString());
-  }
-
-  async function persistRules() {
-    await Store.replaceRules(state.rules);
-  }
-
-  /* pdf.js (vendored, offline) */
-  let _pdfjs = null;
-  async function loadPdfjs() {
-    if (_pdfjs) return _pdfjs;
-    const mod = await import('../third-party/pdf.min.mjs');
-    mod.GlobalWorkerOptions.workerSrc = new URL(
-      '../third-party/pdf.worker.min.mjs',
-      import.meta.url
-    ).href;
-    _pdfjs = mod;
-    return mod;
-  }
-
-  /* desktop folder watching */
-  async function chooseFolder() {
-    if (!window.ccDesktop) return;
-    const folder = await window.ccDesktop.chooseFolder();
-    if (!folder) return;
-    await Store.setMeta('watchedFolder', folder);
-    toast('Watching that folder. New statements appear on their own.');
-    scanWatchedFolder();
-  }
-  async function scanWatchedFolder() {
-    if (!window.ccDesktop) return;
-    const folder = await Store.getMeta('watchedFolder', null);
-    if (!folder) return;
-    const files = await window.ccDesktop.scanFolder(folder).catch(() => null);
-    if (!files) {
-      toast("We can't find the folder we were watching. Choose where your statements live now.");
-      return;
-    }
-    await ingestDesktopPaths(files);
-  }
-  async function ingestDesktopPaths(paths) {
-    if (!paths || !paths.length) return;
-    const fileLikes = [];
-    for (const p of paths) {
-      const data = await window.ccDesktop.readFile(p).catch((err) => {
-        console.warn(`Watched-folder file could not be read: ${p}`, err);
-        return null;
-      });
-      if (data)
-        fileLikes.push({
-          name: p.split(/[\\/]/).pop(),
-          arrayBuffer: async () => data,
-        });
-    }
-    if (fileLikes.length) await ingestFiles(fileLikes);
-  }
-
+  const {
+    pickStatements,
+    onAddInputChange,
+    setFirstNameManual,
+    ingestFiles,
+    persistBank,
+    persistLedgerRules,
+    persist,
+    persistRules,
+    chooseFolder,
+    scanWatchedFolder,
+    ingestDesktopPaths,
+  } = createStatementIntake({
+    state,
+    trackUsage,
+    $,
+    toast,
+    render,
+    defaultDataView,
+    maybeWelcomeFirstTime,
+    maybeOfferInstall,
+    maybeOfferBackup,
+    maybeOfferFirstRunHint,
+    money0,
+    iconSpinner,
+    el,
+  });
   /* Export menu: CSV, print, encrypted history.
    * The CSV / rules / encrypted-history orchestration moved to data-export.js
    * (Stage 3c-i); the print-model + report-driver group moved to reporting.js
    * (Stage 5, createPrintReports). Both are wired up in the factory block below. */
 
-  /* install prompt (iOS) */
-  const isStandalone = () =>
-    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
-  async function maybeOfferInstall() {
-    if (isStandalone() || !isIOS() || window.ccDesktop) return;
-    if (await Store.getMeta('installDismissed', false)) return;
-    if (!state.records.length) return;
-    if (bannerAlreadyShown()) return;
-    let banner = $('#install');
-    if (!banner) {
-      banner = el('div', {
-        id: 'install',
-        class: 'install-banner',
-        role: 'note',
-      });
-      document.body.append(banner);
-    }
-    banner.innerHTML = '';
-    banner.append(
-      el('span', { class: 'install-icon', html: iconPhone() }),
-      el(
-        'span',
-        {},
-        'Add this to your Home Screen for reliable offline access and durable local storage. Tap the Share button, then “Add to Home Screen”.'
-      ),
-      el(
-        'button',
-        {
-          class: 'btn sm ghost',
-          onclick: () => {
-            banner.classList.remove('show');
-            Store.setMeta('installDismissed', true);
-          },
-        },
-        'Not now'
-      )
-    );
-    banner.classList.add('show');
-  }
-
-  /* C1 (S21): offer an encrypted backup once there is enough history to be worth
-   * protecting. Its own banner element (never #install), appended to document.body,
-   * reusing the generic .install-banner styling (positioning/animation only, nothing
-   * iOS-specific). The primary action runs doExportHistory (the same encrypted export
-   * as the Export menu); dismissing hides it and remembers the choice. No backup/shield
-   * glyph exists in this icon set, so iconAlert is used: it flags the risk of loss the
-   * copy names and reads distinctly from the neutral iconInfo used on card headers. */
-  async function maybeOfferBackup() {
-    if (await Store.getMeta('backupPromptDismissed', false)) return;
-    const statementTotal =
-      (state._cardStatements || []).length + (state._bankStatements || []).length;
-    if (statementTotal < 3) return; // fewer than 3 statements: not enough history yet
-    if (bannerAlreadyShown()) return; // never stack over another banner at the same slot
-    let banner = $('#backup-banner');
-    if (!banner) {
-      banner = el('div', {
-        id: 'backup-banner',
-        class: 'install-banner',
-        role: 'note',
-      });
-      document.body.append(banner);
-    }
-    banner.innerHTML = '';
-    banner.append(
-      el('span', { class: 'install-icon', html: iconAlert() }),
-      el(
-        'span',
-        {},
-        "Everything you've set up lives only on this device. Make an encrypted backup so you don't lose it."
-      ),
-      el(
-        'button',
-        {
-          class: 'btn sm',
-          onclick: () => {
-            banner.classList.remove('show');
-            doExportHistory();
-          },
-        },
-        'Back up now'
-      ),
-      el(
-        'button',
-        {
-          class: 'btn sm ghost',
-          onclick: () => {
-            banner.classList.remove('show');
-            Store.setMeta('backupPromptDismissed', true);
-          },
-        },
-        'Not now'
-      )
-    );
-    banner.classList.add('show');
-  }
-
-  /* C2 (S7): a first-run nudge to add a second month, so trends, regular payments and
-   * month-to-month comparison become available. Same banner mechanics as C1 (its own
-   * element, document.body, reused .install-banner), gated on there being fewer than two
-   * ledger-months. One dismiss action, no primary. iconChart is used because the copy is
-   * about the trends a second month unlocks. */
-  async function maybeOfferFirstRunHint() {
-    if (allLedgerMonths().length >= 2) return;
-    if (await Store.getMeta('firstRunHintShown', false)) return;
-    if (bannerAlreadyShown()) return; // never stack over another banner at the same slot
-    let banner = $('#first-run-banner');
-    if (!banner) {
-      banner = el('div', {
-        id: 'first-run-banner',
-        class: 'install-banner',
-        role: 'note',
-      });
-      document.body.append(banner);
-    }
-    banner.innerHTML = '';
-    banner.append(
-      el('span', { class: 'install-icon', html: iconChart() }),
-      el(
-        'span',
-        {},
-        'Add a couple more months to see trends, regular commitments, and how each month compares.'
-      ),
-      el(
-        'button',
-        {
-          class: 'btn sm ghost',
-          onclick: () => {
-            banner.classList.remove('show');
-            Store.setMeta('firstRunHintShown', true);
-          },
-        },
-        'Got it'
-      )
-    );
-    banner.classList.add('show');
-  }
-
-  /* Whether any of the three bottom banners is already visible. The three gates are close
-   * to mutually exclusive in practice - the backup prompt needs 3+ statements, the first-run
-   * hint needs fewer than 2 ledger-months, and install is iOS-only - so at most one normally
-   * qualifies. This guard is belt-and-braces so that in the rare overlap they never sit on top
-   * of each other at the same fixed bottom position; whichever runs first this import wins the slot. */
-  function bannerAlreadyShown() {
-    return ['#install', '#backup-banner', '#first-run-banner'].some((sel) => {
-      const b = $(sel);
-      return b && b.classList.contains('show');
-    });
-  }
-
-  function mountTopGreeting(build, opts = {}) {
-    const existing = $('#greeting');
-    if (existing) {
-      clearTimeout(existing._h);
-      existing.remove();
-    }
-    const box = el('div', {
-      id: 'greeting',
-      role: 'status',
-      'aria-live': 'polite',
-    });
-    const inner = el('div', { class: 'greeting-inner' });
-    box.append(inner);
-    const dismiss = () => {
-      clearTimeout(box._h);
-      box.classList.remove('show');
-      setTimeout(() => box.remove(), 320);
-    };
-    for (const node of build(dismiss)) if (node) inner.append(node);
-    const stack = $('.topbar-stack');
-    if (stack) stack.append(box);
-    else document.body.append(box);
-    requestAnimationFrame(() => box.classList.add('show'));
-    if (opts.autoMs) box._h = setTimeout(dismiss, opts.autoMs);
-    return dismiss;
-  }
-
-  function greetingLine(lead, tail) {
-    const name = (state.firstName || '').trim();
-    return name ? `${lead}, ${name}${tail}` : `${lead}${tail}`;
-  }
-
-  async function maybeGreetReturning(lastVisit) {
-    if (!(state.records.length || state.bankRecords.length)) return;
-    if (!(await Store.getMeta('welcomedAt', null)))
-      await Store.setMeta('welcomedAt', new Date().toISOString());
-    const gapDays = lastVisit ? Math.floor((Date.now() - Date.parse(lastVisit)) / 86400000) : null;
-    const away = gapDays != null && gapDays >= 14 ? ' It\u2019s been a while.' : '';
-    const text = greetingLine('Welcome back', '.') + away;
-    mountTopGreeting(
-      (dismiss) => [
-        el('span', { class: 'greeting-text' }, text),
-        el(
-          'button',
-          {
-            class: 'btn sm ghost greeting-dismiss',
-            'aria-label': 'Dismiss',
-            onclick: dismiss,
-          },
-          icon(iconX())
-        ),
-      ],
-      { autoMs: 6000 }
-    );
-  }
-
-  async function maybeWelcomeFirstTime() {
-    if (await Store.getMeta('welcomedAt', null)) return false;
-    if (!(state.records.length || state.bankRecords.length)) return false;
-    await Store.setMeta('welcomedAt', new Date().toISOString());
-    // The name, when there is one, has already been learned during import from a
-    // Scotiabank card or bank statement, or set by hand in Data & settings, so a
-    // first-ever import can greet by name with no field to fill in. When none is
-    // known (for example an NCB-only import), the welcome simply drops the name
-    // rather than asking for it.
-    const heading = greetingLine('Welcome', ', your statements have loaded in.');
-    mountTopGreeting(
-      (dismiss) => [
-        el(
-          'div',
-          { class: 'greeting-body' },
-          el('span', { class: 'greeting-heading' }, heading),
-          el(
-            'p',
-            { class: 'muted small greeting-sub' },
-            'Everything stays on this device. Nothing leaves it.'
-          )
-        ),
-        el(
-          'button',
-          {
-            class: 'btn sm ghost greeting-dismiss',
-            'aria-label': 'Dismiss',
-            onclick: dismiss,
-          },
-          icon(iconX())
-        ),
-      ],
-      { autoMs: 7000 }
-    );
-    return true;
-  }
   /* ---- chrome ---- */
   function wireChrome() {
     const addInput = $('#add-input');
@@ -3064,6 +2134,27 @@ function bootUI() {
       else if (mq.addListener) mq.addListener(onMq);
     }
 
+    const privacyBtn = $('#privacy-btn');
+    const privacyLabel = $('#privacy-label', privacyBtn) || privacyBtn;
+    const paintPrivacy = () => {
+      const hidden = document.documentElement.dataset.privacy === 'on';
+      const action = hidden ? 'Show figures' : 'Hide figures';
+      privacyLabel.textContent = hidden ? 'Show' : 'Hide';
+      privacyBtn.setAttribute('aria-label', action);
+      privacyBtn.setAttribute('title', action);
+      privacyBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    };
+    privacyBtn.addEventListener('click', async () => {
+      const hidden = document.documentElement.dataset.privacy === 'on';
+      const next = hidden ? 'off' : 'on';
+      document.documentElement.dataset.privacy = next;
+      paintPrivacy();
+      render();
+      toast(next === 'on' ? 'Figures hidden.' : 'Figures visible.');
+      await Store.setMeta('privacy', next);
+    });
+    paintPrivacy();
+
     const themeBtn = $('#theme-btn');
     const themeLabel = $('#theme-label', themeBtn) || themeBtn;
     const paintTheme = () => {
@@ -3077,10 +2168,10 @@ function bootUI() {
       const cur = document.documentElement.dataset.theme || 'auto';
       const next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
       document.documentElement.dataset.theme = next;
-      await Store.setMeta('theme', next);
-      buildCategoryColours();
       paintTheme();
+      buildCategoryColours();
       if (state.records.length) render();
+      await Store.setMeta('theme', next);
     });
     paintTheme();
 
@@ -3197,6 +2288,23 @@ function bootUI() {
     trackUsage,
   });
 
+  ({
+    setGoal,
+    clearGoal,
+    restoreGoal,
+    buildNewEngineProgressCtx,
+    latestCompleteGoalMonth,
+    checkMonthlyGoalIfDue,
+    liveGoalProgress,
+  } = createGoalController({
+    state,
+    render,
+    classifiedBank,
+    overviewModel,
+    allLedgerMonths,
+    bankMoney,
+  }));
+
   // Proven, corpus-tested analysis models bound to live state (additive).
   // classifiedBank is now in scope (destructured above); todayISO anchors the
   // forecast/position/available-now models to real "today", never the period
@@ -3230,6 +2338,7 @@ function bootUI() {
     NET_WORTH_CLASSES,
     smoothScrollToEl,
     drillToAccount,
+    pickStatements,
   });
 
   async function saveDailyForecastSnapshot() {
@@ -3696,6 +2805,8 @@ function bootUI() {
       'theme',
       (state.cfg.display && state.cfg.display.theme) || 'auto'
     );
+    document.documentElement.dataset.privacy =
+      (await Store.getMeta('privacy', 'off')) === 'on' ? 'on' : 'off';
     buildCategoryColours();
     state.deviceId = await Store.getMeta('deviceId', null);
     if (!state.deviceId) {
