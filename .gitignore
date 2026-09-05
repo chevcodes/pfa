@@ -44,6 +44,7 @@ history-export*.json
 .DS_Store
 Thumbs.db
 *.log
+AGENTS.md
 
 # ---- Electron build artifacts ----
 *.exe
@@ -51,7 +52,8 @@ Thumbs.db
 *.AppImage
 *.deb
 *.msi
-*# ---- Local repository-assistant *utput ----
+
+# ---- Local repository-assistant Output ----
 # Generated evidence ma* contain source extracts, check ou*put and local paths.
 # It is recre*ted from the current working tree *nd must never be committed.
 .assis*ant/
