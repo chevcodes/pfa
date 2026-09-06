@@ -608,13 +608,6 @@
   }
 }
 
-/* cap the measure of explanatory prose only (not numbers/tags/tables). */
-.vm-detail-body,
-.vm-reconcile,
-.card > p.muted {
-  max-width: 68ch;
-}
-
 /* print: the content model must print solid and dark-on-white; glass never
    reaches print because every glass rule above is @media screen scoped, but
    assert the vm component stays legible if a card is ever included. */
@@ -1116,110 +1109,27 @@
 }
 
 /* =====================================================================
-   Privacy mode - blurs every figure on screen, without removing it from
-   the document. A blur (not a placeholder glyph or asterisks) is the
-   deliberate choice: it reads as "content genuinely present, out of
-   focus" rather than "something was redacted here", which announces
-   there is something worth digging for. Driven by a single root
-   attribute (:root[data-privacy='on']), set and persisted the same way
-   theme already is (document.documentElement.dataset.privacy,
-   Store.setMeta('privacy', ...)) - read anywhere via isPrivacyMode()
-   (shared-helpers.js). Screen-only; print and export are explicitly
-   exempted below, since privacy mode is a presentation state, never a
-   data-redaction one - "Copy summary" and the printed report both share
-   real figures on purpose and must never be touched by this.
+   Privacy mode - RETIRED from this file.
 
-   .num is this app's real, pre-existing, broadly-applied figure class
-   (table cells, .amt, .recent-amt, .foreign-amt, the print report's own
-   .rp .num). The remaining classes are figure-bearing surfaces that do
-   NOT carry .num themselves (standalone chart labels styled directly).
-   This list reflects every confirmed figure-bearing class found this
-   pass; it is not a claim of exhaustive coverage - a further figure
-   surface may still turn up later, most likely wherever a figure is
-   interpolated directly into a sentence (an insight or caption's own
-   template literal) rather than given its own dedicated element, which
-   this attribute-selector approach cannot reach at all.
+   What used to live here was a hand-maintained list of figure-bearing
+   classes blurred by :root[data-privacy='on'], plus two hardcoded bar
+   overrides. It could only ever reach a figure that happened to have its
+   own element AND happened to be on the list, so the Available-now
+   headline, every amount written into a sentence, every hover title and
+   every aria-label stayed fully legible with the figures "hidden" - and
+   nothing failed loudly when a new figure surface was added.
+
+   Privacy is now a product-level contract, not a stylesheet trick:
+     - application/core/privacy.js holds the state and the exempt paths
+       (print, "Copy summary", export);
+     - application/core/money-format.js is the ONE formatter every screen
+       and every analysis model calls, so a figure cannot be rendered
+       without passing the gate;
+     - shape-encoded figures declare themselves with markProportional()
+       at construction, and charts return one shared placeholder;
+     - the remaining presentation rules live in premium.css, which loads
+       after this file.
    ===================================================================== */
-:root[data-privacy='on'] .num,
-:root[data-privacy='on'] .hero-amount,
-:root[data-privacy='on'] .vm-number,
-:root[data-privacy='on'] .fact-value,
-:root[data-privacy='on'] .sec-value,
-:root[data-privacy='on'] .fc-axis-money,
-:root[data-privacy='on'] .fc-trough-label,
-:root[data-privacy='on'] .fc-ev-label,
-:root[data-privacy='on'] .tm-value {
-  filter: blur(7px);
-  /* A blurred figure that can still be selected and copied would defeat
-     the feature at the exact moment it matters most - a screenshot or a
-     copy-paste would still carry the real digits underneath the blur.
-     -webkit- prefix ordered before the unprefixed property, matching this
-     app's own established prefix convention (see backdrop-filter pairs
-     throughout this file). */
-  -webkit-user-select: none;
-  user-select: none;
-  transition: filter 0.15s ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  :root[data-privacy='on'] .num,
-  :root[data-privacy='on'] .hero-amount,
-  :root[data-privacy='on'] .vm-number,
-  :root[data-privacy='on'] .fact-value,
-  :root[data-privacy='on'] .sec-value,
-  :root[data-privacy='on'] .fc-axis-money,
-  :root[data-privacy='on'] .fc-trough-label,
-  :root[data-privacy='on'] .fc-ev-label,
-  :root[data-privacy='on'] .tm-value {
-    transition: none;
-  }
-}
-
-/* Proportional charts and bars encode a figure TWICE - once as printed
-   text (blurred above) and once as physical shape (bar height, tile
-   area, commitment-bar width). A dominant bar or tile still says "this
-   is clearly the biggest" even with every number blurred, which only
-   half-satisfies "hide the figures". The flow chart's bars and the
-   regular-commitments bar are pure CSS height/width percentages, so they
-   flatten here directly; !important is required because the real
-   value still lives as an inline style per element (flow-chart-
-   render.js, cards-render.js's renderCommitRow) and only an !important
-   author rule can override an inline style. Equalised to ONE flat value
-   (not just "shorter") so no relative comparison survives at all - an
-   honestly uninformative shape while privacy mode is on. The treemap's
-   tiles are real SVG width/height attributes, not CSS-driven, so its
-   equivalent fix lives in treemap-render.js itself (JS-side), not here. */
-:root[data-privacy='on'] .fl-bar {
-  height: 45% !important;
-}
-:root[data-privacy='on'] .commit-bar-fill {
-  width: 45% !important;
-}
-
-/* Print and export are deliberate acts of SHARING real figures on
-   purpose - privacy mode must never reach either. Matches the exact
-   pattern the vm component and the forecast chart already use for their
-   own print exemptions (both @media print, both !important) rather than
-   inventing a second convention. */
-@media print {
-  .num,
-  .hero-amount,
-  .vm-number,
-  .fact-value,
-  .sec-value,
-  .fc-axis-money,
-  .fc-trough-label,
-  .fc-ev-label,
-  .tm-value {
-    filter: none !important;
-    -webkit-user-select: auto !important;
-    user-select: auto !important;
-  }
-  .fl-bar,
-  .commit-bar-fill {
-    height: revert !important;
-    width: revert !important;
-  }
-}
 
 /* =====================================================================
    Keep the support area (Data & settings) quiet on every screen. It is a

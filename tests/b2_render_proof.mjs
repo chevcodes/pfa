@@ -122,6 +122,7 @@ const provenModels = {
   },
 };
 let renderCalls = 0;
+let authoredAt = Date.UTC(2026, 6, 1);
 const deps = {
   state,
   el,
@@ -133,7 +134,7 @@ const deps = {
   render: () => {
     renderCalls++;
   },
-  makeIntention,
+  makeIntention: (spec) => makeIntention({ ...spec, now: new Date(authoredAt++).toISOString() }),
   categorySpend: () => 30000,
   iconRepeat: () => '',
   iconInfo: () => '',
@@ -145,7 +146,7 @@ console.log('='.repeat(72));
 console.log(' B2 RENDER PROOF - card always renders, row carries id, save/remove wire');
 console.log('='.repeat(72));
 
-(async () => {
+await (async () => {
   // 1) with NO intentions, the card STILL renders with an add form (the way in)
   let card = renderIntentions();
   note(!!card, 'card renders even with zero intentions');
@@ -194,7 +195,6 @@ console.log('='.repeat(72));
   // 4) EDIT via the form (same category, new amount) -> new record, resolver picks new
   //    (simulate a later authoring time so the tiebreak is monotonic)
   const before = (await store.all()).length;
-  // patch makeIntention call path by advancing time: set amount 50000
   amtInput.value = '50000';
   await addBtn.attrs.onclick();
   note(

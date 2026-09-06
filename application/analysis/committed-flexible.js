@@ -27,6 +27,7 @@
  *  flexible spending back to whether COMMITMENTS themselves moved this period.
  * ======================================================================== */
 import { detectRecurring, twoWayKeys, resolveOpts } from './commitment-income.js';
+import { makeMoney } from '../core/money-format.js';
 
 function ymOf(iso) {
   return String(iso || '').slice(0, 7);
@@ -199,10 +200,13 @@ function buildReconciling({ flexiblePool, flexibleSpent, flexibleKept, commitMov
   const spentAll = flexiblePool > 0 && flexibleKept <= 0;
   const spentMost = flexiblePool > 0 && flexibleSpent >= flexiblePool * 0.9 && flexibleKept > 0;
   let core;
+  // Same words as the split above: money is SPENT or it is NOT. The
+  // prose used to say "kept", which read as money deliberately set aside
+  // while the figure it described was only a residual.
   if (flexiblePool <= 0) core = 'commitments used up everything that came in this period';
-  else if (spentAll) core = 'all of your discretionary money was spent';
-  else if (spentMost) core = 'most of your discretionary money was spent';
-  else core = 'some of your discretionary money was kept';
+  else if (spentAll) core = 'all of the money you had a choice about went out';
+  else if (spentMost) core = 'most of the money you had a choice about went out';
+  else core = 'some of the money you had a choice about was not spent';
   let tail = '';
   if (commitMove === 'higher')
     tail = ', and commitments were higher than usual this period - worth checking why';
@@ -218,33 +222,28 @@ function buildReconciling({ flexiblePool, flexibleSpent, flexibleKept, commitMov
  *  the same frozen shape Overview uses (pronoun-free tags; detail may say you).
  * ======================================================================== */
 export function buildCommittedFlexibleModel(result, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
+  // One formatter for the whole app (core/money-format.js): the same output
+  // this block produced, plus the privacy gate every figure must pass.
+  const money = makeMoney(cfg);
   const r = result;
   const pct = r.flexiblePool > 0 ? Math.round((r.flexibleSpent / r.flexiblePool) * 100) : 0;
   return {
     period: r.period,
     lead: {
-      label: 'Discretionary this period',
+      // Says what the figure IS. "Discretionary this period" left a reader to
+      // guess whether it was money available or money spent - the tag beside
+      // it ("90% of it spent") only makes sense once that is settled.
+      label: 'Left after committed spending',
       amount: r.flexiblePool,
       amountText: money(r.flexiblePool),
       tag: r.flexiblePool > 0 ? `${pct}% of it spent` : 'nothing discretionary',
       tone: r.reconciling.tone,
-      detail: `Of the ${money(r.income)} that came in, ${money(r.committed)} was already committed to regular obligations, leaving ${money(r.flexiblePool)} of discretionary money - yours to spend or keep by choice. ${money(r.flexibleSpent)} of that was spent and ${money(r.flexibleKept)} was kept.`,
+      detail: `Of the ${money(r.income)} that came in, ${money(r.committed)} went on regular commitments, leaving ${money(r.flexiblePool)} you had a choice about. ${money(r.flexibleSpent)} of that was spent and ${money(r.flexibleKept)} was not.`,
     },
     committed: {
-      label: 'Already spoken for',
+      // Both of these are SPENDING, and saying so is the difference between
+      // a split a reader can act on and two abstract nouns.
+      label: 'Committed spending',
       amount: r.committed,
       amountText: money(r.committed),
       tag:
@@ -257,12 +256,31 @@ export function buildCommittedFlexibleModel(result, cfg = {}) {
       detail: `Regular commitments detected from your history (${r.committedKeyCount} payee${r.committedKeyCount === 1 ? '' : 's'}). Typical for a period is about ${money(r.typicalCommitted)}.`,
     },
     flexibleSpent: {
-      label: 'Discretionary spent',
+      label: 'Discretionary spending',
       amount: r.flexibleSpent,
       amountText: money(r.flexibleSpent),
       tag: `${money(r.breakdown.cardSpend)} card`,
       tone: 'neutral',
-      detail: `Made up of ${money(r.breakdown.cardSpend)} on the card and ${money(r.breakdown.otherFlexibleOut)} in cash, one-off payments and transfers to people.`,
+      detail: `${money(r.breakdown.cardSpend)} on the card, plus ${money(r.breakdown.otherFlexibleOut)} in cash, one-off payments and transfers out. Money you moved into savings or an investment counts here too - it left the account, so it cannot also be counted as not spent.`,
+    },
+    // All three labels answer the SAME question - was this money spent? - so
+    // the split reads in one pass: committed spending, discretionary
+    // spending, and the part that was not spent at all. "Kept" and then
+    // "Left over" both failed that test: each named a thing rather than
+    // continuing the sentence the other two had started, so a reader had to
+    // stop and work out what it was measured against.
+    //
+    // It is a RESIDUAL, which is also why it is not called "saved": nothing
+    // here was deliberately set aside, and money that genuinely was set aside
+    // (a transfer into an investment) LEFT the account and is counted as
+    // discretionary spending above.
+    flexibleKept: {
+      label: 'Not spent',
+      amount: r.flexibleKept,
+      amountText: money(r.flexibleKept),
+      tag: r.flexibleKept > 0 ? 'still in the account' : 'nothing left',
+      tone: 'neutral',
+      detail: `What was still in the account at the end of the period, after commitments and everything else that went out. This is a leftover, not savings - money moved into a savings or investment account left the account and is counted as discretionary spending.`,
     },
     reconciling: r.reconciling, // the mandatory tie-back line
   };

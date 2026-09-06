@@ -1,3 +1,4 @@
+import { chartInfo } from './decision-header.js';
 /*
  * ahead-render.js  -  the "Ahead" destination: Coming Up (Round 2) and Where
  * you're headed - goal-setting, the scenario tool, the monthly follow-up
@@ -42,7 +43,9 @@ import {
   analyseIncomePattern,
   analyseBankActivity,
 } from '../analysis/bank-analysis.js';
-import { formatDisplayDate, requireCtx, addDaysIso } from '../core/shared-helpers.js';
+import { formatDisplayDate, requireCtx, addDaysIso,
+  markProportional,
+} from '../core/shared-helpers.js';
 import { pairCards } from './chart-helpers.js';
 // Goal-system migration, now complete: the PROVEN goals engine
 // (goalProgress/buildGoalModel/resolveSafetyBoundary/safeContribution) is
@@ -249,28 +252,13 @@ export function createAheadRenderer(ctx) {
   function renderNotReady(monthsSoFar, minMonths) {
     const sec = el('section', { class: 'card empty' });
     const lines = el('div', { class: 'empty-lines' });
-    // The cash forecast is built on a bank-derived cash position - no amount
-    // of card history can ever satisfy this specific readiness check, so a
-    // card-only person seeing "not enough history yet" would reasonably read
-    // that as "keep importing card statements", which is not true. Stated
-    // plainly instead when there is genuinely no bank history at all, rather
-    // than the generic month-count message meant for someone who DOES have
-    // bank statements building toward the threshold.
     if (monthsSoFar === 0) {
       lines.append(
-        el(
-          'p',
-          { class: 'muted' },
-          'This needs a bank statement - the cash forecast projects your bank balance forward, which a card statement alone cannot provide.'
-        )
+        chartInfo(el, 'Bank statement needed', 'Cash forecasts need a bank balance. Add a bank statement to begin.')
       );
     } else {
       lines.append(
-        el(
-          'p',
-          { class: 'muted' },
-          `${monthsSoFar} month${monthsSoFar === 1 ? '' : 's'} of bank history so far. A forecast appears once there are at least ${minMonths}.`
-        )
+        el('progress', { max: minMonths, value: monthsSoFar, 'aria-label': `${monthsSoFar} of ${minMonths} bank months` })
       );
     }
     sec.append(
@@ -286,11 +274,7 @@ export function createAheadRenderer(ctx) {
     const sec = el('section', { class: 'card empty' });
     const lines = el('div', { class: 'empty-lines' });
     lines.append(
-      el(
-        'p',
-        { class: 'muted' },
-        'Your statements do not carry a readable closing balance yet, so there is nothing to project forward.'
-      )
+      chartInfo(el, 'Closing balance needed', 'Add a bank statement with a readable closing balance.')
     );
     sec.append(
       el('div', { class: 'empty-icon', html: iconCal() }),
@@ -404,13 +388,15 @@ export function createAheadRenderer(ctx) {
             { class: 'up-pay-amt num ' + (isIncome ? 'credit' : 'strong') },
             (isIncome ? '+' : '-') + bankMoney(Math.abs(r.amount))
           ),
-          el(
-            'span',
-            { class: 'up-pay-bar' },
-            el('span', {
-              class: 'up-pay-bar-fill',
-              style: `width:${width}%;background:${colour}`,
-            })
+          markProportional(
+            el(
+              'span',
+              { class: 'up-pay-bar' },
+              el('span', {
+                class: 'up-pay-bar-fill',
+                style: `width:${width}%;background:${colour}`,
+              })
+            )
           ),
         ];
         block.append(

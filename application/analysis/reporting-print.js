@@ -36,6 +36,7 @@ import {
   addDaysIso,
   isoDay,
   detectSustainedRise,
+  withExactFigures,
 } from '../core/shared-helpers.js';
 import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
@@ -148,11 +149,18 @@ export function createPrintReports(ctx) {
       )
     );
     try {
-      const node = overviewView
-        ? renderOverviewReport(document, buildOverviewPrintModel())
-        : accountsView
-          ? renderBankReport(document, buildBankPrintModel())
-          : renderReport(document, buildPrintModel());
+      // A printed report is a deliberate act of sharing REAL figures, so the
+      // whole model build runs with the privacy gate suspended (privacy.js).
+      // Private view is a screen state, never a data redaction - this is the
+      // one place that exemption is declared, rather than each formatter
+      // re-asserting it for itself.
+      const node = withExactFigures(() =>
+        overviewView
+          ? renderOverviewReport(document, buildOverviewPrintModel())
+          : accountsView
+            ? renderBankReport(document, buildBankPrintModel())
+            : renderReport(document, buildPrintModel())
+      );
       host.appendChild(node);
     } catch (err) {
       console.error(err);

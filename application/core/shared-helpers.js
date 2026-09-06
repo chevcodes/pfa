@@ -1,3 +1,15 @@
+import { figuresHidden } from './privacy.js';
+export {
+  figuresHidden,
+  privateViewOn,
+  withExactFigures,
+  markProportional,
+  hiddenChartLabel,
+  screenReaderFigure,
+  HIDDEN_WORD,
+  HIDDEN_SENTENCE,
+} from './privacy.js';
+
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 export { MONTHS };
@@ -68,25 +80,13 @@ export function capitaliseFirst(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-// Shared money-formatting core, used by both money0 (app.js, card side) and
-// bankMoney (accounts-render.js, bank side, which layers a currency-prefix
-// branch on top). Previously each independently re-derived the identical
-// locale/decimals/negative-sign/toLocaleString logic; bankMoney additionally
-// guarded with Number(n) || 0 so a bad amount rendered as symbol+0.00, while
-// money0 did not, so the identical bad amount would have rendered as
-// "$NaN" - a small, silent divergence the duplication itself produced. The
-// shared core applies that same NaN-safe guard everywhere now.
-export function formatMoney(n, symbol, locale, decimals) {
-  const neg = n < 0;
-  return (
-    (neg ? '-' : '') +
-    symbol +
-    Math.abs(Number(n) || 0).toLocaleString(locale, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })
-  );
-}
+// Shared money-formatting core, used by money0 (app-controller, card side)
+// and bankMoney (accounts-render, bank side, which layers a currency-prefix
+// branch on top). Now a thin re-export of THE formatter
+// (core/money-format.js), which applies the privacy gate before it formats,
+// so a figure cannot reach the screen without passing it. Kept here under its
+// original name so every existing call site is unchanged.
+export { formatMoney, formatMoneyExact, makeMoney, makeMoneyShort } from './money-format.js';
 
 // Whether the person has asked the system to minimise motion. Guarded so this
 // module stays importable in Node (tests) where window/matchMedia are absent.
@@ -98,18 +98,12 @@ export function prefersReducedMotion() {
   );
 }
 
-// Whether privacy mode is currently on - a screen-presentation state only
-// (blur), never a data-redaction one; export, print and "Copy summary"
-// all read the real, unblurred figures regardless of this. Read directly
-// from the root element's dataset, the same mechanism theme already uses
-// (document.documentElement.dataset.theme), so no ctx wiring is needed at
-// any call site - any render file can call this the same way several
-// already call document.getElementById directly (focusTransactionRow).
-// Guarded for Node/test environments exactly like prefersReducedMotion.
+// Whether figures are currently hidden. Delegates to the privacy contract
+// (core/privacy.js) so this name, the money formatter and every chart all
+// read ONE switch, and so the deliberate exact-figure paths (print, copy,
+// export) suspend it in one place rather than each re-asserting an exemption.
 export function isPrivacyMode() {
-  return (
-    typeof document !== 'undefined' && document.documentElement.dataset.privacy === 'on'
-  );
+  return figuresHidden();
 }
 // The ONE smooth-scroll helpers every drill-down, "see all" and the new
 // back-to-top button now share. Previously the same

@@ -243,6 +243,7 @@ export function createProvenModels(ctx) {
       cardStatements: state._cardStatements || [],
       cfg: state.cfg,
       asOf,
+      fx: state.fxRates || null,
     });
     const nw = recordedNetWorth({
       reconciled: cd,

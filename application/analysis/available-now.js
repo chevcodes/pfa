@@ -22,29 +22,16 @@
  *  person as "you". Structural labels use "my" but those live in the render,
  *  not here.
  * ======================================================================== */
+import { makeMoney } from '../core/money-format.js';
 
-// Money formatter from config (JMD / $ / en-JM by default). Intl is available
-// in the browser and in Node, so the same formatting is exercised by the proof.
-export function makeMoney(cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  const code = c.code || 'JMD';
-  const locale = c.locale || 'en-JM';
-  const decimals = c.decimals == null ? 2 : c.decimals;
-  let fmt;
-  try {
-    fmt = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: code,
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    });
-  } catch (_) {
-    fmt = {
-      format: (n) => (c.symbol || '$') + Number(n || 0).toFixed(decimals),
-    };
-  }
-  return (n) => fmt.format(Number(n || 0));
-}
+// Money formatter from config (JMD / $ / en-JM by default). Delegates to THE
+// formatter (core/money-format.js) so this module's amountText and its "why"
+// sentences pass the same privacy gate as every other figure in the app.
+// Re-exported under its original name; existing call sites and the proof are
+// unchanged.
+// Imported AND re-exported: `export ... from` alone creates no local binding,
+// and this module calls makeMoney itself further down.
+export { makeMoney };
 
 function dayOrdinal(iso) {
   const d = +String(iso || '').slice(8, 10) || 0;

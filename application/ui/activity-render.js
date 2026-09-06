@@ -1,3 +1,4 @@
+import { buildDisclosure } from './decision-header.js';
 /*
  * activity-render.js  -  the "Activity" surface's distinctive analysis cards,
  * rendered from the PROVEN models via the shared number -> tag -> dropdown
@@ -35,7 +36,6 @@ import {
 import {
   reviewReasonText,
   appendExpandable,
-  renderShareBar,
   renderInsightList,
 } from '../analysis/reporting-core.js';
 import {
@@ -57,12 +57,26 @@ import {
 } from '../analysis/bank-analysis.js';
 import { createTreemapRenderer, adaptSpendBreakdownForTreemap } from './treemap-render.js';
 import { pairCards } from './chart-helpers.js';
+import { markProportional } from '../core/privacy.js';
+import { staggerIn } from './motion.js';
+import { renderDonutChart, chartTooltip } from './chart-surface.js';
 import { makeRenderIntentions } from './intentions-section.js';
+import { createDecisionHeader } from './decision-header.js';
 
 // Session-only Transactions-tab search text, the same module-scope pattern
 // ahead-render.js uses for its own draft state. Folded into activityTabSignature
 // so a keystroke rebuilds the ledger; reset naturally on reload.
 let _txSearch = '';
+// Column sort for the merged ledger. Module scope for the same reason
+// _txSearch is: it is a view preference, not app data, and it resets on
+// reload. Default is date-descending, which is what the list always did.
+let _txSort = { key: 'date', dir: 'desc' };
+// An EXPLICIT collapse. A search (and a focused row) auto-expands the ledger
+// so no match is hidden past the tenth row, but that override also beat the
+// user's own "Hide": the collapse re-rendered and the auto-expand immediately
+// undid it, so the button appeared dead. Reset whenever the search changes,
+// so a new search still opens fully.
+let _txCollapsed = false;
 
 export function createActivityRenderer(ctx) {
   requireCtx(
@@ -191,6 +205,7 @@ export function createActivityRenderer(ctx) {
     iconRepeat,
     toast,
   });
+  const { renderDecisionHeader } = createDecisionHeader({ el });
   const { renderTreemapCard } = createTreemapRenderer({
     el,
     money0,
@@ -217,34 +232,6 @@ export function createActivityRenderer(ctx) {
       target
     );
   }
-  /* ---- shared content-model component: number -> tag -> dropdown ---- */
-  function renderVM(m, opts = {}) {
-    if (!m) return null;
-    const kids = [
-      el(
-        'div',
-        { class: 'vm-lead' },
-        el(
-          'div',
-          { class: 'vm-number' + (opts.lead ? ' lg' : '') },
-          m.amountText != null ? m.amountText : ''
-        ),
-        m.label ? el('div', { class: 'vm-label' }, m.label) : null
-      ),
-    ];
-    if (m.tag) kids.push(el('span', { class: 'vm-tag tone-' + (m.tone || 'neutral') }, m.tag));
-    if (m.detail)
-      kids.push(
-        el(
-          'details',
-          { class: 'vm-detail' },
-          el('summary', {}, 'Why'),
-          el('div', { class: 'vm-detail-body' }, m.detail)
-        )
-      );
-    return el('div', { class: 'vm' }, ...kids);
-  }
-
   /* ===================================================================
    * 1) COMMITTED vs FLEXIBLE - the distinctive lens. Reconciling line is
    *    ALWAYS attached beneath the split, never omitted.
@@ -254,40 +241,114 @@ export function createActivityRenderer(ctx) {
     if (!p || !p.from || !p.to) return null;
     const m = provenModels.committedFlexibleFor({ from: p.from, to: p.to });
     if (!m) return null;
-    const sec = el('section', { class: 'card lead activity-primary' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Committed and discretionary')
-      )
-    );
-    // All three figures - the headline total plus its two components - now
-    // sit in ONE flexible row (.vm-row, glass.css), the same fix already
-    // applied to Position's Cash and debt card. Previously the lead figure
-    // sat full-width above a 2-up pair beneath it, splitting three genuine
-    // peer figures across two visual tiers for no real reason; .vm-row holds
-    // however many cards are given to it as equal columns and still stacks
-    // fully below 1000px, so this is a direct structural match to Cash and
-    // debt, not a new pattern. The reconciling line stays exactly where it
-    // was, full-width beneath the row - it reconciles all three figures
-    // together, not just one pair, so it belongs anchored under the whole
-    // row regardless of how many columns sit above it.
-    const row = el('div', { class: 'vm-row' });
-    row.append(renderVM(m.lead));
-    row.append(renderVM(m.committed));
-    row.append(renderVM(m.flexibleSpent));
-    sec.append(row);
-    if (m.reconciling && m.reconciling.text) {
-      sec.append(
-        el(
-          'div',
-          { class: 'vm-reconcile tone-' + (m.reconciling.tone || 'neutral') },
-          m.reconciling.text
-        )
-      );
+
+    // ONE primary figure, not three. This card used to print the discretionary
+    // pool, the committed total and the discretionary spent as three equal
+    // headline numbers in one row - three answers to a question a person only
+    // asked once, each as loud as the others, so nothing led. The pool is the
+    // decision-useful figure (it is what is left to choose about); the other
+    // two are its working and now sit at the supporting size behind their own
+    // disclosure, exactly as Overview's cash-on-hand and committed layers do.
+    const lead = m.lead || {};
+    const tags = [];
+    // The reconciling note below already says how the discretionary pool was
+    // used ("most of the money you had a choice about went out"), so the tag
+    // repeating it as "90% of it spent" said one fact twice in two registers.
+    // The tag now carries what the note cannot: how commitments themselves
+    // moved, which is the part a person can act on.
+    const commitTag = m.committed && m.committed.tag;
+    if (commitTag && commitTag !== 'usual') {
+      tags.push({ text: `commitments ${commitTag}`, tone: m.committed.tone || 'neutral' });
+    } else if (lead.tag) {
+      tags.push({ text: lead.tag, tone: lead.tone || 'neutral' });
     }
-    return sec;
+
+    const why = [];
+    if (lead.detail) why.push(el('p', {}, lead.detail));
+
+    // All THREE slices of the ring, so nothing the picture names is left
+    // without a definition. The third slice was previously drawn and never
+    // explained, which left the only nearby sentence (discretionary
+    // spending's) looking like it described it.
+    const support = [m.committed, m.flexibleSpent, m.flexibleKept].filter(Boolean).map((c) => ({
+      text: c.amountText,
+      label: c.label,
+      tag: c.tag,
+      tone: c.tone,
+      detail: c.detail,
+    }));
+
+    // The period's whole story is a genuine part-to-whole - everything that
+    // came in either went on commitments, went out by choice, or was still
+    // there at the end. Three segments that provably sum to the income is
+    // exactly the shape a ring is for, and it gives the headline figure
+    // something to be a part OF. Labels come from the model so the ring, the
+    // disclosure rows and the prose can never drift apart.
+    const committedAmt = m.committed ? Number(m.committed.amount) || 0 : 0;
+    const spentAmt = m.flexibleSpent ? Number(m.flexibleSpent.amount) || 0 : 0;
+    const poolAmt = Number(lead.amount) || 0;
+    const keptAmt = Math.max(0, poolAmt - spentAmt);
+    const incomeAmt = committedAmt + poolAmt;
+    const ring =
+      incomeAmt > 0
+        ? renderDonutChart(
+            { el, money0 },
+            {
+              label: 'How this period’s money was used',
+              total: incomeAmt,
+              money: money0,
+              segments: [
+                {
+                  label: (m.committed && m.committed.label) || 'Committed spending',
+                  amount: committedAmt,
+                  tone: 'committed',
+                },
+                {
+                  label: (m.flexibleSpent && m.flexibleSpent.label) || 'Discretionary spending',
+                  amount: spentAmt,
+                  tone: 'out',
+                },
+                {
+                  label: (m.flexibleKept && m.flexibleKept.label) || 'Not spent',
+                  amount: keptAmt,
+                  tone: 'in',
+                },
+              ],
+              // Compact, like every other ring centre. The exact figure at
+              // full precision is wider than the ring's own hole on a phone,
+              // so it collided with the track it sits inside; the legend
+              // beside it carries every amount in full.
+              centre: { value: moneyShort(incomeAmt), label: 'came in' },
+            }
+          )
+        : null;
+
+    return renderDecisionHeader({
+      id: 'activity-header',
+      class: 'view-activity activity-primary',
+      question: 'Where did this period\'s money go?',
+      figure: { text: lead.amountText != null ? lead.amountText : '' },
+      meaning: lead.label || 'Left after committed spending',
+      tags,
+      // The reconciling line is NOT optional and never collapses: it is the
+      // sentence that ties the three figures together honestly, so it stays on
+      // the surface as the header's always-visible note.
+      note:
+        m.reconciling && m.reconciling.text
+          ? { text: m.reconciling.text, tone: m.reconciling.tone || 'neutral' }
+          : null,
+      why,
+      support,
+      // Not "committed and discretionary": the split also contains what was
+      // KEPT, which is not spending at all. The disclosure is named for what
+      // it actually holds - every use the period's money was put to.
+      supportLabel: 'How the money was used',
+      extra: ring,
+      // The ring is compact, so it sits beside the figure and its working on
+      // a wide card instead of under them - the lead card is full width and
+      // the stacked version left its whole right-hand side empty.
+      extraAside: true,
+    });
   }
 
   /* ===================================================================
@@ -359,16 +420,16 @@ export function createActivityRenderer(ctx) {
     }
 
     // The ranked per-category list (and its merchant drill-down) has been
-    // removed. Its two roles now live elsewhere: the trend-vs-prior signal
-    // moved INTO each treemap tile as a shape+colour marker (see
-    // treemap-render.js), reusing the SAME guarded comparison via the
-    // shared describeComparisonText/comparisonTone exports (spend-
-    // breakdown.js) - never a second, independently-worded copy. The share
-    // percentage was dropped entirely: the treemap's own relative tile area
-    // already communicates a category's share of the total more honestly
-    // than a printed number can. Per-merchant drill-down is unaffected -
-    // clicking a category tile still opens that category's transactions
-    // (drillToTransactions, below).
+    // removed. Its roles now live on the treemap itself: the trend-vs-prior
+    // signal is an arrow on each tile's share line and the tone behind it,
+    // and the share percentage is printed there too - the tile area says
+    // which category is bigger, the number says by how much, which area
+    // alone cannot. Both reuse the SAME guarded comparison via the shared
+    // describeComparisonText/comparisonTone exports (spend-breakdown.js),
+    // never a second, independently-worded copy. Merchant detail is on the
+    // tile as well, revealed while a category is hovered or focused.
+    // Per-merchant drill-down is unaffected - clicking a category tile still
+    // opens that category's transactions (drillToTransactions, below).
     return sec;
   }
 
@@ -516,8 +577,138 @@ export function createActivityRenderer(ctx) {
     return n;
   }
 
+
+  /*
+   * WHAT IS THIS LIST NARROWED TO, and how do I get out of it.
+   *
+   * Every drill in the app lands here having quietly narrowed the ledger, and
+   * the only thing that ever said so was a card head still reading "All
+   * transactions" over ten Groceries rows. The one escape was a "Show all"
+   * button buried inside a note about bank statements, which cleared
+   * EVERYTHING - so removing one facet of a two-facet drill was impossible.
+   *
+   * Each active facet is named and individually removable, with a single
+   * clear-all beside them.
+   */
+  function activeFilterChips() {
+    const f = state.filter || {};
+    const bf = state.bankFilter || {};
+    const chips = [];
+    const add = (label, clear) => chips.push({ label, clear });
+
+    if (f.category && f.category !== 'all') {
+      add(`Category: ${f.category}`, () => applyFilter({ category: 'all' }));
+    }
+    if (f.merchant) {
+      add(`Place: ${f.merchantLabel || f.merchant}`, () =>
+        applyFilter({ merchant: '', merchantLabel: '' })
+      );
+    }
+    if (f.kind && f.kind !== 'all') add(`Type: ${f.kind}`, () => applyFilter({ kind: 'all' }));
+    if (f.reviewOnly) add('Needs review', () => applyFilter({ reviewOnly: false }));
+    if (f.foreignOnly) add('Foreign only', () => applyFilter({ foreignOnly: false }));
+    if (f.min != null || f.max != null) {
+      add('Amount range', () => applyFilter({ min: null, max: null }));
+    }
+    if (f.search) add(`Matching: ${f.search}`, () => applyFilter({ search: '' }));
+    if (bf.payeeKey) {
+      add(`Payee: ${bf.payeeLabel || bf.payeeKey}`, () => {
+        state.bankFilter.payeeKey = '';
+        state.bankFilter.payeeLabel = '';
+        render();
+      });
+    }
+    if (bf.kind && bf.kind !== 'all') {
+      add(`Bank type: ${bf.kind}`, () => {
+        state.bankFilter.kind = 'all';
+        render();
+      });
+    }
+    if (state.bankAccount && state.bankAccount !== 'all') {
+      add('One account', () => {
+        state.bankAccount = 'all';
+        render();
+      });
+    }
+    if (_txSearch.trim()) {
+      add(`Search: ${_txSearch.trim()}`, () => {
+        _txSearch = '';
+        render();
+      });
+    }
+    return chips;
+  }
+
+  function clearEveryFilter() {
+    trackUsage('activity-clear-ledger-filters');
+    _txSort = { key: 'date', dir: 'desc' };
+    _txCollapsed = false;
+    clearFilters();
+    clearBankFilters();
+    _txSearch = '';
+    state.bankAccount = 'all';
+    state.showAllTx = false;
+    state.bankShowAllTx = false;
+    render();
+  }
+
+  // The caveat that used to BE the clear affordance. It explains why one
+  // ledger is missing from a narrowed list; it is not the way out.
+  function ledgerCaveat() {
+    if (bankRowsInapplicable()) {
+      return 'Bank transactions are hidden: a category, place or review filter has nothing to match on a bank statement.';
+    }
+    if (cardRowsInapplicable()) {
+      return 'Card transactions are hidden: a payee filter has nothing to match on a card statement.';
+    }
+    return null;
+  }
+
+  function renderFilterBar() {
+    const chips = activeFilterChips();
+    if (!chips.length) return null;
+    const bar = el('div', {
+      class: 'txfilter',
+      role: 'region',
+      'aria-label': 'Filters applied to these transactions',
+    });
+    const list = el('div', { class: 'txfilter-chips' });
+    for (const chip of chips) {
+      list.append(
+        el(
+          'button',
+          {
+            type: 'button',
+            class: 'txfilter-chip',
+            'aria-label': `Remove filter: ${chip.label}`,
+            onclick: () => {
+              trackUsage('activity-clear-one-facet');
+              chip.clear();
+            },
+          },
+          el('span', {}, chip.label),
+          el('span', { class: 'txfilter-x', 'aria-hidden': 'true' }, '\u00d7')
+        )
+      );
+    }
+    bar.append(list);
+    bar.append(
+      el(
+        'button',
+        { type: 'button', class: 'btn sm ghost txfilter-clear', onclick: clearEveryFilter },
+        'Clear all'
+      )
+    );
+    const caveat = ledgerCaveat();
+    if (caveat) bar.append(el('p', { class: 'txfilter-caveat muted small' }, caveat));
+    return bar;
+  }
+
   function ledgerIsNarrowed() {
-    return ledgerIsNarrowedPure(state);
+    // _txSearch is this tab's OWN search box and lives in module scope, so the
+    // shared state-based check cannot see it. Without it the card head read
+    // "All transactions" over a search showing zero rows.
+    return ledgerIsNarrowedPure(state) || _txSearch.trim() !== '';
   }
 
   // Custom label names a transaction belongs to, lowercased, for search matching
@@ -574,91 +765,108 @@ export function createActivityRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconList()), 'All transactions')
+        el(
+          'h3',
+          { class: 'card-title' },
+          icon(iconList()),
+          // The head used to read "All transactions" over a ten-row slice of
+          // one category. It now says which it is.
+          ledgerIsNarrowed() ? 'Matching transactions' : 'All transactions'
+        )
       )
     );
 
-    if (bankRowsInapplicable()) {
-      sec.append(
-        el(
-          'div',
-          { class: 'attn-item', style: 'padding:6px 0' },
-          el('span', { class: 'attn-dot review' }),
-          el(
-            'div',
-            { class: 'attn-body' },
-            "Bank transactions aren't shown while filtering by category, merchant, foreign-only or review - those don't apply to bank statements."
-          ),
-          el(
-            'button',
-            {
-              class: 'btn sm ghost',
-              onclick: () => {
-                trackUsage('activity-clear-ledger-filters');
-                clearFilters();
-                clearBankFilters();
-                state.showAllTx = false;
-                state.bankShowAllTx = false;
-                render();
-              },
-            },
-            'Show all transactions'
-          )
-        )
-      );
-    } else if (cardRowsInapplicable()) {
-      sec.append(
-        el(
-          'div',
-          { class: 'attn-item', style: 'padding:6px 0' },
-          el('span', { class: 'attn-dot review' }),
-          el(
-            'div',
-            { class: 'attn-body' },
-            "Card transactions aren't shown while filtering by payee - cards have no equivalent payee identity to match against."
-          ),
-          el(
-            'button',
-            {
-              class: 'btn sm ghost',
-              onclick: () => {
-                trackUsage('activity-clear-ledger-filters');
-                clearFilters();
-                clearBankFilters();
-                state.showAllTx = false;
-                state.bankShowAllTx = false;
-                render();
-              },
-            },
-            'Show all transactions'
-          )
-        )
-      );
-    } else if (ledgerIsNarrowed()) {
-      sec.append(
-        el(
-          'div',
-          { class: 'attn-item', style: 'padding:6px 0' },
-          el('span', { class: 'attn-dot review' }),
-          el('div', { class: 'attn-body' }, 'Showing a filtered slice of your transactions.'),
-          el(
-            'button',
-            {
-              class: 'btn sm ghost',
-              onclick: () => {
-                trackUsage('activity-clear-ledger-filters');
-                clearFilters();
-                clearBankFilters();
-                state.showAllTx = false;
-                state.bankShowAllTx = false;
-                render();
-              },
-            },
-            'Show all transactions'
-          )
-        )
-      );
+    const filterBar = renderFilterBar();
+    if (filterBar) sec.append(filterBar);
+
+    // Escape clears the whole narrow from anywhere in this card - the way out
+    // of a filtered list should not require finding a control. Ignored while
+    // a row detail is open (that Escape closes the row first) and while a
+    // text field has focus, so it never eats a field's own Escape.
+    if (filterBar) {
+      sec.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || e.defaultPrevented) return;
+        const t = e.target;
+        if (t && t.closest && t.closest('.tx-detail, input, textarea, select')) return;
+        e.preventDefault();
+        clearEveryFilter();
+      });
     }
+
+    // Nothing matched. A bare table head over an empty body reads as a
+    // rendering fault; this says what happened and offers the way back in the
+    // same place the filters are named.
+    if (!merged.length) {
+      sec.append(
+        el(
+          'div',
+          { class: 'tx-empty' },
+          el('p', { class: 'tx-empty-lead' }, 'No transactions match these filters.'),
+          el(
+            'button',
+            { type: 'button', class: 'btn sm', onclick: clearEveryFilter },
+            'Clear all filters'
+          )
+        )
+      );
+      return sec;
+    }
+
+    /*
+     * WHAT THIS COLUMN SET SHOULD BE, decided from the rows actually in view.
+     *
+     * Ledger: a filtered list is very often one ledger end to end (a category
+     * drill can only match card rows), and a column repeating "Card" forty
+     * times is pure noise. It is dropped when there is nothing to tell apart,
+     * and the single value is said once beneath the table instead.
+     *
+     * Currency: the header hard-coded the base currency code while a card
+     * ledger can hold foreign rows, so a mixed column claimed to be all JMD.
+     * The code is only printed when every row in view genuinely is that code.
+     */
+    const ledgerLabelOf = (m) =>
+      m.ledger === 'card'
+        ? 'Card'
+        : m.row.account
+          ? `Bank \u00b7 \u2026${String(m.row.account).slice(-4)}`
+          : 'Bank';
+    const ledgerLabels = [...new Set(merged.map(ledgerLabelOf))];
+    const showLedgerCol = ledgerLabels.length > 1;
+    const baseCode = state.cfg.currency.code;
+    const allBaseCurrency = merged.every((m) => {
+      const c = m.row.currency || m.row.Currency;
+      return !c || c === baseCode;
+    });
+    const colCount = showLedgerCol ? 4 : 3;
+
+    const sortable = (key, label, cls) => {
+      const active = _txSort.key === key;
+      const arrow = active ? (_txSort.dir === 'asc' ? ' \u2191' : ' \u2193') : '';
+      return el(
+        'th',
+        {
+          class: (cls ? cls + ' ' : '') + 'tx-sort' + (active ? ' is-active' : ''),
+          'aria-sort': active ? (_txSort.dir === 'asc' ? 'ascending' : 'descending') : 'none',
+        },
+        el(
+          'button',
+          {
+            type: 'button',
+            class: 'tx-sort-btn',
+            'aria-label': `Sort by ${label}`,
+            onclick: () => {
+              trackUsage('activity-sort-transactions');
+              _txSort =
+                _txSort.key === key
+                  ? { key, dir: _txSort.dir === 'asc' ? 'desc' : 'asc' }
+                  : { key, dir: key === 'date' || key === 'amount' ? 'desc' : 'asc' };
+              render();
+            },
+          },
+          label + arrow
+        )
+      );
+    };
 
     const table = el('table', { class: 'grid tx' });
     table.append(
@@ -668,10 +876,10 @@ export function createActivityRenderer(ctx) {
         el(
           'tr',
           {},
-          el('th', {}, 'Date'),
-          el('th', {}, 'Description'),
-          el('th', {}, 'Ledger'),
-          el('th', { class: 'num' }, `Amount (${state.cfg.currency.code})`)
+          sortable('date', 'Date'),
+          sortable('description', 'Description'),
+          showLedgerCol ? sortable('ledger', 'Ledger') : null,
+          sortable('amount', allBaseCurrency ? `Amount (${baseCode})` : 'Amount', 'num')
         )
       )
     );
@@ -709,8 +917,11 @@ export function createActivityRenderer(ctx) {
           )
         );
       }
+      // Must track the REAL column count: the Ledger column is dropped when
+      // every row shares one ledger, so a hard-coded 4 over-spans a
+      // three-column table and pulls the detail cell past the last header.
       const tr = el('tr', { class: 'tx-detail', hidden: '' });
-      tr.append(el('td', { colspan: 4 }, grid));
+      tr.append(el('td', { colspan: colCount }, grid));
       return tr;
     }
     // Wires a row to its detail row: click (outside any inner button) or
@@ -722,11 +933,12 @@ export function createActivityRenderer(ctx) {
       mainTr.tabIndex = 0;
       mainTr.setAttribute('role', 'button');
       mainTr.setAttribute('aria-expanded', 'false');
-      const toggle = () => {
-        const open = mainTr.classList.toggle('open');
+      const setOpen = (open) => {
+        mainTr.classList.toggle('open', open);
         detailTr.hidden = !open;
         mainTr.setAttribute('aria-expanded', open ? 'true' : 'false');
       };
+      const toggle = () => setOpen(!mainTr.classList.contains('open'));
       mainTr.addEventListener('click', (e) => {
         if (e.target.closest && e.target.closest('button')) return;
         toggle();
@@ -737,6 +949,32 @@ export function createActivityRenderer(ctx) {
           e.preventDefault();
           toggle();
         }
+      });
+      // An opened row could only be closed by knowing that clicking it again
+      // does that. The detail now carries its own visible way out, and Escape
+      // closes it from anywhere inside - returning focus to the row it came
+      // from, so keyboard position is never lost.
+      const closeBtn = el(
+        'button',
+        {
+          type: 'button',
+          class: 'btn sm ghost tx-detail-close',
+          onclick: () => {
+            setOpen(false);
+            if (mainTr.focus) mainTr.focus();
+          },
+        },
+        'Close'
+      );
+      const holder = detailTr.querySelector ? detailTr.querySelector('.detail-grid') : null;
+      if (holder && holder.parentNode && holder.parentNode.append) {
+        holder.parentNode.append(closeBtn);
+      }
+      detailTr.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        e.stopPropagation();
+        setOpen(false);
+        if (mainTr.focus) mainTr.focus();
       });
     }
     const renderMergedRow = (m) => {
@@ -820,7 +1058,7 @@ export function createActivityRenderer(ctx) {
           },
           el('td', { class: 'nowrap' }, formatDisplayDate(r.date)),
           nameCell,
-          el('td', {}, 'Card'),
+          showLedgerCol ? el('td', {}, 'Card') : null,
           el(
             'td',
             { class: 'num amt ' + (r.amount < 0 ? 'credit' : '') },
@@ -900,7 +1138,9 @@ export function createActivityRenderer(ctx) {
         },
         el('td', { class: 'nowrap' }, formatDisplayDate(r.date)),
         nameCell,
-        el('td', {}, r.account ? `Bank \u00b7 \u2026${String(r.account).slice(-4)}` : 'Bank'),
+        showLedgerCol
+          ? el('td', {}, r.account ? `Bank \u00b7 \u2026${String(r.account).slice(-4)}` : 'Bank')
+          : null,
         el(
           'td',
           { class: 'num amt ' + (r.direction === 'in' ? 'credit' : '') },
@@ -924,10 +1164,56 @@ export function createActivityRenderer(ctx) {
     // "reveal exactly up to the target" is possible (appendExpandable's own
     // reveal(n) already accepts an arbitrary count) but was not pursued here
     // in favour of the simpler, unambiguously-correct option.
-    const showAll = state.showAllTx || state.bankShowAllTx || !!q || focusIndex >= 0;
+    // Applied here, after filtering and before paging, so a sort orders the
+    // whole matching set rather than just the ten rows currently revealed.
+    const sortDir = _txSort.dir === 'asc' ? 1 : -1;
+    const sortValue = (m) => {
+      if (_txSort.key === 'amount') {
+        return m.ledger === 'card'
+          ? -Number(m.row.amount || 0)
+          : (m.row.direction === 'in' ? 1 : -1) * Math.abs(Number(m.row.amount) || 0);
+      }
+      if (_txSort.key === 'description') {
+        return String(
+          m.ledger === 'card'
+            ? m.row.displayName || m.row.description || ''
+            : m.row.counterpartyLabel || m.row.description || ''
+        ).toLowerCase();
+      }
+      if (_txSort.key === 'ledger') return ledgerLabelOf(m).toLowerCase();
+      return m.date || '';
+    };
+    merged.sort((a, b) => {
+      const av = sortValue(a);
+      const bv = sortValue(b);
+      if (av < bv) return -1 * sortDir;
+      if (av > bv) return 1 * sortDir;
+      // Stable tie-break on date so equal keys keep a predictable order.
+      return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+    });
+
+    const showAll =
+      !_txCollapsed && (state.showAllTx || state.bankShowAllTx || !!q || focusIndex >= 0);
+    // Expansion is recorded in STATE, not just inside the helper. It used to
+    // live only in appendExpandable's own closure, so any re-render threw it
+    // away - open all 52 rows, sort a column, and you were silently back to
+    // ten. Sorting a long list is precisely when it has been expanded, so the
+    // two features were working against each other.
+    //
+    // initial stays at 10 so the See/Hide controls always exist; expandAll
+    // restores the open state on rebuild. onExpandChange is the hook this
+    // helper already exposed for exactly this and had no caller for.
     appendExpandable(el, body, merged, renderMergedRow, {
-      initial: showAll ? merged.length : 10,
-      wrapToggle: (controls) => el('tr', {}, el('td', { colspan: 4 }, controls)),
+      initial: 10,
+      expandAll: showAll,
+      onExpandChange: (open) => {
+        trackUsage('activity-tx-expand');
+        _txCollapsed = !open;
+        state.showAllTx = open;
+        state.bankShowAllTx = open;
+        render();
+      },
+      wrapToggle: (controls) => el('tr', {}, el('td', { colspan: colCount }, controls)),
     });
     table.append(body);
     // Plain table-wrap (no 'sticky'): the sticky variant traps rows in a fixed-
@@ -937,10 +1223,22 @@ export function createActivityRenderer(ctx) {
     // paradigm. The merch table (cards-render) already uses plain table-wrap, so
     // this is isolated to the merged ledger.
     sec.append(el('div', { class: 'table-wrap' }, table));
-    const footer = q
-      ? `Showing ${merged.length} of ${totalCount} transaction${totalCount === 1 ? '' : 's'} matching "${_txSearch.trim()}".`
-      : `${merged.length} transaction${merged.length === 1 ? '' : 's'}.`;
-    sec.append(el('p', { class: 'muted small' }, footer));
+    // SAYS WHAT IT COUNTS. "52 transactions." sat on the same tab as the
+    // treemap's "34 card transactions" with no way to tell why they differ -
+    // this list merges both ledgers, that map reads the card only. When the
+    // Ledger column has been dropped as redundant, its single value is stated
+    // here instead, so the scope is never silently lost with the column.
+    const scope = showLedgerCol
+      ? 'card and bank'
+      : ledgerLabels[0]
+        ? ledgerLabels[0].toLowerCase()
+        : '';
+    const countText = q
+      ? `Showing ${merged.length} of ${totalCount} transaction${totalCount === 1 ? '' : 's'} matching "${_txSearch.trim()}"`
+      : `${merged.length} transaction${merged.length === 1 ? '' : 's'}`;
+    sec.append(
+      el('p', { class: 'muted small' }, scope ? `${countText} \u00b7 ${scope}.` : `${countText}.`)
+    );
     return sec;
   }
 
@@ -992,7 +1290,10 @@ export function createActivityRenderer(ctx) {
       sec.append(el('span', { class: 'vm-tag tone-' + hero.deltaTone }, hero.deltaText));
     const chart = renderIncomeChart(income);
     if (chart) sec.append(chart);
-    if (caption) sec.append(el('p', { class: 'muted small', style: 'margin:8px 0 0' }, caption));
+    // Same "Why ›" control the rest of this tab uses. This card previously
+    // reached for the chart-side "Income details ⓘ" popover, so one screen
+    // offered two different affordances for the same request.
+    if (caption) sec.append(buildDisclosure(el, 'Why', [el('p', {}, caption)]));
     return sec;
   }
 
@@ -1048,6 +1349,15 @@ export function createActivityRenderer(ctx) {
       return !rec || !isCardPaymentTransfer(rec, state.cardAccounts);
     });
     const inflows = externalInflowShortlist(cpGroups, 8);
+    // MONEY LEAVING ONLY. This card used to rank inflows and outflows
+    // together, which put one salary line at the top of a list about places -
+    // and the income pattern chart directly above already answers where money
+    // came from. Ranking outflows alone makes it the "where did it actually
+    // go, by place" companion to the treemap's "by category".
+    //
+    // Called PAYMENTS, not spending: a loan repayment and a transfer into an
+    // investment both rank here, and neither is money spent. Money leaving is
+    // what the list actually measures, so it is what the title says.
     const merged = mergedMoneyMovedRanking(
       cardRows,
       cardMerchants,
@@ -1056,20 +1366,23 @@ export function createActivityRenderer(ctx) {
       refundPairs,
       state.brandRules,
       state.merchants
-    ).slice(0, 10);
+    )
+      .filter((g) => g.direction !== 'in')
+      .slice(0, 10);
     if (!merged.length) return null;
     const sec = el('section', { class: 'card' });
     sec.append(
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconList()), 'Where money flowed in and out')
+        el('h3', { class: 'card-title' }, icon(iconList()), 'Biggest payments')
       )
     );
-    const total = merged.reduce((s, g) => s + g.amount, 0) || 1;
-    // The multi-segment share bar was illegible (six tiny colour chips) and the
-    // ranked list below already carries the proportion clearly, so it is
-    // dropped - the list is the honest, readable representation.
+    // Bars are scaled against the BIGGEST place, not the total: the question
+    // this card answers is "how do these compare to each other", and a
+    // share-of-total scale leaves every row a short stub once the tail is
+    // long enough.
+    const biggest = merged.reduce((m, g) => Math.max(m, g.amount), 0) || 1;
     function drillPlace(g) {
       trackUsage('activity-drill-place');
       if (g.source === 'card')
@@ -1082,13 +1395,29 @@ export function createActivityRenderer(ctx) {
     }
 
     const list = el('div', { class: 'recurring-list' });
-    const renderRow = (g) =>
-      el(
+    const tips = chartTooltip(el, sec);
+    const bars = [];
+    const renderRow = (g) => {
+      const width = Math.max(2, Math.round((g.amount / biggest) * 100));
+      const fill = el('span', { class: 'rank-bar-fill', style: `width:${width}%` });
+      bars.push(fill);
+      // Total alone cannot separate one big purchase from a habit. The
+      // average per visit is the distinction the card ledger's own explainer
+      // already draws ("a high Times with a low Average is everyday
+      // spending"), so the row carries it on hover rather than printing a
+      // fourth number on every line.
+      const detail = [
+        g.label,
+        money0(g.amount),
+        `${g.count} transaction${g.count === 1 ? '' : 's'}`,
+        g.count > 1 ? `${money0(g.amount / g.count)} each on average` : null,
+      ].filter(Boolean);
+      const row = el(
         'button',
-        { class: 'recurring-row', onclick: () => drillPlace(g) },
+        { class: 'rank-row', onclick: () => drillPlace(g) },
         el(
           'span',
-          { class: 'recurring-name' },
+          { class: 'rank-name' },
           el('span', { class: 'commit-name-main' }, g.label),
           el(
             'span',
@@ -1096,16 +1425,21 @@ export function createActivityRenderer(ctx) {
             `\u00b7 ${g.count} transaction${g.count === 1 ? '' : 's'}`
           )
         ),
-        el(
-          'span',
-          {
-            class: 'recurring-amt num ' + (g.direction === 'in' ? 'credit' : 'strong'),
-          },
-          (g.direction === 'in' ? '+' : '') + money0(g.amount)
-        )
+        el('span', { class: 'rank-amt num strong' }, money0(g.amount)),
+        // The bar's WIDTH encodes the amount, so it declares itself to the
+        // privacy contract and is withdrawn with the figures rather than
+        // leaving relative spend legible with every number masked.
+        markProportional(el('span', { class: 'rank-bar' }, fill))
       );
+      tips.bind(row, detail);
+      return row;
+    };
     appendExpandable(el, list, merged, renderRow, { initial: 5 });
     sec.append(list);
+    staggerIn(bars, () => [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
+      step: 40,
+      duration: 460,
+    });
     return sec;
   }
 
@@ -1196,17 +1530,22 @@ export function createActivityRenderer(ctx) {
     const insightsCard = renderMergedInsights(a, cardRows, bankRecs);
     if (insightsCard) wrap.append(insightsCard);
 
-    const income = analyseIncomePattern(classifiedBank(), state.cfg, new Date());
-    const incomeCard = renderIncome(income);
-    if (incomeCard) wrap.append(incomeCard);
-
+    // ORDER: the three views of where money went run together - by category
+    // (the map), by place (the ranked list) and by commitment - before the
+    // tab changes the subject to income. The income card used to sit between
+    // the ring and the map, splitting the one question this tab exists to
+    // answer across two halves of the page.
     const sb = renderSpendBreakdown();
     if (sb) wrap.append(sb);
 
-    // Where money flowed + Regular commitments: two proportion lists, paired.
+    // Biggest payments + Regular commitments: two proportion lists, paired.
     const placesCard = renderMergedPlaces(cardRows, bankRecs);
     const commitCard = renderRecurring();
     pairCards(wrap, placesCard, commitCard);
+
+    const income = analyseIncomePattern(classifiedBank(), state.cfg, new Date());
+    const incomeCard = renderIncome(income);
+    if (incomeCard) wrap.append(incomeCard);
 
     if (a && cardRows.length) {
       // Spending over time + Spent abroad: two spending-history cards, paired.
@@ -1314,7 +1653,15 @@ export function createActivityRenderer(ctx) {
         el('span', { class: 'acct-chip-sub' + (owe ? ' owe' : '') }, sub)
       );
 
-    slicer.append(tile('all', 'All bank accounts', bankMoney(bankTotal)));
+    // With one bank account, "All bank accounts" and that account carry the
+    // SAME balance, so the strip opened with two tiles showing an identical
+    // figure and no way to tell what distinguished them. The "all" tile only
+    // earns its place once it genuinely aggregates more than one account -
+    // or once the card is beside it and "all bank" means something the
+    // individual tiles do not.
+    if (bankAccounts.length > 1 || hasCard) {
+      slicer.append(tile('all', 'All bank accounts', bankMoney(bankTotal)));
+    }
     for (const a of bankAccounts) {
       slicer.append(
         tile(a.account, accountChipLabel(a.account, bankAccounts), bankMoney(a.closingBalance))
@@ -1400,12 +1747,21 @@ export function createActivityRenderer(ctx) {
       hidden: _txSearch ? null : '',
       type: 'button',
     }, 'Clear');
+    // Live feedback beside the box. Typing used to give no answer until you
+    // scrolled past the table to the count underneath it - so a search that
+    // matched nothing looked like a broken list.
+    const searchCount = el('span', {
+      class: 'tx-search-count muted small',
+      role: 'status',
+      'aria-live': 'polite',
+    });
     wrap.append(
       el('div', { class: 'tx-filters' },
         el('label', { class: 'field-label tx-search-field' },
           el('span', {}, 'Search transactions'),
           search
         ),
+        searchCount,
         clearSearch
       )
     );
@@ -1436,16 +1792,34 @@ export function createActivityRenderer(ctx) {
       // facet (category, kind, merchant, search, payee...); the account/card
       // tile narrows on top of that by simply excluding the other ledger's
       // rows outright when one specific account or the card is selected.
-      const cardRowsForLedger = isOneBank ? [] : visibleRows();
-      ledgerHost.append(renderMergedLedger(cardRowsForLedger, visibleBankRows(bankRecs)));
+      // The card/bank exclusions are STATED by ledgerCaveat ("Card
+      // transactions are hidden: a payee filter has nothing to match on a
+      // card statement") and were never actually applied - a payee drill
+      // listed every card row underneath the one payee's bank rows, so the
+      // list did not show what was clicked. The claim and the filtering now
+      // come from the same two predicates.
+      const cardRowsForLedger = isOneBank || cardRowsInapplicable() ? [] : visibleRows();
+      const bankRowsForLedger = bankRowsInapplicable() ? [] : visibleBankRows(bankRecs);
+      ledgerHost.append(renderMergedLedger(cardRowsForLedger, bankRowsForLedger));
+      const q = _txSearch.trim();
+      const shown = ledgerHost.querySelectorAll
+        ? ledgerHost.querySelectorAll('tr.tx-row').length
+        : 0;
+      searchCount.textContent = q
+        ? `${shown} match${shown === 1 ? '' : 'es'}`
+        : '';
     };
     search.addEventListener('input', () => {
+      // A new search is a new question: it re-opens the list rather than
+      // inheriting a collapse the person applied to the previous one.
+      _txCollapsed = false;
       _txSearch = search.value;
       clearSearch.hidden = !_txSearch;
       trackUsage('activity-tx-search');
       rebuildLedger();
     });
     clearSearch.addEventListener('click', () => {
+      _txCollapsed = false;
       _txSearch = '';
       search.value = '';
       clearSearch.hidden = true;
@@ -1482,6 +1856,12 @@ export function createActivityRenderer(ctx) {
       state.activityTab,
       state.bankAccount,
       _txSearch,
+      // The sort is part of what this tab currently SHOWS, so it has to be in
+      // the cache key. Without it a sort click set the order, called render(),
+      // and got handed back the previously-cached DOM unchanged.
+      _txSort.key,
+      _txSort.dir,
+      _txCollapsed,
       f.category,
       f.kind,
       f.merchant,

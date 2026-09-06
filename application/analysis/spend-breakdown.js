@@ -24,6 +24,7 @@
  * ======================================================================== */
 import { resolveOpts } from './commitment-income.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
+import { makeMoney } from '../core/money-format.js';
 
 function dateOf(r) {
   return String(r.date || r.Date || '');
@@ -252,19 +253,9 @@ export function comparisonTone(cmp) {
 }
 
 export function buildSpendBreakdownModel(result, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
+  // One formatter for the whole app (core/money-format.js): the same output
+  // this block produced, plus the privacy gate every figure must pass.
+  const money = makeMoney(cfg);
 
   const markerText = (cmp) => describeComparisonText(cmp, money);
   const markerTone = (cmp) => comparisonTone(cmp);
@@ -275,7 +266,12 @@ export function buildSpendBreakdownModel(result, cfg = {}) {
       label: 'Where it went',
       amount: result.grandTotal,
       amountText: money(result.grandTotal),
-      tag: `${result.txnCount} transaction${result.txnCount === 1 ? '' : 's'}`,
+      // Says WHICH transactions. This model reads the card ledger only, so
+      // its total is smaller than the same screen's discretionary-spending
+      // figure (which also counts cash and bank outflows) - two spending
+      // totals differing by thousands with nothing to explain the gap read
+      // as an error in one of them.
+      tag: `${result.txnCount} card transaction${result.txnCount === 1 ? '' : 's'}`,
       tone: 'neutral',
     },
     categories: result.categories.map((cat) => ({

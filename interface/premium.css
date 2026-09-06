@@ -1,0 +1,930 @@
+/* =====================================================================
+   premium.css  -  the v2.0 visual system. Loads LAST, so it settles every
+   tie with the earlier sheets.
+
+   The problem it solves: the app had grown three headline languages, five
+   or six ad-hoc figure sizes, and card surfaces that competed with each
+   other for attention, so screens that answer the same shape of question
+   looked like different products. This file declares ONE type scale for
+   figures, ONE card vocabulary, ONE tag, ONE disclosure and ONE chart
+   treatment, and holds every destination to them.
+
+   Rules it enforces:
+     - exactly four metric sizes exist (hero / major / minor / row);
+     - exactly three card surfaces exist (lead / support / quiet);
+     - every figure is tabular-lining, so columns align and a changing
+       number never reflows the line it sits in;
+     - one lead surface per destination carries the decision;
+     - supporting analysis lives behind one disclosure affordance;
+     - the private view withdraws comparisons, it does not blur them.
+   ===================================================================== */
+
+:root {
+  /* --- type ---------------------------------------------------------- */
+  --font-num:
+    'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system,
+    BlinkMacSystemFont, sans-serif;
+
+  /* THE four metric sizes. Nothing else in the product renders a figure. */
+  --metric-hero: clamp(2.125rem, 1.35rem + 2.6vw, 3.125rem);
+  --metric-major: clamp(1.5rem, 1.2rem + 0.9vw, 1.875rem);
+  --metric-minor: 1.1875rem;
+  --metric-row: 0.9375rem;
+
+  /* supporting text scale */
+  --t-question: 0.8125rem;
+  --t-meaning: 0.9375rem;
+  --t-label: 0.75rem;
+  --t-body: 0.8125rem;
+
+  --track-tight: -0.022em;
+  --track-hero: -0.032em;
+
+  /* --- surface + depth ------------------------------------------------ */
+  --surface-lead: color-mix(in srgb, var(--panel) 92%, var(--accent) 3%);
+  --surface-card: var(--panel);
+  --surface-quiet: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  --surface-inset: color-mix(in srgb, var(--panel-2) 60%, var(--panel));
+
+  --hairline: color-mix(in srgb, var(--fg) 11%, transparent);
+  --hairline-soft: color-mix(in srgb, var(--fg) 7%, transparent);
+  --hairline-lead: color-mix(in srgb, var(--accent) 26%, transparent);
+
+  --lift-1: 0 1px 2px color-mix(in srgb, #000 6%, transparent);
+  --lift-2:
+    0 1px 2px color-mix(in srgb, #000 5%, transparent),
+    0 10px 28px -14px color-mix(in srgb, #000 26%, transparent);
+
+  --r-card: 16px;
+  --r-inner: 11px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* --- chart ink -------------------------------------------------------
+     Quiet by construction: one hue family per chart, a hairline axis, no
+     gridlines. Comparison is carried by length and position, never by a
+     rainbow of competing fills. */
+  --chart-ink: color-mix(in srgb, var(--accent) 78%, var(--fg));
+  --chart-ink-soft: color-mix(in srgb, var(--accent) 26%, transparent);
+  --chart-axis: color-mix(in srgb, var(--fg) 12%, transparent);
+  /* Money-direction ink for every chart SURFACE - donut arcs, column fills,
+     account bars, legend keys. Defined once here so the same direction is
+     the same colour whichever chart draws it. The raw --flow-* tokens are
+     text weight: at full strength they read far heavier as a large filled
+     area than as a word, which is why a chart never uses them directly. */
+  --chart-in: color-mix(in srgb, var(--flow-in) 82%, var(--panel));
+  --chart-out: color-mix(in srgb, var(--flow-out) 78%, var(--panel));
+  /* The "neither in nor out" share. --dim is body-text grey and dissolves
+     into the card when used as a fill; this is that grey given enough
+     weight to hold an area next to the two directional tones. */
+  --chart-neutral: color-mix(in srgb, var(--fg) 52%, var(--panel));
+}
+
+[data-theme='dark'] {
+  --surface-lead: color-mix(in srgb, var(--panel) 90%, var(--accent) 7%);
+  --surface-quiet: color-mix(in srgb, var(--panel) 62%, var(--bg));
+  --hairline: color-mix(in srgb, #fff 12%, transparent);
+  --hairline-soft: color-mix(in srgb, #fff 7%, transparent);
+  /* The dark palette is already pastel, so chart ink takes only a whisper
+     of the surface - enough to sit on the panel rather than float over it. */
+  --chart-in: color-mix(in srgb, var(--flow-in) 92%, var(--panel));
+  --chart-out: color-mix(in srgb, var(--flow-out) 92%, var(--panel));
+  --chart-neutral: color-mix(in srgb, var(--fg) 62%, var(--panel));
+  --lift-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --lift-2:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 14px 34px -16px rgba(0, 0, 0, 0.7);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme='auto'] {
+    --surface-lead: color-mix(in srgb, var(--panel) 90%, var(--accent) 7%);
+    --surface-quiet: color-mix(in srgb, var(--panel) 62%, var(--bg));
+    --hairline: color-mix(in srgb, #fff 12%, transparent);
+    --hairline-soft: color-mix(in srgb, #fff 7%, transparent);
+  /* The dark palette is already pastel, so chart ink takes only a whisper
+     of the surface - enough to sit on the panel rather than float over it. */
+  --chart-in: color-mix(in srgb, var(--flow-in) 92%, var(--panel));
+  --chart-out: color-mix(in srgb, var(--flow-out) 92%, var(--panel));
+  --chart-neutral: color-mix(in srgb, var(--fg) 62%, var(--panel));
+    --lift-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --lift-2:
+      0 1px 2px rgba(0, 0, 0, 0.35),
+      0 14px 34px -16px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* =====================================================================
+   1. CARD SURFACES - a finite set of three.
+   Every panel in the app is one of: the destination's single LEAD, an
+   ordinary SUPPORT card, or a QUIET one (settings, notes). The old sheets
+   gave several cards their own bespoke glass, edge glow and elevation,
+   which is why a screen read as a stack of equally loud boxes.
+   ===================================================================== */
+@media screen {
+  #app .card,
+  .accounts-wrap .card {
+    background: var(--surface-card);
+    border: 1px solid var(--hairline-soft);
+    border-radius: var(--r-card);
+    box-shadow: var(--lift-1);
+    padding: var(--s5) var(--s6);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    transition:
+      border-color 0.2s var(--ease),
+      box-shadow 0.2s var(--ease);
+  }
+
+  /* The ONE lead per destination. Sits forward through depth and a faintly
+     accent-tinted edge, never through a brighter fill. */
+  #app .card.decision,
+  #app .card[data-surface='lead'],
+  #app .card.hero,
+  #app .card.lead,
+  .accounts-wrap .card.hero,
+  .accounts-wrap .card.lead {
+    background: var(--surface-lead);
+    border-color: var(--hairline-lead);
+    box-shadow: var(--lift-2);
+    padding: var(--s6) var(--s6) var(--s5);
+  }
+
+  /* Quiet: support areas that must never outrank the money content. */
+  #app .card.secondary,
+  .accounts-wrap .card.secondary,
+  #app .card.coverage-note,
+  .accounts-wrap .card.coverage-note {
+    background: var(--surface-quiet);
+    border-color: var(--hairline-soft);
+    box-shadow: none;
+  }
+}
+
+/* Card heading: one size, one weight, one icon treatment, everywhere. */
+#app .card-title,
+.accounts-wrap .card-title {
+  font-size: 0.875rem;
+  font-weight: 620;
+  letter-spacing: 0.005em;
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+#app .card-title svg,
+.accounts-wrap .card-title svg {
+  width: 15px;
+  height: 15px;
+  opacity: 0.45;
+}
+#app .card-head,
+.accounts-wrap .card-head {
+  margin-bottom: var(--s4);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* =====================================================================
+   2. METRICS - the strict, finite set. Four sizes, one numeral style.
+   Tabular lining figures everywhere: a column of amounts aligns, and a
+   figure that changes on re-render never nudges the text beside it.
+   ===================================================================== */
+.metric-value,
+.dh-figure,
+.metric .metric-value,
+#app .num,
+#app .vm-number,
+#app .recurring-amt,
+#app .commit-amt,
+#app .up-pay-amt,
+#app .amt,
+#app .tm-value,
+#app .fact-value,
+#app .sec-value,
+#app .cat-amt,
+#app .recent-amt,
+#app .foreign-amt,
+#app .fc-axis-money,
+#app .fc-trough-label,
+#app .metric-value {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings:
+    'tnum' 1,
+    'lnum' 1;
+  font-family: var(--font-num);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.metric .metric-value {
+  color: var(--fg);
+  line-height: 1.08;
+  letter-spacing: var(--track-tight);
+  font-weight: 600;
+}
+.metric-label {
+  font-size: var(--t-label);
+  line-height: 1.35;
+  color: var(--dim);
+  letter-spacing: 0.01em;
+}
+.metric-status {
+  margin-top: 4px;
+}
+:where(
+  .metric-detail,
+  .dh-meaning,
+  .dh-note,
+  .disclosure-body,
+  .vm-detail-body,
+  .vm-reconcile,
+  .explainer-body,
+  .position-summary-note
+) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+.metric-detail {
+  margin: 6px 0 0;
+  font-size: var(--t-body);
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+/* A size modifier applies to the FIGURE, whether that figure is the value
+   inside a .metric block or a bare element a card renders on its own. The
+   block itself is never sized - only its value - so a modifier can never leak
+   onto the label beneath it. This is what removes the last reason for a call
+   site to write an inline font-size. */
+#app .metric--hero > .metric-value,
+#app .metric--hero.metric-value,
+#app .dh-figure {
+  font-size: var(--metric-hero);
+  letter-spacing: var(--track-hero);
+  font-weight: 600;
+  line-height: 1.05;
+}
+#app .metric--major > .metric-value,
+#app .metric--major.metric-value {
+  font-size: var(--metric-major);
+  letter-spacing: var(--track-tight);
+  font-weight: 600;
+  line-height: 1.12;
+}
+#app .metric--minor > .metric-value,
+#app .metric--minor.metric-value {
+  font-size: var(--metric-minor);
+  letter-spacing: var(--track-tight);
+  font-weight: 600;
+}
+#app .metric--row > .metric-value,
+#app .metric--row.metric-value {
+  font-size: var(--metric-row);
+  font-weight: 560;
+}
+
+/* Every legacy figure class is pulled onto the same four sizes, so nothing
+   in the app renders a fifth. .vm-number is the old content-model figure,
+   still used by the smaller analysis cards. */
+#app .vm-number,
+.accounts-wrap .vm-number {
+  font-size: var(--metric-major);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+  line-height: 1.1;
+}
+#app .vm-number.lg,
+.accounts-wrap .vm-number.lg {
+  font-size: var(--metric-hero);
+  letter-spacing: var(--track-hero);
+}
+#app .hero-title,
+#app .hero-amount {
+  font-size: var(--metric-hero);
+  font-weight: 600;
+  letter-spacing: var(--track-hero);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+#app .recurring-amt,
+#app .commit-amt,
+#app .up-pay-amt,
+#app .amt,
+#app .cat-amt,
+#app .recent-amt,
+#app .foreign-amt,
+#app .ownowe-amt,
+#app .share-bar-total {
+  font-size: var(--metric-row);
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
+/* The two remaining legacy figure classes. Both previously sat at their own
+   18px/720 weight - a fifth and sixth size in a product that should have
+   four - and .fact-value additionally carried three separate inline
+   font-size overrides at its call sites. Those inline overrides are gone
+   (they now say metric--major / metric--minor outright); these hold the
+   unmodified default at the one supporting size. */
+#app .fact-value,
+#app .sec-value {
+  font-size: var(--metric-minor);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+}
+
+#app .fact-label,
+#app .sec-label {
+  font-size: var(--t-label);
+  color: var(--dim);
+}
+
+/* =====================================================================
+   3. THE DECISION HEADER - the one headline shape, on every destination.
+   QUESTION -> FIGURE -> MEANING -> STATUS -> WHY -> SUPPORT.
+   ===================================================================== */
+.dh {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.dh-question {
+  margin: 0 0 var(--s3);
+  font-size: var(--t-question);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+}
+.dh-figure {
+  color: var(--fg);
+  line-height: 1.02;
+  margin: 0;
+}
+.dh-meaning {
+  margin: var(--s3) 0 0;
+  font-size: var(--t-meaning);
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 74%, var(--dim));
+}
+.dh-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--s3);
+}
+.dh-note {
+  margin: var(--s4) 0 0;
+  padding: 10px var(--s3);
+  border-radius: var(--r-inner);
+  border-left: 2px solid var(--dim);
+  background: var(--surface-inset);
+  font-size: var(--t-body);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 80%, var(--dim));
+}
+.dh-note.tone-good {
+  border-left-color: var(--good);
+}
+.dh-note.tone-watch {
+  border-left-color: var(--warn);
+}
+
+/* The one footer group: reasoning and working, divided from the answer by a
+   single hairline. */
+.dh-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--s5);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--hairline-soft);
+}
+.card.decision > .dh-support + .dh-footer {
+  margin-top: var(--s4);
+}
+/* When both disclosures are present, a hairline between them keeps it obvious
+   which body belongs to which summary once one is open. */
+.dh-footer > .disclosure + .disclosure {
+  margin-top: var(--s2);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+/* Supporting metrics: an even row, each at the ONE supporting size. Never
+   competing with the primary figure above them. */
+.dh-support {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--s4) var(--s6);
+  padding-top: var(--s2);
+}
+.card.decision > .dh-support {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+/* The evidence a destination's header carries with it (the forecast chart
+   and its legend) sits below the header, separated by the same hairline. */
+.dh-evidence {
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--hairline-soft);
+}
+
+/* =====================================================================
+   4. STATUS TAGS - one pill. Tone is carried by the dot, never by text
+   colour alone, so it survives both themes and colour-blind reading.
+   ===================================================================== */
+.tag,
+#app .vm-tag,
+.accounts-wrap .vm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 10px 3px 9px;
+  border-radius: var(--r-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  line-height: 1.5;
+  background: var(--surface-inset);
+  color: color-mix(in srgb, var(--fg) 88%, var(--dim));
+  border: 1px solid var(--hairline-soft);
+  white-space: nowrap;
+}
+.tag::before,
+#app .vm-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dim);
+}
+.tag.tone-good::before {
+  background: var(--good);
+}
+.tag.tone-watch::before,
+.tag.tone-alert::before {
+  background: var(--warn);
+}
+.tag.tone-neutral::before {
+  background: var(--dim);
+}
+[data-theme='dark'] .tag.tone-good::before {
+  background: var(--down);
+}
+[data-theme='dark'] .tag.tone-watch::before,
+[data-theme='dark'] .tag.tone-alert::before {
+  background: var(--up);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme='auto'] .tag.tone-good::before {
+    background: var(--down);
+  }
+  [data-theme='auto'] .tag.tone-watch::before,
+  [data-theme='auto'] .tag.tone-alert::before {
+    background: var(--up);
+  }
+}
+
+/* =====================================================================
+   5. DISCLOSURE - one affordance for every "show me the working".
+   ===================================================================== */
+.disclosure {
+  width: 100%;
+}
+.disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--dim);
+  padding: 4px 0;
+  transition: color 0.15s var(--ease);
+}
+.disclosure > summary:hover {
+  color: var(--fg);
+}
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure > summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg) translate(-1px, -1px);
+  transition: transform 0.18s var(--ease);
+  opacity: 0.7;
+}
+.disclosure[open] > summary::after {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+.disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.disclosure-body {
+  padding-top: var(--s3);
+  font-size: var(--t-body);
+  color: var(--dim);
+  line-height: 1.55;
+}
+.disclosure-body > p {
+  margin: 0 0 8px;
+}
+.disclosure-body > p:last-child {
+  margin-bottom: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .disclosure > summary,
+  .disclosure > summary::after {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+   6. CHARTS - quiet, modern, low-ink.
+   A hairline baseline, no gridlines, rounded caps, one hue family per
+   chart. Comparison is length and position; colour only ever separates
+   money in from money out.
+   ===================================================================== */
+#app .trend-bar,
+#app .acct-trend-bar {
+  border-radius: 4px 4px 2px 2px;
+}
+/* The SVG charts (.fl-bar, .ic-bar) paint themselves with their own gradient
+   fills, declared in their own stylesheets - no flat colour override here, or
+   the gradient never reaches the bar. */
+/* No flat colour override for the account bars here. An #app-scoped rule
+   outranks .acct-trend-col.in-period, so overriding the fill flattened the
+   in-period / out-of-period distinction the chart is read by; the tones now
+   live in one place (feature-additions.css) off the shared chart ink. */
+/* Real space between one month and the next, so the row reads as eight
+   readings rather than one striped block. */
+#app .acct-trend-pair {
+  gap: 3px;
+}
+#app .acct-trend-bars {
+  gap: clamp(8px, 2vw, 28px);
+}
+#app .acct-trend-bar {
+  width: 100%;
+  max-width: 14px;
+}
+/* Both series are equally solid; the hue is what separates them, not
+   opacity - a bar reading "less real" than its neighbour is not the
+   distinction this chart means to draw. */
+#app .fl-bar.out {
+  opacity: 1;
+}
+/* Spending by month. Narrow columns on a wide plot, not full-width slabs:
+   a bar chart is read by comparing HEIGHTS, and a bar as wide as its slot
+   turns the plot into a block of colour where only the top edge carries any
+   information. The unselected months sit well back so the period in view is
+   the one that reads. */
+#app .trend-bars {
+  gap: clamp(6px, 1.4vw, 18px);
+}
+#app .trend-bar {
+  width: min(100%, 30px);
+  background: color-mix(in srgb, var(--chart-out) 26%, var(--panel-2));
+}
+#app .trend-col.in-period .trend-bar {
+  background: color-mix(in srgb, var(--chart-out) 62%, var(--panel-2));
+}
+#app .trend-col.selected .trend-bar {
+  background: color-mix(in srgb, var(--chart-out) 88%, var(--panel-2));
+  box-shadow: none;
+}
+#app .trend-col:hover .trend-bar {
+  transform: none;
+  background: color-mix(in srgb, var(--chart-out) 74%, var(--panel-2));
+}
+/* The typical-month rule reads as a reference line, not a floating chip
+   sitting on top of the first bar. */
+#app .trend-avg {
+  border-top: 1px dashed var(--chart-axis);
+}
+#app .trend-avg-label {
+  left: auto;
+  right: 0;
+  top: -8px;
+  font-size: 0.625rem;
+  color: var(--dim);
+  background: var(--surface-card);
+  padding: 0 5px;
+}
+#app .fl-plot,
+#app .ic-plot,
+#app .trend-bars,
+#app .acct-trend-bars {
+  border-bottom: 1px solid var(--chart-axis);
+}
+#app .ch-month,
+#app .ic-month,
+#app .trend-mlabel,
+#app .acct-trend-mlabel,
+#app .fc-axis-date,
+#app .fc-axis-money {
+  font-size: 0.6875rem;
+  color: var(--dim);
+  letter-spacing: 0.01em;
+}
+#app .fl-legend,
+#app .fc-legend,
+#app .acct-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  margin-top: var(--s3);
+  font-size: 0.6875rem;
+  color: var(--dim);
+}
+#app .fc-line {
+  stroke: var(--chart-ink);
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+#app .fc-area {
+  fill: var(--chart-ink-soft);
+}
+#app .fc-band {
+  fill: color-mix(in srgb, var(--chart-ink) 12%, transparent);
+}
+
+/* --- the ONE hidden-chart state (private view) ----------------------- */
+.chart-hidden {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 120px;
+  border-radius: var(--r-inner);
+  border: 1px dashed var(--hairline);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--fg) 3%, transparent) 0 2px,
+      transparent 2px 9px
+    ),
+    var(--surface-inset);
+  color: var(--dim);
+  text-align: center;
+  padding: var(--s5);
+}
+.chart-hidden-mark {
+  display: inline-flex;
+  gap: 5px;
+  align-items: flex-end;
+  height: 18px;
+}
+.chart-hidden-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.42;
+}
+.chart-hidden-copy {
+  font-size: var(--t-body);
+  font-weight: 550;
+  letter-spacing: 0.005em;
+}
+
+/* =====================================================================
+   7. PRIVATE VIEW.
+   The old approach blurred a hand-listed set of classes and left every
+   figure baked into a sentence, every tooltip and every bar width fully
+   legible. Figures are now masked by the formatter itself, so this file
+   only has to do the two things CSS is actually the right tool for:
+   remove SHAPE-encoded comparisons, and mark the mode as deliberate.
+   ===================================================================== */
+:root[data-privacy='on'] [data-proportional] {
+  display: none !important;
+}
+
+/* The masked figure keeps the exact slot the real one occupied - no
+   reflow when the mode is toggled - and reads as deliberately withheld
+   rather than as a rendering fault. */
+:root[data-privacy='on'] .dh-figure,
+:root[data-privacy='on'] .metric-value,
+:root[data-privacy='on'] .vm-number,
+:root[data-privacy='on'] .num,
+:root[data-privacy='on'] .recurring-amt,
+:root[data-privacy='on'] .commit-amt,
+:root[data-privacy='on'] .up-pay-amt,
+:root[data-privacy='on'] .amt {
+  color: color-mix(in srgb, var(--fg) 42%, transparent);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The toggle itself states the mode plainly while it is on. */
+:root[data-privacy='on'] #privacy-btn {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--edge));
+  color: var(--accent);
+}
+
+/* Print and export share REAL figures on purpose. The formatter already
+   suspends the mask for those builds (privacy.js's withExactFigures);
+   this restores the shapes to match. */
+@media print {
+  [data-proportional] {
+    display: revert !important;
+  }
+  .chart-hidden {
+    display: none !important;
+  }
+}
+
+/* =====================================================================
+   8. LISTS AND ROWS - one row pattern, so a payee row, a commitment row
+   and an account row are visibly the same component.
+   ===================================================================== */
+#app .recurring-row,
+#app .commit-row,
+#app .up-pay {
+  border-radius: var(--r-inner);
+  border: 1px solid transparent;
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+#app button.recurring-row:hover,
+#app button.commit-row:hover,
+#app button.up-pay:hover {
+  background: var(--surface-inset);
+  border-color: var(--hairline-soft);
+}
+#app .recurring-name,
+#app .commit-name-main,
+#app .up-pay-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--fg);
+}
+/* A proportion track inside a list row is a supporting cue, not a chart: it
+   answers "roughly how big is this one against the largest" at a glance and
+   then gets out of the way. At 8px it was reading as a second, competing
+   bar chart stacked under a list that already carries the exact figures. */
+#app .commit-bar,
+#app .up-pay-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+#app .commit-bar-fill,
+#app .up-pay-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+/* =====================================================================
+   9. NAVIGATION - stays number-free and quiet. The destination tabs name
+   places, never figures; nothing here ever prints an amount.
+   ===================================================================== */
+#app,
+.topbar-stack .ledger-tabs {
+  --nav-ink: var(--dim);
+}
+.ledger-tabs .ledger-tab {
+  font-size: 0.8125rem;
+  font-weight: 550;
+  letter-spacing: 0.005em;
+}
+.ledger-tabs .ledger-tab.active {
+  font-weight: 640;
+}
+
+/* =====================================================================
+   10. UTILITIES
+   ===================================================================== */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* =====================================================================
+   11. RESPONSIVE - the header shape holds down to phone width; only the
+   supporting grid collapses.
+   ===================================================================== */
+@media (max-width: 639px) {
+  :root {
+    --metric-hero: clamp(1.875rem, 1.1rem + 5vw, 2.5rem);
+  }
+  #app .card,
+  .accounts-wrap .card {
+    padding: var(--s4) var(--s4);
+  }
+  #app .card.decision,
+  #app .card[data-surface='lead'],
+  #app .card.hero,
+  #app .card.lead {
+    padding: var(--s5) var(--s4) var(--s4);
+  }
+  .dh-support {
+    grid-template-columns: 1fr;
+    gap: var(--s3);
+  }
+}
+
+/* =====================================================================
+   12. TREEMAP - the one place a category comparison is genuinely useful,
+   so it keeps its shape. What it loses is the shout: hairline separation
+   instead of hard edges, a calmer identity palette (SHARE_PALETTE,
+   reporting-core.js) and figures at the one row size.
+   ===================================================================== */
+/* No font-size here on purpose: treemap-render.js sizes each label to the
+   block it sits in and measures the real string against that exact size
+   before committing it. A fixed size in CSS silently overrides the SVG
+   attribute, which put every label at one size and cut the small ones
+   mid-word. Weight and spacing stay - they do not affect the fit decision.
+   No tm-rect stroke here either: separation is a GAP now (treemap.css), not
+   a --panel hairline, which on a light panel drew a white grid over the
+   whole picture. Every remaining treemap rule lives in treemap.css. */
+#app .tm-label {
+  font-weight: 650;
+  letter-spacing: 0.005em;
+}
+#app .tm-value {
+  font-weight: 550;
+  opacity: 0.92;
+}
+#app .tm-help {
+  margin-top: var(--s3);
+}
+
+/* =====================================================================
+   13. "NOTHING TO COMPARE" - the quiet statement that replaces a chart
+   whose months are genuinely flat. A row of identical bars is a
+   comparison with no comparison in it; this says the same thing in one
+   line and gives the space back.
+   ===================================================================== */
+#app .ic-steady,
+#app .fl-steady-note {
+  margin-top: var(--s2);
+}
+#app .ic-steady-note,
+#app .fl-steady-note {
+  margin: 0;
+  padding: var(--s3) 0 0;
+  font-size: var(--t-meaning);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 72%, var(--dim));
+}
+
+@media screen {
+  .dh-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s4);
+  }
+
+  .dh-main {
+    min-width: 0;
+  }
+
+  @media (min-width: 1000px) {
+    .dh-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      column-gap: var(--s6);
+    }
+
+    .dh-aside {
+      min-width: 0;
+    }
+  }
+}

@@ -1191,10 +1191,10 @@ body.has-bottom-nav .to-top {
   flex: none;
 }
 .acct-trend-swatch.in {
-  background: var(--flow-in);
+  background: var(--chart-in);
 }
 .acct-trend-swatch.out {
-  background: var(--flow-out);
+  background: var(--chart-out);
 }
 .acct-trend-bars {
   display: flex;
@@ -1233,17 +1233,19 @@ body.has-bottom-nav .to-top {
   border-radius: 4px 4px 0 0;
   transition: transform 0.1s;
 }
+/* Months outside the period in view sit back; the months being read are
+   full-strength shared chart ink. */
 .acct-trend-bar.in {
-  background: color-mix(in srgb, var(--flow-in) 55%, var(--panel-2));
+  background: color-mix(in srgb, var(--chart-in) 55%, var(--panel-2));
 }
 .acct-trend-bar.out {
-  background: color-mix(in srgb, var(--flow-out) 55%, var(--panel-2));
+  background: color-mix(in srgb, var(--chart-out) 55%, var(--panel-2));
 }
 .acct-trend-col.in-period .acct-trend-bar.in {
-  background: var(--flow-in);
+  background: var(--chart-in);
 }
 .acct-trend-col.in-period .acct-trend-bar.out {
-  background: var(--flow-out);
+  background: var(--chart-out);
 }
 .acct-trend-col:hover .acct-trend-bar {
   transform: translateY(-2px);

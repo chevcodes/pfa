@@ -22,6 +22,7 @@
  *
  *  PURE and Node-testable. No DOM, no fetch, no mutation.
  * ======================================================================== */
+import { makeMoney } from '../core/money-format.js';
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
@@ -119,19 +120,11 @@ export function accuracyReport(
 
 /* view-model: one plain sentence + tag. Forward, no blame, honest about state. */
 export function buildAccuracyModel(report, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Math.round(Number(n || 0));
-  }
+  // One formatter for the whole app (core/money-format.js), here with whole-
+  // currency rounding, plus the privacy gate every figure must pass.
+  const money = makeMoney({
+    currency: Object.assign({}, (cfg && cfg.currency) || {}, { decimals: 0 }),
+  });
 
   if (report.state === 'building') {
     return {

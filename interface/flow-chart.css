@@ -1,140 +1,551 @@
-/* flow-chart.css - money-in vs money-out diverging bar row (Overview).
-   Load after glass.css. Screen-only; never prints. Both series measure from
-   a shared centre break-even line. */
-
 @media screen {
-  .fl-chart {
-    width: 100%;
-    margin: var(--s2) 0 var(--s3);
-  }
-
-  .fl-plot {
-    display: flex;
-    align-items: stretch;
-    gap: 6px;
-    width: 100%;
-    height: 150px;
-    /* No centre break-even line any more: the old stacked design had up-bars
-       ABOVE and down-bars BELOW a mid gradient. The side-by-side design grows
-       BOTH bars up from the bottom baseline, so a mid line would cut straight
-       through them - the shared baseline is now the plot's own bottom edge. */
-  }
-
-  /* Two bars per month, side by side from a SHARED bottom baseline -
-     deliberately mirroring the account trend chart (.acct-trend-pair /
-     .acct-trend-bar, styles.css), which already proves this pattern. Both
-     grow upward together so "did more come in than went out" reads at a
-     glance. Kept as its own rule set rather than sharing .acct-trend-*:
-     this chart is read-only and percentage-sized, the account one is an
-     interactive click-to-focus button, pixel-sized - shared visual
-     language, separate behaviour. Tight gap WITHIN a month pair (3px), the
-     plot's own 6px gap BETWEEN months, so the eye groups each month's
-     in/out as one pair. */
-  .fl-col {
-    flex: 1 1 0;
+  .chart-surface {
+    position: relative;
     min-width: 0;
-    display: flex;
-    justify-content: flex-end;
+    margin: 16px 0 8px;
   }
 
-  .fl-pair {
-    flex: 1 1 0;
-    min-height: 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 3px;
+  .chart-scroll {
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding: 10px 0 4px;
+  }
+
+  .chart-canvas {
+    position: relative;
+    padding-left: 64px;
+  }
+
+  .chart-plot {
+    position: relative;
+    height: 220px;
+  }
+
+  .chart-svg,
+  .chart-targets {
+    position: absolute;
+    inset: 0;
     width: 100%;
+    height: 100%;
   }
 
-  .fl-bar {
-    width: 100%;
-    max-width: 15px;
-    min-height: 2px;
-    border-radius: 4px 4px 0 0;
+  .chart-svg {
+    overflow: visible;
   }
 
-  .fl-bar.in {
-    background: var(--flow-in, var(--down));
+  .chart-grid,
+  .chart-zero,
+  .chart-guide-line,
+  .chart-net-line,
+  .chart-dot,
+  .chart-missing {
+    vector-effect: non-scaling-stroke;
   }
 
-  .fl-bar.out {
-    background: color-mix(in srgb, var(--flow-out, var(--up)) 78%, transparent);
-    opacity: 0.55;
+  .chart-grid {
+    stroke: var(--dim);
+    stroke-opacity: 0.12;
+    stroke-width: 1;
   }
 
-  /* The steady-state note: shown by renderFlowChart only when both series
-     are genuinely near-flat and every month is net-positive, turning what
-     would otherwise read as eight identical "did this load?" bars into the
-     honest, reassuring signal they actually carry. Quiet, under the legend. */
-  .fl-steady-note {
-    margin: 8px 0 0;
+  .chart-zero {
+    stroke: var(--dim);
+    stroke-opacity: 0.6;
+    stroke-width: 1;
   }
 
-  .fl-legend {
-    margin: 8px 0 0;
+  .chart-axis {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 56px;
+    height: 220px;
+    color: var(--dim);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chart-axis span {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+  }
+
+  .chart-bar {
+    transform-box: fill-box;
+    transform-origin: center bottom;
+  }
+
+  .chart-bar.is-negative {
+    transform-origin: center top;
+  }
+
+  .chart-bar.is-incomplete {
+    fill-opacity: 0.45;
+    stroke: var(--flow-out);
+    stroke-dasharray: 3 3;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .chart-net-line {
+    fill: none;
+    stroke: var(--fg);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .chart-dot {
+    fill: var(--fg);
+    stroke: var(--card, var(--bg));
+    stroke-width: 1.5;
+  }
+
+  .chart-guide-line,
+  .chart-missing {
+    stroke: var(--dim);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 5;
+  }
+
+  .chart-guide {
+    position: absolute;
+    right: 0;
+    z-index: 1;
+    transform: translateY(-110%);
+    border-radius: 4px;
+    padding: 1px 4px;
+    color: var(--dim);
+    background: var(--bg);
+    font-size: 11px;
+    pointer-events: none;
+  }
+
+  #app .chart-target,
+  .chart-target {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 160ms ease, box-shadow 160ms ease;
+    touch-action: manipulation;
+  }
+
+  #app .chart-target:hover,
+  #app .chart-target:focus-visible,
+  #app .chart-target.is-selected,
+  .chart-target:hover,
+  .chart-target:focus-visible,
+  .chart-target.is-selected {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+    outline: none;
+  }
+
+  .chart-target.in-period {
+    border-bottom: 2px solid var(--accent);
+  }
+
+  .chart-months {
     display: flex;
-    gap: 16px;
-    font-size: 12px;
+    margin-top: 10px;
+    font-size: 10px;
     color: var(--dim);
   }
-  .fl-key {
+
+  .chart-months span {
+    flex: 1 1 0;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .chart-months .is-missing {
+    opacity: 0.5;
+  }
+
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin: 12px 0 0 64px;
+    color: var(--dim);
+    font-size: 11px;
+  }
+
+  .chart-legend > span {
     display: inline-flex;
     align-items: center;
     gap: 6px;
   }
-  .fl-swatch {
+
+  .chart-key {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    background: var(--chart-in);
+  }
+
+  .chart-key.is-out {
+    background: var(--chart-out);
+  }
+
+  .chart-key.is-net {
+    height: 3px;
+    width: 14px;
+    background: var(--fg);
+  }
+
+  /* The ring: one period's money, split into the three things that can
+     happen to it. Sized so the legend, not the ring, is what gets read. */
+  /* The ring scales with the space it is given and then STOPS. Fixed at
+     150px it was lost on a 1074px card while its legend stretched the full
+     width, leaving a label and its figure a hand-span apart; capped, the
+     pair stays a single readable object at any width. */
+  .donut {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: clamp(14px, 3vw, 26px);
+    flex-wrap: wrap;
+    margin: 14px 0 4px;
+    max-width: 640px;
+  }
+
+  .donut-figure {
+    position: relative;
+    flex: none;
+    width: clamp(132px, 26%, 190px);
+    aspect-ratio: 1;
+  }
+
+  .donut-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .donut-track {
+    fill: none;
+    stroke: color-mix(in srgb, var(--fg) 8%, transparent);
+    stroke-width: 14;
+  }
+
+  .donut-arc {
+    fill: none;
+    stroke-width: 14;
+    stroke-linecap: butt;
+  }
+
+  /*
+   * Ring segments take the SHARED chart ink (--chart-in / --chart-out /
+   * --chart-neutral, premium.css), the same tokens the column and account
+   * bars fill with. A ring drawn straight from --flow-* used to come out
+   * markedly heavier than the bars beside it on a light card: the same hue,
+   * but text weight, over a far larger area.
+   */
+  .donut-arc.is-committed,
+  .donut-key.is-committed {
+    stroke: var(--chart-neutral);
+    background: var(--chart-neutral);
+  }
+
+  .donut-arc.is-out,
+  .donut-key.is-out {
+    stroke: var(--chart-out);
+    background: var(--chart-out);
+  }
+
+  .donut-arc.is-in,
+  .donut-key.is-in {
+    stroke: var(--chart-in);
+    background: var(--chart-in);
+  }
+
+  .donut-centre {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  .donut-centre-value {
+    font-size: 15px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .donut-centre-label {
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  .donut-legend {
+    flex: 1 1 200px;
+    max-width: 400px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .donut-legend-row {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 7px 8px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  .donut-legend-row:hover,
+  .donut-legend-row:focus-visible {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    outline: none;
+  }
+
+  .donut-key {
     width: 10px;
     height: 10px;
     border-radius: 3px;
-    flex: none;
-  }
-  .fl-swatch.in {
-    background: var(--flow-in, var(--down));
-  }
-  .fl-swatch.out {
-    background: color-mix(in srgb, var(--flow-out, var(--up)) 78%, transparent);
   }
 
-  .ch-months {
-    display: flex;
-    gap: 6px;
-    margin-top: 4px;
-  }
-
-  .ch-month {
-    flex: 1 1 0;
-    min-width: 0;
-    text-align: center;
-    font-size: 10px;
-    color: var(--dim);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+  .donut-legend-label {
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--dim);
   }
 
-  .ch-month.is-dim {
-    opacity: 0.5;
+  .donut-legend-amt {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
   }
 
-  @media (max-width: 639px) {
-    .fl-plot {
-      height: 132px;
-    }
-    /* Keep every month on small screens, narrow the bars instead (the same
-       approach .acct-trend-bar takes at this breakpoint) so a full year never
-       collapses to slivers or drops months. */
-    .fl-bar {
-      max-width: 12px;
-    }
-    .ch-month {
-      font-size: 9px;
+  .chart-tooltip {
+    position: absolute;
+    z-index: 20;
+    box-sizing: border-box;
+    max-width: min(280px, 100%);
+    padding: 10px 13px;
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--fg);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.2);
+    font-size: 12px;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+
+  .chart-tooltip > :first-child {
+    font-weight: 700;
+  }
+
+  .chart-tooltip[hidden],
+  html[data-privacy='on'] .chart-tooltip,
+  html[data-privacy='on'] .chart-surface,
+  html[data-privacy='on'] .donut,
+  html[data-privacy='on'] .commit-when,
+  html[data-privacy='on'] .chart-info-body,
+  html[data-privacy='on'] .tm-wrap,
+  html[data-privacy='on'] .fc-chart-wrap {
+    display: none !important;
+  }
+
+  .chart-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .chart-controls [aria-pressed='true'] {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .chart-info {
+    display: inline-block;
+    position: relative;
+    margin: 0;
+    font-size: 12px;
+    color: var(--dim);
+  }
+
+  .chart-info > summary {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .chart-info > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .chart-info > .chart-info-body {
+    position: absolute;
+    right: 0;
+    z-index: 30;
+    width: min(280px, 72vw);
+    padding: 12px;
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--fg);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chart-target,
+    #app .chart-target,
+    .tm-tile,
+    .ownowe-fill {
+      transition: none !important;
+      animation: none !important;
     }
   }
 }
 
 @media print {
-  .fl-chart {
+  .chart-surface,
+  .chart-controls,
+  .chart-tooltip,
+  .chart-info {
     display: none !important;
+  }
+}
+
+@media screen {
+  #app .fc-chart {
+    height: 240px;
+  }
+
+  .fc-targets {
+    position: absolute;
+    inset: 0;
+  }
+
+  #app .fc-day-target,
+  .fc-day-target {
+    position: absolute;
+    top: 0;
+    bottom: 8%;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    cursor: crosshair;
+  }
+
+  #app .fc-day-target:hover,
+  #app .fc-day-target:focus-visible,
+  .fc-day-target:hover,
+  .fc-day-target:focus-visible {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    outline: 1px solid var(--accent);
+  }
+
+  #app .fc-event-target {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1px solid var(--accent);
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .fc-ev-recorded {
+    fill: var(--bg);
+  }
+
+  .fc-ev-estimated {
+    fill: var(--bg);
+    stroke-dasharray: 2 2;
+  }
+}
+
+@media screen {
+  .fl-panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+  }
+
+  .fl-panel {
+    min-width: 0;
+  }
+
+  .fl-panel-head {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    align-items: baseline;
+  }
+
+  .fl-panel-head h4 {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dim);
+  }
+
+  .fl-panel-head > .num {
+    font-size: 17px;
+    font-weight: 650;
+  }
+
+  .fl-panel .chart-plot,
+  .fl-panel .chart-axis {
+    height: 180px;
+  }
+
+  .fl-summary {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px solid var(--edge);
+    padding-top: 12px;
+    margin-top: 8px;
+  }
+
+  .fl-net {
+    font-size: 13px;
+    color: var(--flow-in);
+  }
+
+  .fl-net.is-short {
+    color: var(--flow-out);
+  }
+
+  #app .chart-target.is-compared {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  @media (max-width: 760px) {
+    .fl-panels {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 20px;
+    }
   }
 }

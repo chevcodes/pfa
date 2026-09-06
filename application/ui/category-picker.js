@@ -27,6 +27,7 @@ import { Store } from '../core/storage.js';
 import { makeSplit, validateSplit, balanceParts } from '../analysis/transaction-splits.js';
 import { spendableCategoryNames } from '../analysis/spendable-categories.js';
 import { tagAdd, tagRemove } from '../analysis/tag-totals.js';
+import { makeMoney } from '../core/money-format.js';
 
 export function createCategoryPicker(ctx) {
   requireCtx(
@@ -167,8 +168,7 @@ export function createCategoryPicker(ctx) {
     const target = Math.round(Math.abs(Number(row.amount) || 0) * 100) / 100;
     const place = row.displayName || row.description.split(',')[0].replace(/\s+/g, ' ').trim();
     const spendable = spendableCategoryNames(state.cfg);
-    const sym = (state.cfg.currency && state.cfg.currency.symbol) || '$';
-    const money = (n) => sym + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+    const money = makeMoney(state.cfg);
     const existing = (state.transactionSplits || [])
       .filter((s) => s.txnId === row.id)
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];

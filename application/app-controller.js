@@ -45,6 +45,8 @@ import {
   LOCAL_DEV_HOSTS,
   bankRowsInapplicable as bankRowsInapplicablePure,
   cardRowsInapplicable as cardRowsInapplicablePure,
+  makeMoneyShort,
+  privateViewOn,
 } from './core/shared-helpers.js';
 import { setBankDescriptorCleanupRules } from './statements/read-statements.js';
 import {
@@ -408,13 +410,9 @@ function bootUI() {
     const { symbol = '$', locale = 'en-JM', decimals = 2 } = state.cfg.currency || {};
     return formatMoney(n, symbol, locale, decimals);
   };
-  const moneyShort = (n) => {
-    const { symbol = '$' } = state.cfg.currency || {};
-    const a = Math.abs(n);
-    if (a >= 1e6) return symbol + (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
-    if (a >= 1e3) return symbol + Math.round(n / 1e3) + 'k';
-    return symbol + Math.round(n);
-  };
+  // Compact money for axis ticks and dense chart labels, from THE formatter
+  // (core/money-format.js) so it passes the same privacy gate as money0.
+  const moneyShort = (n) => makeMoneyShort(state.cfg, { millionDecimals: null })(n);
   const pct = (x) => `${Math.round(x * 100)}%`;
   const monthShort = (ym) => {
     const m = /^(\d{4})-(\d{2})$/.exec(ym);
@@ -1006,6 +1004,13 @@ function bootUI() {
       state.tags,
       state.transactionSplits,
       state.manualAssets,
+      // Private view is now a RENDER input, not a stylesheet overlay: every
+      // figure is masked by the formatter as the DOM is built (core/
+      // privacy.js), so a cached view built with figures visible is stale the
+      // moment the mode flips. Folding it into the epoch invalidates every
+      // destination's cache at once, rather than leaving each view's own
+      // signature to remember a global state it does not own.
+      privateViewOn(),
     ];
     if (
       !_epochSnap ||
@@ -1126,6 +1131,12 @@ function bootUI() {
   }
 
   function drillToAccountsPayee(key, label) {
+    // Clear the CARD facets too. This only reset the bank side, so drilling to
+    // a payee while a card-side category or merchant drill was still active
+    // left that filter in place and the list showed the OLD selection - the
+    // click appeared to do nothing. Symmetric with drillToTransactions, which
+    // has always cleared the bank side before applying a card-side narrow.
+    resetCardDrillFacets();
     resetBankDrillFacets();
     state.bankFilter.payeeKey = key;
     state.bankFilter.payeeLabel = label;
@@ -1144,10 +1155,16 @@ function bootUI() {
     resetBankDrillFacets();
     state.bankAccount = turningOff ? 'all' : account;
     state.bankShowAllTx = true;
+    if (state.view !== 'activity') {
+      state.view = 'activity';
+      state.activityTab = 'transactions';
+      trackUsage('view-activity');
+    }
     render();
     smoothScrollToEl('#acct-tx');
   }
   function drillToBankKind(kind) {
+    resetCardDrillFacets();
     resetBankDrillFacets();
     state.bankFilter.kind = kind;
     state.bankShowAllTx = true;

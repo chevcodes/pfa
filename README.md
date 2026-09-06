@@ -99,8 +99,14 @@ application/
     reporting-insights.js   Goals, foreign spending, and insight analysis
     reporting-print.js      Printable-report orchestration
   statements/            PDF parsing, reconciliation, and categorisation
-  core/                  IndexedDB persistence and shared helpers
-  ui/                    View renderers, goal control, and statement intake
+  core/
+    privacy.js            The private-view contract and its exempt paths
+    money-format.js       THE money formatter every screen and model uses
+    storage.js            IndexedDB persistence
+    shared-helpers.js     Shared helpers
+  ui/
+    decision-header.js    THE headline component every destination opens with
+    ...                   View renderers, goal control, and statement intake
   output/                CSV, history, and printable-report output
 interface/
   foundation.css         Tokens, document shell, and navigation
@@ -109,7 +115,8 @@ interface/
   responsive.css         Responsive layout and touch rules
   print.css              Printable-report rules
   feature-additions.css  Later additive component rules
-  workspace-refinements.css  Final cascade overrides
+  workspace-refinements.css  Cascade overrides
+  premium.css            The v2.0 visual system - loads last, settles ties
   manifest.json          PWA metadata
 index.html               Browser/PWA shell
 service-worker.js        Offline application-shell caching
@@ -131,6 +138,24 @@ the relevant stylesheet under `interface/`. Keep statement parsing changes close
 test infrastructure is available.
 
 ## Privacy and limitations
+
+### Private view
+
+"Hide" puts the app into private view. Every monetary string in the product is
+produced by one formatter (`application/core/money-format.js`), and that
+formatter asks one switch (`application/core/privacy.js`) whether figures are
+hidden - so a heading, a figure written into a sentence, a hover tooltip and a
+screen-reader label are all covered by construction rather than by a stylesheet
+remembering to list them. Anything that encodes an amount as a SHAPE rather
+than as text - a bar's width, a tile's area, a chart - is withdrawn too, so
+relative wealth cannot be read off the picture with the numbers hidden.
+
+Private view is a screen state, never a data redaction. Printing, "Copy
+financial summary" and every export are deliberate acts of sharing real
+figures, and they run inside `withExactFigures()`, which suspends the mask for
+that build only.
+
+### Limitations
 
 This is an offline-first local application, not a synchronised service. Each
 device has its own IndexedDB history. Moving data between devices requires a

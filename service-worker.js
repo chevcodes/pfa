@@ -22,7 +22,7 @@
  * root location.
  */
 
-const VERSION = 'pfa-v0.3';
+const VERSION = 'pfa-v0.24';
 
 const CODE = [
   './',
@@ -40,6 +40,7 @@ const CODE = [
   './interface/treemap.css',
   './interface/income-chart.css',
   './interface/flow-chart.css',
+  './interface/premium.css',
 
   // Application entry point
   './application/app-controller.js',
@@ -49,6 +50,8 @@ const CODE = [
 
   // application/core/
   './application/core/icons.js',
+  './application/core/privacy.js',
+  './application/core/money-format.js',
   './application/core/shared-helpers.js',
   './application/core/storage.js',
 
@@ -90,9 +93,12 @@ const CODE = [
   './application/ui/cards-render.js',
   './application/ui/category-picker.js',
   './application/ui/chart-helpers.js',
+  './application/ui/chart-surface.js',
+  './application/ui/decision-header.js',
   './application/ui/forecast-chart-render.js',
   './application/ui/intentions-section.js',
   './application/ui/manage-data.js',
+  './application/ui/motion.js',
   './application/ui/overview-render.js',
   './application/ui/position-render.js',
   './application/ui/treemap-render.js',

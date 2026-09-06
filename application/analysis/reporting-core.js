@@ -36,6 +36,7 @@ import {
   addDaysIso,
   isoDay,
   detectSustainedRise,
+  markProportional,
 } from '../core/shared-helpers.js';
 import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
@@ -516,27 +517,58 @@ export function appendExpandable(el, parent, items, renderItem, opts = {}) {
   const rest = items.slice(initial);
   for (const item of shown) parent.append(renderItem(item));
   if (!rest.length) return;
-  const restNodes = rest.map(renderItem);
+  /*
+   * A renderItem may return ONE node or a DocumentFragment holding several
+   * (the merged transaction ledger returns a row plus its detail row). A
+   * fragment is EMPTIED the moment it is inserted, so keeping the fragment
+   * itself left `restNodes` holding spent, parentless objects: "Hide all"
+   * removed nothing, and re-revealing inserted nothing. Each item is captured
+   * as its real node list up front, so reveal and collapse both operate on
+   * the nodes that are actually in the document.
+   */
+  const toNodes = (rendered) => {
+    if (rendered == null || rendered === false) return [];
+    if (rendered.nodeType === 11) return Array.from(rendered.childNodes);
+    return [rendered];
+  };
+  const restNodes = rest.map((item) => toNodes(renderItem(item)));
   let visible = 0;
   const moreBtn = el('button', { class: 'btn sm ghost' }, 'See more');
   const allBtn = el('button', { class: 'btn sm' }, 'See all');
   const hideBtn = el('button', { class: 'btn sm ghost' }, 'Hide all');
   const controls = el('div', { class: 'show-more show-more-multi' }, moreBtn, allBtn, hideBtn);
   const anchor = opts.wrapToggle ? opts.wrapToggle(controls) : controls;
+  // The counts are the point: "See all" gave no idea whether it opened three
+  // more rows or three hundred, so the safe move was always to leave it shut.
   const sync = () => {
     const remaining = rest.length - visible;
     moreBtn.hidden = remaining <= 0;
     allBtn.hidden = remaining <= 0;
     hideBtn.hidden = visible <= 0;
+    // Reset the labels when a group empties too, or a collapsed control keeps
+    // advertising the count it had before it was collapsed.
+    if (remaining > 0) {
+      const next = Math.min(step, remaining);
+      moreBtn.textContent = `See ${next} more`;
+      allBtn.textContent = `See all ${remaining}`;
+    } else {
+      moreBtn.textContent = 'See more';
+      allBtn.textContent = 'See all';
+    }
+    hideBtn.textContent = visible > 0 ? `Hide ${visible}` : 'Hide all';
   };
   const reveal = (n) => {
     const end = Math.min(visible + n, restNodes.length);
-    for (let i = visible; i < end; i++) anchor.before(restNodes[i]);
+    for (let i = visible; i < end; i++) {
+      for (const node of restNodes[i]) anchor.before(node);
+    }
     visible = end;
     sync();
   };
   const collapse = () => {
-    for (let i = 0; i < visible; i++) restNodes[i].remove();
+    for (let i = 0; i < visible; i++) {
+      for (const node of restNodes[i]) if (node.remove) node.remove();
+    }
     visible = 0;
     sync();
     // Removing many revealed rows shifts everything below the toggle upward
@@ -549,7 +581,9 @@ export function appendExpandable(el, parent, items, renderItem, opts = {}) {
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    if (typeof anchor.scrollIntoView === 'function') {
+      anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    }
   };
   moreBtn.addEventListener('click', () => reveal(step));
   allBtn.addEventListener('click', () => {
@@ -583,21 +617,30 @@ export function renderKindTag(el, label, cls) {
     el('span', { class: 'klabel' }, label)
   );
 }
+// The category identity palette, retuned for the v2.0 visual system. Same
+// fourteen slots, same stable name -> colour mapping, so a category keeps its
+// identity across the treemap, the share bars and every chip. What changed is
+// the chroma: the previous set mixed a bright primary blue and a saturated
+// gold against muted mid-tones, so a spending map read as a set of competing
+// signals rather than one picture. These sit at an even lightness and a
+// restrained, consistent chroma - distinguishable from each other, quiet
+// together, and legible in both themes with the existing readableInk contrast
+// pass unchanged.
 export const SHARE_PALETTE = [
-  '#2f6fb0',
-  '#3f9d6b',
-  '#c98a1b',
-  '#a05fb4',
-  '#4aa3a3',
-  '#c65b7c',
-  '#6b8e3d',
-  '#b5642e',
-  '#5a78c2',
-  '#8a8f2f',
-  '#3e8fb0',
-  '#9a5aa8',
-  '#c0603f',
-  '#557f9e',
+  '#3f6d9a',
+  '#4e8b78',
+  '#b0854e',
+  '#856a9e',
+  '#4d8b9e',
+  '#a8697e',
+  '#6e8759',
+  '#a97455',
+  '#5b6f9f',
+  '#87874f',
+  '#487e94',
+  '#7b6791',
+  '#a06455',
+  '#5b7183',
 ];
 // Cash inflow is one green family and Cash outflow is one orange family, matching the
 // app's colour language (green = toward you, warm = away). Each is a single-hue
@@ -718,7 +761,10 @@ export function renderShareBar(el, opts = {}) {
     }
     track.append(seg);
   }
-  const bar = el('div', { class: 'share-bar' }, track);
+  // A proportional track IS a figure drawn as shape. Marked at construction
+  // so the private view can withdraw the comparison (privacy.js), rather than
+  // relying on a stylesheet to recognise this component's class name.
+  const bar = markProportional(el('div', { class: 'share-bar' }, track));
   if (opts.centerValue != null || opts.centerLabel != null) {
     const cap = el('div', { class: 'share-bar-cap muted small' });
     if (opts.centerValue != null)

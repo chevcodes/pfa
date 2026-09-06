@@ -35,6 +35,7 @@ import {
   MONTHS_SHORT,
   isPrivacyMode,
 } from '../core/shared-helpers.js';
+import { renderColumnChart } from './chart-surface.js';
 
 
 // Shared, empty keep-upper / small-words set for smartTitle when tidying a bank
@@ -253,8 +254,6 @@ export function createAccountsRenderer(ctx) {
       return x ? MONTHS_SHORT[+x[1] - 1] : m;
     };
     const shown = trend.slice(-12);
-    const H = 150;
-    const max = Math.max(1, ...shown.map((t) => Math.max(t.moneyIn, t.moneyOut)));
     const sec = el('section', { class: 'card' });
     sec.append(
       el(
@@ -263,72 +262,24 @@ export function createAccountsRenderer(ctx) {
         el('h3', { class: 'card-title' }, icon(iconSpark()), 'Cash in and out over time')
       )
     );
-    sec.append(
-      el(
-        'div',
-        { class: 'acct-trend-legend muted small' },
-        el(
-          'span',
-          { class: 'acct-trend-key' },
-          el('span', { class: 'acct-trend-swatch in' }),
-          'Cash inflow'
-        ),
-        el(
-          'span',
-          { class: 'acct-trend-key' },
-          el('span', { class: 'acct-trend-swatch out' }),
-          'Cash outflow'
-        )
-      )
-    );
-    const chart = el('div', { class: 'trend acct-trend' });
-    const bars = el('div', { class: 'acct-trend-bars' });
-    for (const t of shown) {
-      const inPeriod = p && t.month >= p.from && t.month <= p.to;
-      bars.append(
-        el(
-          'button',
-          {
-            class: 'acct-trend-col' + (inPeriod ? ' in-period' : ''),
-            'aria-label': isPrivacyMode()
-              ? `${t.month}: amounts hidden. Focus this month.`
-              : `${t.month}: in ${bankMoney(t.moneyIn)}, out ${bankMoney(t.moneyOut)}. Focus this month.`,
 
-            title: `${t.month}: in ${bankMoney(t.moneyIn)} \u00b7 out ${bankMoney(t.moneyOut)}`,
-            onclick: () => {
-              state.period = { type: 'custom', from: t.month, to: t.month };
-              clearFilters();
-              clearBankFilters();
-              state.showAllTx = false;
-              state.bankShowAllTx = false;
-              render();
-            },
-          },
-          el(
-            'div',
-            { class: 'acct-trend-pair' },
-            el('span', {
-              class: 'acct-trend-bar in',
-              style: `height:${Math.max(2, (t.moneyIn / max) * H)}px`,
-            }),
-            el('span', {
-              class: 'acct-trend-bar out',
-              style: `height:${Math.max(2, (t.moneyOut / max) * H)}px`,
-            })
-          ),
-          el('span', { class: 'acct-trend-mlabel' }, monShort(t.month))
-        )
-      );
-    }
-    chart.append(bars);
-    sec.append(chart);
-    sec.append(
-      renderExplainer(
-        el,
-        'Money arriving in and leaving your accounts each month, transfers between your own accounts excluded. Select a month to focus the tab on it.',
-        { label: 'How this chart is worked out' }
-      )
-    );
+    sec.append(renderColumnChart({ el, monthLabel, monthShort: monShort }, {
+      label: 'Cash in and out by month',
+      money: bankMoney,
+      rows: shown.map((t) => ({ ...t, inPeriod: !!(p && t.month >= p.from && t.month <= p.to), selected: !!(p && p.from === t.month && p.to === t.month), detail: 'Own-account transfers excluded' })),
+      series: [
+        { key: 'moneyIn', label: 'Cash inflow', tone: 'in' },
+        { key: 'moneyOut', label: 'Cash outflow', tone: 'out' },
+      ],
+      onSelect: (t) => {
+        state.period = { type: 'custom', from: t.month, to: t.month };
+        clearFilters();
+        clearBankFilters();
+        state.showAllTx = false;
+        state.bankShowAllTx = false;
+        render();
+      },
+    }));
     return sec;
   }
 
@@ -687,7 +638,7 @@ export function createAccountsRenderer(ctx) {
           { class: 'muted small stmt-note' },
           gaps.length
             ? `No statement for ${gaps.slice(0, 3).map(monthLabel).join(', ')}${gaps.length > 3 ? ` and ${gaps.length - 3} more` : ''}, so that stretch is incomplete. Add those PDFs for a full picture.`
-            : 'Every month in that range has a statement, so nothing is missing.'
+            : 'All months covered.'
         )
       );
     }

@@ -4,15 +4,11 @@
    with any collision between categories present in the SAME render
    resolved by treemap-render.js before this fill ever reaches an element.
 
-   Rectangles are drawn in a decorative SVG layer. Names, amounts and trend
-   markers are real HTML, positioned by percentage over that SVG, so text
-   stays a genuine, legible CSS pixel size regardless of how large or small
-   the picture itself renders.
-
-   Text tiering (full name / wrapped name / short form / colour-only) is
-   decided in JavaScript from each tile's REAL measured pixel size and REAL
-   measured text width - this file only supplies the base appearance; it
-   makes no size-based content decisions of its own.
+   The whole picture - rectangles, merchant outlines, labels, values - is one
+   SVG. Text is real SVG <text>, sized in the same view-space units as the
+   geometry (treemap-render.js), so it stays proportionate to its tile
+   regardless of how large or small the picture renders. A per-tile clipPath
+   is the structural guarantee against overflow, not this stylesheet.
    ===================================================================== */
 
 @media screen {
@@ -23,174 +19,142 @@
   .tm-wrap {
     position: relative;
     width: 100%;
-    overflow: hidden;
+    overflow: visible;
     margin: var(--s3) 0 var(--s2);
     border-radius: 10px;
     aspect-ratio: 1000 / 560;
     max-height: 520px;
   }
 
+  /* MUST match treemap-render.js's own narrow viewBox (1000x1150). A phone
+     is width-starved, so the picture grows downward instead - and if these
+     two ever disagree the drawing letterboxes inside its own container. */
   @media (max-width: 639px) {
-    /* Taller ratio on narrow screens: gives small tiles more relative
-       vertical room once width is already constrained. */
     .tm-wrap {
-      aspect-ratio: 1000 / 700;
-      max-height: 460px;
+      aspect-ratio: 1000 / 1150;
+      max-height: none;
     }
   }
 
-  .tm-svg,
-  .tm-overlay {
+  .tm-svg {
     position: absolute;
     inset: 0;
+    border-radius: 10px;
     width: 100%;
     height: 100%;
   }
 
-  .tm-overlay {
-    pointer-events: none;
-    /* isolation:isolate forces a fresh stacking context whose children can
-       never paint above content outside .tm-wrap, no matter what z-index a
-       tile carries - a structural guarantee that the treemap stays in the
-       content layer, not a per-element z-index that has to be kept in sync. */
-    isolation: isolate;
-    z-index: 0;
-  }
-
   /*
-   * One complete rectangle represents one category. The quiet border
-   * separates neighbouring categories without creating an internal grid.
+   * One complete rectangle represents one category. Neighbours are separated
+   * by a GAP cut into the geometry (TILE_GAP, treemap-render.js) so the card
+   * behind shows through - deliberately NOT by a stroke. Every stroked
+   * version of this drew a bright hairline grid across the whole picture,
+   * and the colour is the only thing this map has to say.
    */
   .tm-rect {
-    stroke: rgba(0, 0, 0, 0.16);
-    stroke-width: 1.25;
-    vector-effect: non-scaling-stroke;
+    stroke: none;
     shape-rendering: geometricPrecision;
   }
 
-  [data-theme='light'] .tm-rect {
-    stroke: rgba(255, 255, 255, 0.42);
-  }
-
-  @media (prefers-color-scheme: light) {
-    [data-theme='auto'] .tm-rect {
-      stroke: rgba(255, 255, 255, 0.42);
-    }
-  }
-
   /*
-   * Each tile is a real, positioned HTML element (button when clickable,
-   * div otherwise), sized by percentage to match its rectangle exactly.
-   * Uniform padding on every side - the trend marker's own space is
-   * reserved by the LAYOUT LOGIC (checking against availableWidth minus a
-   * gutter), never by asymmetric CSS padding baked in regardless of
-   * whether a marker actually shows on a given tile.
+   * Merchant subdivisions are NEVER drawn. Every version of them - a light
+   * hairline, then a dark seam on hover - turned a category into a grid of
+   * boxes and put lines back into a picture whose whole strength is flat
+   * blocks of colour. The rects stay in the markup as the per-merchant
+   * accessible detail behind each category; the visible answer to "what is
+   * inside this category" is the click-through to its transactions.
    */
+  .tm-sub {
+    fill: none;
+    stroke: none;
+    pointer-events: none;
+  }
+
+  /* The depth overlay is decoration over the identity colour, never a
+     target - every pointer event belongs to the tile underneath it. */
+  .tm-sheen {
+    pointer-events: none;
+  }
+
   .tm-tile {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: flex-start;
-    overflow: hidden;
-    box-sizing: border-box;
-    padding: 8px;
-    pointer-events: all;
-    text-align: left;
-    background: transparent;
-    border: 0;
-    margin: 0;
-    font: inherit;
-    -webkit-appearance: none;
-    appearance: none;
+    transform-box: fill-box;
+    transform-origin: center;
+    transition:
+      opacity 180ms ease,
+      filter 180ms ease;
   }
 
   .tm-tile.is-interactive {
-    cursor: pointer;
     touch-action: manipulation;
   }
 
-  .tm-tile.is-interactive:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  [data-theme='light'] .tm-tile.is-interactive:hover {
-    background: rgba(0, 0, 0, 0.06);
-  }
-
   /*
-   * The focus outline is drawn with a box-shadow rather than lifting the
-   * tile with z-index. A z-index here created a stacking context that could
-   * rise over sibling components (the Export menu rendered BEHIND the
-   * treemap - a real, observed bug). The treemap is CONTENT and must always
-   * sit below the app's true overlay layer (menus, toasts, modals); it may
-   * never introduce a z-index that competes with them. inset box-shadow
-   * gives the same visible accent border without any stacking change at all.
+   * Focus-and-context: pointing at one category lifts it and quietens every
+   * other block, so the answer to "how big is this one against the rest"
+   * survives the moment of looking at it. The whole picture returns the
+   * instant the pointer leaves.
    */
+  .tm-svg:hover .tm-tile:not(:hover) {
+    opacity: 0.55;
+  }
+
+  /* Hover lifts the block itself rather than ringing it: with the tiles
+     already separated by a gap, an outline would put back exactly the bright
+     edge the gap was introduced to remove. */
+  .tm-tile.is-interactive:hover {
+    filter: brightness(1.14) saturate(1.06);
+  }
+
+  /* Keyboard focus still needs an unmistakable ring - it is the only signal
+     a keyboard user gets, and it is transient. */
   .tm-tile.is-interactive:focus-visible {
     outline: none;
-    box-shadow: inset 0 0 0 3px var(--accent);
   }
+
+  .tm-tile.is-interactive:focus-visible .tm-rect {
+    stroke: var(--accent);
+    stroke-opacity: 1;
+    stroke-width: 3;
+    vector-effect: non-scaling-stroke;
+  }
+
   .tm-label,
-  .tm-value {
-    display: block;
-    width: 100%;
-    -webkit-user-select: none;
+  .tm-value,
+  .tm-share {
     user-select: none;
-    /* Defence in depth only - the JS measurement is the real guarantee text
-       fits. If an assumption is ever wrong, overflow clips cleanly rather
-       than visibly spilling past the tile. */
-    overflow: hidden;
-  }
-
-  .tm-label {
-    font-size: 13px;
-    font-weight: 680;
-    letter-spacing: -0.2px;
-    line-height: 15px;
-    /* JS sets white-space per tile (nowrap for a one-line fit, normal for a
-       two-line wrap) and guarantees the chosen lines fit the live element
-       before committing them, so no clamp or ellipsis backstop is needed -
-       a label is only ever set to content that has already been measured to
-       fit. */
-  }
-
-  .tm-value {
-    display: none;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    opacity: 0.85;
-    /* nowrap + ellipsis is coherent here (single line), unlike on .tm-label -
-       so the ellipsis defence genuinely works for the amount. */
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    font-family: inherit;
+    pointer-events: none;
   }
 
   /*
-   * Trend marker: shape (point-up vs point-down) is the primary signal,
-   * colour is secondary - never colour alone. Hidden by default; shown only
-   * when the layout logic determines there is genuine room for it without
-   * displacing the category name.
+   * NO OUTLINE. An outline behind type is a legibility crutch, and at this
+   * size it reads as a glow around the letters rather than as type sitting on
+   * a surface. It is unnecessary now: tileSurface (treemap-render.js) holds
+   * every fill on one side of the ink threshold, so the label clears its
+   * contrast target against the tile itself and needs nothing behind it.
    */
-  .tm-trend {
-    display: none;
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 0;
-    height: 0;
+  .tm-label {
+    font-weight: 650;
   }
 
-  .tm-trend.tone-watch {
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-bottom: 8px solid var(--warn);
+
+  .tm-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    opacity: 0.92;
   }
 
-  .tm-trend.tone-good {
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 8px solid var(--good);
+  /* Share of spending, carrying the movement arrow. Tone is a reinforcement
+     of the glyph, never the only signal - the arrow reads without colour. */
+  .tm-share {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.72;
+  }
+
+  .tm-share.tone-watch,
+  .tm-share.tone-good {
+    opacity: 0.95;
+    font-weight: 600;
   }
 
   .tm-help {

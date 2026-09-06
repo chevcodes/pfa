@@ -270,11 +270,7 @@
 .accounts-wrap {
   gap: var(--section-gap);
 }
-.card > p.muted,
-.overview-story,
-.explainer-body,
-.vm-detail-body,
-.vm-reconcile {
+.overview-story {
   max-width: 76ch;
 }
 

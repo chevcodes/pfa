@@ -322,22 +322,15 @@ svg.spin {
 #toast.show ~ .install-banner.show {
   bottom: calc(var(--dock-toast) + env(safe-area-inset-bottom));
 }
-/* ---------- First-run / returning greeting ---------- */
-/* An in-flow bar for the two welcome moments (maybeGreetReturning and
-   maybeWelcomeFirstTime). It is appended as the last child of the sticky
-   .topbar-stack, so while shown it pushes the dashboard down instead of floating
-   over the hero, and it collapses (max-height to 0) on dismiss, releasing that
-   space. Full-width panel chrome matching the top bar; its inner content is
-   centred to the same max width and side padding as .wrap. It never uses the
-   bottom banner slot, so it can never collide with the install / backup /
-   first-run banners (all bottom-anchored). */
 #greeting {
   box-sizing: border-box;
   overflow: hidden;
   max-height: 0;
   opacity: 0;
-  background: var(--panel);
-  border-bottom: 1px solid var(--edge);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  -webkit-backdrop-filter: saturate(1.3) blur(16px);
+  backdrop-filter: saturate(1.3) blur(16px);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--fg);
   transition:
     max-height 0.28s ease,
@@ -348,22 +341,22 @@ svg.spin {
   opacity: 1;
 }
 #greeting .greeting-inner {
-  max-width: 1240px;
-  margin: 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
   align-items: center;
-  justify-content: center;
   gap: 14px;
   padding: 12px calc(clamp(14px, 3vw, 28px) + env(safe-area-inset-right)) 12px
     calc(clamp(14px, 3vw, 28px) + env(safe-area-inset-left));
 }
 #greeting .greeting-text {
+  grid-column: 2;
   min-width: 0;
   font-size: 15px;
   font-weight: 600;
   text-align: center;
 }
 #greeting .greeting-body {
+  grid-column: 2;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -377,7 +370,12 @@ svg.spin {
   margin: 6px 0 0;
 }
 #greeting .greeting-dismiss {
-  flex: none;
+  grid-column: 3;
+  justify-self: end;
+}
+
+.topbar-stack:has(#greeting.show) ~ #app.wrap {
+  padding-top: 0;
 }
 
 /* ---------- Overlays: picker / passphrase / progress ---------- */

@@ -274,6 +274,12 @@ console.log('='.repeat(74));
     cdAfter.liquid === lbBefore.total,
     'Position cash stays base-currency-only with USD present'
   );
+  note(
+    cdAfter.accounts.some(
+      (account) => account.currency === 'USD' && account.nativeBalance === 3000
+    ),
+    'Position account view keeps the USD account visible without blending it into JMD cash'
+  );
 }
 
 // ============================================================================

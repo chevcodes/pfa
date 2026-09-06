@@ -1,3 +1,5 @@
+import { figuresHidden, hiddenChartLabel } from '../core/privacy.js';
+
 /* chart-helpers.js - the small, genuinely-shared building blocks the income
  * and flow charts both use. Deliberately NOT a "bar chart primitive": the two
  * charts differ for honest reasons (income is single-series on a zoomed band
@@ -55,4 +57,45 @@ export function pairCards(wrap, a, b) {
     wrap.append(a, b);
   } else if (a) wrap.append(a);
   else if (b) wrap.append(b);
+}
+
+/* ---------------------------------------------------------------------
+ * THE private-view state for charts.
+ *
+ * A chart encodes a figure TWICE: once as printed text and once as shape.
+ * Masking only the text leaves the shape saying "this category dwarfs the
+ * rest" or "this month was the big one" - relative wealth, still perfectly
+ * legible with every number hidden. The old approach flattened a couple of
+ * known bar classes to one equal height, which fixed those two charts and
+ * left the treemap, the forecast area and every list bar untouched.
+ *
+ * So every chart in the app asks chartIsHidden() first and, when it is,
+ * returns this ONE placeholder instead of drawing. It is uniform across the
+ * treemap, the flow bars, the income bars and the forecast area, so the
+ * private view reads as a deliberate product state rather than as several
+ * charts failing in different ways. The card, its heading and its meaning
+ * line all stay - only the comparison goes.
+ * ------------------------------------------------------------------- */
+export function chartIsHidden() {
+  return figuresHidden();
+}
+
+export function renderHiddenChart(el, what, opts = {}) {
+  const box = el('div', {
+    class: 'chart-hidden' + (opts.class ? ' ' + opts.class : ''),
+    role: 'img',
+    'aria-label': hiddenChartLabel(what || 'Chart'),
+    ...(opts.height ? { style: `min-height:${opts.height}` } : {}),
+  });
+  box.append(
+    el(
+      'span',
+      { class: 'chart-hidden-mark', 'aria-hidden': 'true' },
+      el('span', { class: 'chart-hidden-dot' }),
+      el('span', { class: 'chart-hidden-dot' }),
+      el('span', { class: 'chart-hidden-dot' })
+    )
+  );
+  box.append(el('span', { class: 'chart-hidden-copy' }, 'Chart hidden while figures are hidden'));
+  return box;
 }

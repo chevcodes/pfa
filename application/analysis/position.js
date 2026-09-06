@@ -21,6 +21,7 @@
  *  the v4 `manualAssets` store (keyPath 'id').
  * ======================================================================== */
 import { resolveOpts, liquidBalance, detectRecurring } from './commitment-income.js';
+import { makeMoney } from '../core/money-format.js';
 
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -48,7 +49,7 @@ export const NET_WORTH_CLASSES = {
 /* ===========================================================================
  *  1) CASH AND DEBT - fully reconciled, no upkeep.
  * ======================================================================== */
-export function cashAndDebt({ bankRecords = [], cardStatements = [], cfg = {}, asOf }) {
+export function cashAndDebt({ bankRecords = [], cardStatements = [], cfg = {}, asOf, fx = null }) {
   const opts = resolveOpts(cfg);
   const base = opts.baseCurrency;
 
@@ -78,6 +79,29 @@ export function cashAndDebt({ bankRecords = [], cardStatements = [], cfg = {}, a
   }
   for (const [ccy, m] of seenForeign)
     foreign[ccy] = r2([...m.values()].reduce((s, v) => s + v.bal, 0));
+
+  const accounts = Object.entries(liquid.perAccount || {}).map(([account, balance]) => ({
+    account,
+    currency: base,
+    nativeBalance: r2(balance),
+    baseBalance: r2(balance),
+    rate: 1,
+  }));
+  for (const [currency, accountMap] of seenForeign) {
+    const rate =
+      fx && fx.base === base && fx.rates && Number(fx.rates[currency]) > 0
+        ? Number(fx.rates[currency])
+        : null;
+    for (const [account, value] of accountMap) {
+      accounts.push({
+        account,
+        currency,
+        nativeBalance: r2(value.bal),
+        baseBalance: rate ? r2(value.bal * rate) : null,
+        rate,
+      });
+    }
+  }
 
   // card balance + utilisation from latest statement
   const stmts = (cardStatements || [])
@@ -200,7 +224,8 @@ export function cashAndDebt({ bankRecords = [], cardStatements = [], cfg = {}, a
     baseCurrency: base,
     liquid: liquid.total,
     perAccount: liquid.perAccount,
-    foreign, // { USD: n, ... } shown separately
+    foreign,
+    accounts,
     cardBalance,
     creditLimit,
     utilisation, // % or null
@@ -502,11 +527,11 @@ export function buildNetWorthModel(nw, cfg = {}) {
   const gaps = [...nw.notIncluded.assets, ...nw.notIncluded.liabilities];
   return {
     lead: {
-      label: 'What you own minus what you owe',
+      label: 'Recorded net worth',
       amountText: money(nw.recordedNetWorth),
       tag: `covers ${nw.coverage.covered} of ${nw.coverage.of} classes`,
       tone: 'neutral',
-      detail: `Assets ${money(nw.totalAssets)} \u2212 debts ${money(nw.totalLiabilities)}.`,
+      detail: `Recorded assets ${money(nw.totalAssets)} \u2212 recorded debts ${money(nw.totalLiabilities)} = recorded net worth ${money(nw.recordedNetWorth)}.`,
     },
     coverageNote: gaps.length
       ? `Not included or not confirmed: ${gaps.join(', ')}.`
@@ -519,20 +544,7 @@ export function buildNetWorthModel(nw, cfg = {}) {
   };
 }
 
-function makeMoney(cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    return (n) => f.format(Number(n || 0));
-  } catch (_) {
-    return (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
-}
+
 
 /* helper: a stored manual-asset record */
 export function makeManualAsset({

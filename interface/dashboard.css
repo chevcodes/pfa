@@ -260,20 +260,397 @@
   background: color-mix(in srgb, var(--panel-2) 78%, transparent);
 }
 .nw-cov-seg.filled { background: color-mix(in srgb, var(--accent) 55%, var(--panel-2)); }
-/* Own-vs-owe comparison: two bars on one shared scale (green own, orange owe),
-   each a labelled row of label | track | amount, so the two opposing quantities
-   read side by side - the "Cash in and out" colour law applied to net worth. */
-.ownowe { display: flex; flex-direction: column; gap: 6px; }
-.ownowe-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px; }
-.ownowe-label { text-align: left; }
-.ownowe-track {
-  height: 12px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--fg) 8%, var(--panel-2));
-  overflow: hidden;
+.position-balance {
+  margin: 10px 0 16px;
+  padding: 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-inner);
+  background: var(--surface-inset);
 }
-.ownowe-fill { display: block; height: 100%; border-radius: 6px; min-width: 2px; }
-.ownowe-amt { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 640; }
+.position-balance-title {
+  margin: 0 0 10px;
+  color: var(--fg);
+  font-size: var(--t-label);
+  font-weight: 700;
+}
+.position-balance-row {
+  display: grid;
+  grid-template-columns: 18px 72px minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+.position-balance-operator {
+  color: var(--dim);
+  text-align: center;
+}
+.position-balance-label { color: var(--muted); }
+.position-balance-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, var(--panel-2));
+}
+.position-balance-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+}
+.position-balance-fill.is-asset { background: var(--good); }
+.position-balance-fill.is-debt,
+.position-balance-fill.is-negative { background: var(--warn); }
+.position-balance-fill.is-net { background: var(--accent); }
+.position-balance-amount {
+  min-width: 120px;
+  color: var(--fg);
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
+}
+.position-balance-insight {
+  margin: 10px 0 0 98px;
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+.position-mix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.position-mix-panel {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-inner);
+  background: var(--surface-inset);
+}
+.position-mix-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.position-mix-title {
+  margin: 0;
+  color: var(--fg);
+  font-size: var(--t-body);
+}
+.position-mix-total {
+  color: var(--fg);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.position-mix-share {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 9px;
+}
+.position-mix-share .pos-bar { margin: 0; }
+.position-cash-count {
+  margin-left: auto;
+  text-align: right;
+}
+.position-cash-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  margin: 4px 0 12px;
+  padding: clamp(14px, 1.8vw, 20px);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-inner);
+  background: var(--surface-inset);
+}
+.position-cash-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 20px;
+}
+.position-cash-summary > .small:last-child {
+  grid-column: 1 / -1;
+  max-width: 68ch;
+}
+.position-cash-total {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--fg);
+  font-size: clamp(var(--metric-row), 2.4vw, var(--metric-minor));
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.position-cash-share {
+  width: 100%;
+  min-width: 0;
+}
+.position-cash-share .share-bar {
+  width: 100%;
+  margin: 0;
+}
+.position-account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.position-account-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-inner);
+  background: var(--surface-inset);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease), transform 150ms var(--ease);
+}
+.position-account-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--edge));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-inset));
+  transform: translateY(-1px);
+}
+.position-account-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.position-account-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.position-account-name { font-weight: 700; }
+.position-currency-pill {
+  padding: 2px 7px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.position-account-amount {
+  max-width: 100%;
+  font-size: clamp(1rem, 1.7vw, var(--metric-row));
+  overflow-wrap: anywhere;
+}
+.position-account-converted { min-height: 1.3em; }
+.position-account-share {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+  width: 100%;
+  margin-top: 4px;
+}
+.position-account-share-label {
+  text-align: right;
+}
+.position-account-track {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, var(--panel-2));
+}
+.position-account-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+}
+.position-summary-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px 24px;
+  margin: 4px 0 12px;
+  padding: clamp(14px, 1.8vw, 20px);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--hairline-soft));
+  border-radius: var(--r-inner);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-inset));
+}
+.position-summary-hero.is-negative {
+  border-color: color-mix(in srgb, var(--warn) 34%, var(--hairline-soft));
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface-inset));
+}
+.position-summary-hero-labels {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.position-summary-hero-label {
+  color: var(--fg);
+  font-weight: 680;
+  line-height: 1.2;
+}
+.position-summary-hero-value {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--fg);
+  font-size: clamp(var(--metric-row), 3vw, var(--metric-major));
+  line-height: 1;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.position-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.position-summary-panel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-inner);
+  background: var(--surface-inset);
+}
+.position-summary-title {
+  margin: 0 0 10px;
+  color: var(--fg);
+  font-size: var(--t-body);
+}
+.position-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+}
+.position-summary-row strong {
+  overflow: hidden;
+  color: var(--fg);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.position-utilisation { margin-top: 8px; }
+.position-utilisation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.position-utilisation-track,
+.position-monthly-track {
+  display: block;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, var(--panel-2));
+}
+.position-utilisation-fill,
+.position-monthly-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+}
+.position-utilisation-fill { background: var(--accent); }
+.position-monthly-row + .position-monthly-row { margin-top: 8px; }
+.position-monthly-fill.is-income { background: var(--good); }
+.position-monthly-fill.is-outflow { background: var(--warn); }
+.position-summary-note { margin: 12px 0 0; }
+.position-equation {
+  width: min(430px, 42vw);
+  padding: 14px 16px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-inner);
+  background: var(--surface-inset);
+}
+.position-equation-title {
+  margin: 0 0 8px;
+  color: var(--dim);
+  font-size: var(--t-label);
+  font-weight: 650;
+}
+.position-equation-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+}
+.position-equation-row.is-total {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline-soft);
+  color: var(--fg);
+  font-weight: 700;
+}
+.position-equation-operator {
+  color: var(--dim);
+  text-align: center;
+}
+.position-equation-amount {
+  color: var(--fg);
+  font-weight: 650;
+  white-space: nowrap;
+}
+@media (max-width: 999px) {
+  .position-equation {
+    width: 100%;
+  }
+  .position-mix {
+    grid-template-columns: 1fr;
+  }
+  .position-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 599px) {
+  .position-balance-row {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    padding: 5px 0;
+  }
+  .position-balance-track {
+    grid-column: 2 / -1;
+    width: 100%;
+  }
+  .position-balance-amount {
+    min-width: 0;
+  }
+  .position-balance-insight {
+    margin-left: 26px;
+  }
+  .position-cash-count {
+    width: 100%;
+    margin: 4px 0 0;
+    text-align: left;
+  }
+  .position-cash-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .position-cash-summary > .small:last-child {
+    grid-column: auto;
+  }
+  .position-cash-total {
+    font-size: clamp(1.35rem, 7vw, var(--metric-minor));
+    text-align: left;
+  }
+  .position-summary-hero {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .position-summary-hero-value {
+    font-size: clamp(1.35rem, 7vw, var(--metric-major));
+    text-align: left;
+  }
+  .position-account-grid {
+    grid-template-columns: 1fr;
+  }
+}
 [data-anchor].anchor-hot {
   background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
 }
@@ -739,7 +1116,7 @@ button.commit-row:focus-visible {
   gap: 10px;
   margin-bottom: 12px;
 }
-@media (max-width: 640px) {
+@media (max-width: 639px) {
   .goal-choices {
     grid-template-columns: 1fr;
   }
@@ -879,6 +1256,205 @@ button.up-pay:focus-visible {
   height: 100%;
   border-radius: 5px;
   min-width: 4px;
+}
+
+/* When commitments land: one stem per day of the month that carries a
+   charge, height by that day's total. Answers whether the load falls before
+   or after payday, and whether it arrives in one lump. */
+.commit-when {
+  position: relative;
+  margin: 4px 0 14px;
+}
+
+.commit-when-svg {
+  display: block;
+  width: 100%;
+  height: 150px;
+  overflow: visible;
+}
+
+.commit-when-axis {
+  stroke: var(--dim);
+  stroke-opacity: 0.3;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.commit-when-stem {
+  fill: var(--chart-out);
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.commit-when-days {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  height: 14px;
+  color: var(--dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.commit-when-days span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+/* Payday: the reference the stems are read against. Drawn as a quiet guide
+   behind them, never competing with the load it explains. */
+.commit-when-payday {
+  stroke: var(--flow-in);
+  stroke-opacity: 0.55;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.commit-when-payday-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--flow-in);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* The one figure the stems need: what the tallest day actually costs, so
+   every other stem has a scale to be read against. */
+.commit-when-peak {
+  position: absolute;
+  transform: translate(-50%, -145%);
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.commit-when-targets {
+  position: absolute;
+  inset: 0;
+}
+
+#app .commit-when-target,
+.commit-when-target {
+  position: absolute;
+  top: 0;
+  bottom: 24px;
+  width: 34px;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+#app .commit-when-target:hover,
+#app .commit-when-target:focus-visible,
+.commit-when-target:hover,
+.commit-when-target:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: none;
+}
+
+/* A standing charge whose price has crept up - detected all along, never
+   shown. Nothing else on screen would ever reveal it. */
+.commit-risen {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Top spending: a ranked list where the bar is the point, not a footnote.
+   Scaled against the biggest place (activity-render.js) so the row lengths
+   compare places directly. */
+.rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name amt'
+    'bar  bar';
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rank-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+/* Keyboard focus must not look identical to hover: it is the only thing
+   telling a keyboard user where they are. */
+.rank-row:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rank-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-amt {
+  grid-area: amt;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank-bar {
+  grid-area: bar;
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  overflow: hidden;
+}
+
+.rank-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transform-origin: left center;
+  background: linear-gradient(
+    90deg,
+    var(--chart-out) 0%,
+    color-mix(in srgb, var(--chart-out) 55%, transparent) 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rank-row {
+    transition: none;
+  }
 }
 .commit-row.lapsed .commit-bar {
   opacity: 0.55;
@@ -1393,3 +1969,193 @@ button.vm-tag:hover {
   display: none;
 }
 
+
+/* =====================================================================
+   ACTIVE TRANSACTION FILTERS
+   Every drill in the app narrows this ledger. This bar is the only thing
+   that says what to, and the only way back out - one chip per facet, each
+   removable on its own, plus a single clear-all. Before it, a drill left
+   the card head reading "All transactions" over a filtered slice with no
+   visible way to undo one half of a two-facet narrow.
+   ===================================================================== */
+.txfilter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0 0 var(--s4);
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.txfilter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#app .txfilter-chip,
+.txfilter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 9px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+#app .txfilter-chip > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#app .txfilter-chip:hover,
+.txfilter-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--edge));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+#app .txfilter-chip:focus-visible,
+.txfilter-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.txfilter-x {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--dim);
+}
+
+#app .txfilter-chip:hover .txfilter-x {
+  color: var(--fg);
+}
+
+.txfilter-clear {
+  flex: none;
+}
+
+.txfilter-caveat {
+  flex: 1 0 100%;
+  margin: 2px 0 0;
+}
+
+@media (max-width: 639px) {
+  .txfilter {
+    padding: 9px 10px;
+  }
+  .txfilter-clear {
+    width: 100%;
+  }
+}
+
+/* Nothing matched the active filters. Sits where the table would be, with
+   the way out beside the reason. */
+.tx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 22px 4px 8px;
+}
+
+.tx-empty-lead {
+  margin: 0;
+  color: var(--dim);
+}
+
+/* ---------- Transactions: sortable header, row close, search count ---------- */
+/* The header cell stays a plain cell; the button inside it is what takes
+   focus, so the sort control is reachable without making the whole cell a
+   target. */
+#app th.tx-sort {
+  padding: 0;
+}
+
+#app .tx-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+#app th.tx-sort.num .tx-sort-btn {
+  justify-content: flex-end;
+}
+
+#app .tx-sort-btn:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+#app .tx-sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+#app th.tx-sort.is-active .tx-sort-btn {
+  color: var(--accent);
+}
+
+/* The opened row's own way out, sitting under its detail grid. */
+.tx-detail-close {
+  margin-top: 10px;
+}
+
+.tx-search-count {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Position: weighted holdings ---------- */
+/* A bar under each holding, scaled against the largest on its own side, so
+   which asset carries the position is visible rather than deduced. */
+.pos-line + .pos-line {
+  margin-top: 2px;
+}
+
+.pos-bar {
+  display: block;
+  height: 4px;
+  margin: 0 10px 10px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  overflow: hidden;
+}
+
+.pos-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transform-origin: left center;
+}
+
+.pos-bar-fill.is-own {
+  background: var(--chart-in);
+}
+
+.pos-bar-fill.is-owe {
+  background: var(--chart-out);
+}
