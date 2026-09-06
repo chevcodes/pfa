@@ -7,6 +7,9 @@ import {
   splitCardStatements,
   parseBankStatementLines,
   detectStatementFormat,
+  detectBankStatementFormat,
+  parseNcbBankStatementLines,
+  reconcileNcbBankStatement,
   reconcileBankStatement,
   bankTransactionIdentity,
   bankStatementHash,
@@ -24,9 +27,44 @@ import {
   scotiaCardHolderFirstName,
   scotiaBankHolderFirstName,
 } from '../statements/read-statements.js';
-import { roundMoney, yieldToBrowser } from '../core/shared-helpers.js';
+import {
+  parseInvestmentStatements,
+  investmentStatementFingerprint,
+} from '../statements/read-investments.js';
+import {
+  roundMoney,
+  yieldToBrowser,
+  enterModal,
+  requireCtx,
+  formatDisplayDate,
+  cleanName,
+} from '../core/shared-helpers.js';
 
 export function createStatementIntake(ctx) {
+  // Validated at construction, like every other factory here. The one factory
+  // that skipped this (app-messages) is the one that shipped a ctx member
+  // nobody passed, and the miss surfaced only as a ReferenceError on a button
+  // press. A missing member should stop the boot, not wait for a click.
+  requireCtx(
+    ctx,
+    [
+      'state',
+      'trackUsage',
+      '$',
+      'toast',
+      'render',
+      'defaultDataView',
+      'maybeWelcomeFirstTime',
+      'maybeOfferInstall',
+      'maybeOfferBackup',
+      'maybeOfferFirstRunHint',
+      'money0',
+      'iconSpinner',
+      'el',
+    ],
+    'createStatementIntake'
+  );
+
   const {
     state,
     trackUsage,
@@ -63,21 +101,25 @@ export function createStatementIntake(ctx) {
     if (!name) return;
     const rank = { manual: 2, card: 1, bank: 0 };
     if (state.firstName && (rank[source] || 0) <= (rank[state.firstNameSource] || 0)) return;
+    await Store.setMetaMany([
+      { key: 'firstName', value: name },
+      { key: 'firstNameSource', value: source },
+    ]);
     state.firstName = name;
     state.firstNameSource = source;
-    await Store.setMeta('firstName', name);
-    await Store.setMeta('firstNameSource', source);
   }
 
   async function setFirstNameManual(name) {
-    const clean = String(name == null ? '' : name)
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 40);
-    state.firstName = clean || null;
-    state.firstNameSource = clean ? 'manual' : null;
-    await Store.setMeta('firstName', state.firstName);
-    await Store.setMeta('firstNameSource', state.firstNameSource);
+    const clean = cleanName(name);
+    const firstName = clean || null;
+    const firstNameSource = clean ? 'manual' : null;
+    await Store.setMetaMany([
+      { key: 'firstName', value: firstName },
+      { key: 'firstNameSource', value: firstNameSource },
+    ]);
+    state.firstName = firstName;
+    state.firstNameSource = firstNameSource;
+    return firstName;
   }
 
   async function ingestFiles(files) {
@@ -88,6 +130,11 @@ export function createStatementIntake(ctx) {
       await Store.clearBankTransactions();
       await Store.clearBankStatements();
       await Store.clearCardStatements();
+      await Store.tags.clear();
+      await Store.transactionSplits.clear();
+      await Store.forecastSnapshots.clear();
+      await Store.investmentStatements.clear();
+      await Store.balanceUpdates.clear();
       await Store.setMeta('mockPersonaLoaded', null);
       await Store.setMeta('bankCardAccounts', []);
       await Store.setMeta('bankMyAccounts', []);
@@ -95,6 +142,8 @@ export function createStatementIntake(ctx) {
       await Store.setMeta('bankRefundIncomeIds', []);
       await Store.setMeta('bankSharedAccounts', []);
       await Store.setMeta('bankHouseholdPayees', []);
+      await Store.setMeta('financeGoalLog', []);
+      await Store.setMeta('planSetAside', []);
       await Store.setMeta('lastImportedFrom', null);
       state.records = [];
       state.bankRecords = [];
@@ -106,6 +155,12 @@ export function createStatementIntake(ctx) {
       state.refundIncomeIds = [];
       state.sharedAccounts = [];
       state.householdPayees = [];
+      state.tags = [];
+      state.transactionSplits = [];
+      state.forecastSnapshots = [];
+      state.balanceUpdates = [];
+      state.goalLog = [];
+      state._planSetAside = [];
       state.bankAccount = 'all';
       state.lastImportedFrom = null;
       toast('Sample customer data cleared, so your imported statement is kept on its own.');
@@ -116,13 +171,16 @@ export function createStatementIntake(ctx) {
       failed = 0;
     let bankAdded = 0,
       bankDupes = 0;
+    let investAdded = 0,
+      investDupes = 0;
     let cardLearned = false,
+      bankStmtLearned = false,
       cardStmtLearned = false;
     const periods = [];
     const hadCardBefore = state.records.length > 0;
     const hadBankBefore = state.bankRecords.length > 0;
+    const hadInvestBefore = (state._investmentStatements || []).length > 0;
     state.warnings = [];
-    state.bankWarnings = [];
     try {
       const pdfjs = await loadPdfjs();
       for (let i = 0; i < list.length; i++) {
@@ -141,14 +199,136 @@ export function createStatementIntake(ctx) {
           );
           continue;
         }
-        // A bank account statement now routes to the bank ledger (Phase 1). The
-        // card path below is untouched: only card statements reach it.
-        if (detectStatementFormat(lines) === 'bank') {
+        const format = detectStatementFormat(lines);
+        if (format === 'investment') {
+          const parsedInvestments = parseInvestmentStatements(lines, file.name);
+          if (!parsedInvestments.statements.length) {
+            setProgress(i, 'failed');
+            failed++;
+            state.warnings.push(
+              `${file.name} looks like an investment statement but its holdings could not be read.`
+            );
+            continue;
+          }
+          let storedHere = 0;
+          let partialHere = false;
+          for (const st of parsedInvestments.statements) {
+            const existing = await Store.investmentStatements.get(st.hash);
+            if (
+              existing &&
+              investmentStatementFingerprint(existing) === investmentStatementFingerprint(st)
+            )
+              continue;
+            const now = new Date().toISOString();
+            await Store.investmentStatements.put({
+              ...st,
+              importedAt: (existing && existing.importedAt) || now,
+              updatedAt: now,
+            });
+            storedHere++;
+            const when = formatDisplayDate(st.periodEnd);
+            if (st.warnings.includes('pages-missing') || st.warnings.includes('activity-unread')) {
+              partialHere = true;
+              state.warnings.push(
+                `${file.name} (${when}): part of this investment statement could not be read, so money added that month is shown as unknown.`
+              );
+            }
+            if (st.warnings.includes('row-unread')) {
+              partialHere = true;
+              state.warnings.push(
+                `${file.name} (${when}): a holding on this investment statement could not be read.`
+              );
+            }
+          }
+          if (parsedInvestments.unreadable) {
+            partialHere = true;
+            state.warnings.push(
+              `${file.name}: ${parsedInvestments.unreadable} investment statement${parsedInvestments.unreadable === 1 ? '' : 's'} in this file could not be read.`
+            );
+          }
+          investAdded += storedHere;
+          if (!storedHere) investDupes++;
+          setProgress(i, !storedHere ? 'duplicate' : partialHere ? 'partial' : 'done', storedHere);
+          continue;
+        }
+        if (format === 'bank') {
+          if (detectBankStatementFormat(lines) === 'ncb') {
+            const parsedNcbBank = parseNcbBankStatementLines(lines, file.name);
+            if (!parsedNcbBank.statements.length || parsedNcbBank.openingBalance == null) {
+              setProgress(i, 'failed');
+              failed++;
+              state.warnings.push(
+                `${file.name} looks like an NCB account statement but its rows could not be read.`
+              );
+              continue;
+            }
+            const ncbBankRecs = parsedNcbBank.transactions.map((t) => ({
+              ...t,
+              id: bankTransactionIdentity(t),
+            }));
+            const mergedNcbBank = mergeBankTransactions(state.bankRecords, ncbBankRecs);
+            state.bankRecords = mergedNcbBank.records;
+            bankAdded += mergedNcbBank.added;
+            await persistBank();
+            if (parsedNcbBank.warnings.includes('multi-statement'))
+              state.warnings.push(
+                `${file.name} holds more than one statement. Check each one's balances before relying on them.`
+              );
+            let newNcbStmts = 0;
+            let ncbBankOk = true;
+            for (const st of parsedNcbBank.statements) {
+              const r = reconcileNcbBankStatement(st);
+              if (!r.ok) ncbBankOk = false;
+              if (!r.ok)
+                state.warnings.push(
+                  `${file.name}: ${r.balanceBreaks[0] || 'this statement did not fully add up.'} Some transactions may not have been read.`
+                );
+              if (!r.ok && (st.headerAccounts || []).length > 1)
+                state.warnings.push(
+                  `${file.name}: the pages of this statement name different accounts and the balances do not run on between them. It has been kept as one account - check it before relying on it.`
+                );
+              if (r.unmatchedReversals)
+                state.warnings.push(
+                  `${file.name}: ${r.unmatchedReversals} reversal${r.unmatchedReversals === 1 ? '' : 's'} on this statement could not be matched to a charge, so ${r.unmatchedReversals === 1 ? 'it is shown' : 'they are shown'} as money returned rather than linked to a purchase.`
+                );
+              if (st.warnings.includes('year-rollover'))
+                state.warnings.push(
+                  `${file.name}: this statement runs into a new year. Check the dates on its earliest transactions.`
+                );
+              if (st.warnings.includes('late-row'))
+                state.warnings.push(
+                  `${file.name}: a transaction on this statement is dated after the statement itself. Check its date.`
+                );
+              const ncbStHash = bankStatementHash(st);
+              if (await Store.hasBankStatement(ncbStHash)) continue;
+              await Store.putBankStatement({
+                hash: ncbStHash,
+                source_file: file.name,
+                account: st.account,
+                period: st.period,
+                count: st.transactions.length,
+                closingBalance: st.closingBalance,
+                reconciled: r.ok,
+                reconNote: r.balanceBreaks[0] || (r.closingOk ? '' : 'closing balance did not match'),
+                importedAt: new Date().toISOString(),
+              });
+              bankStmtLearned = true;
+              newNcbStmts++;
+            }
+            const ncbBankNothingNew = newNcbStmts === 0 && mergedNcbBank.added === 0;
+            if (ncbBankNothingNew) bankDupes++;
+            setProgress(
+              i,
+              ncbBankNothingNew ? 'duplicate' : ncbBankOk ? 'done' : 'reconwarn',
+              mergedNcbBank.added
+            );
+            continue;
+          }
           const parsed = parseBankStatementLines(lines, file.name);
           if (!parsed.statements.length || parsed.openingBalance == null) {
             setProgress(i, 'failed');
             failed++;
-            state.bankWarnings.push(
+            state.warnings.push(
               `${file.name} looks like a bank statement but its rows could not be read.`
             );
             continue;
@@ -162,11 +342,7 @@ export function createStatementIntake(ctx) {
           const merged = mergeBankTransactions(state.bankRecords, recs);
           state.bankRecords = merged.records;
           bankAdded += merged.added;
-          // Store ONE traceable record PER STATEMENT (not per file), each with
-          // its own period, account, count, closing balance and reconcile
-          // result, deduped by a per-statement content hash. A file holding many
-          // statements now shows one honest row each, and the same statement
-          // arriving in both a consolidated and an individual PDF is stored once.
+          await persistBank();
           let newStmts = 0;
           for (const st of parsed.statements) {
             const stHash = bankStatementHash(st);
@@ -187,11 +363,12 @@ export function createStatementIntake(ctx) {
               reconNote: r.balanceBreaks[0] || (r.closingOk ? '' : 'closing balance did not match'),
               importedAt: new Date().toISOString(),
             });
+            bankStmtLearned = true;
             newStmts++;
           }
           if (!recon.ok)
-            state.bankWarnings.push(
-              `${file.name}: ${recon.balanceBreaks[0] || 'balance did not fully reconcile'}.`
+            state.warnings.push(
+              `${file.name}: ${recon.balanceBreaks[0] || 'balance did not fully reconcile.'}`
             );
           if (newStmts === 0 && merged.added === 0) bankDupes++;
           setProgress(
@@ -243,9 +420,12 @@ export function createStatementIntake(ctx) {
               });
             }
             if (built.summary.previousBalance != null && built.summary.newBalance != null) {
+              const existing = (state._cardStatements || []).find(
+                (statement) => statement.hash === built.statementRecord.hash
+              );
               await Store.putCardStatement({
                 ...built.statementRecord,
-                importedAt: new Date().toISOString(),
+                importedAt: (existing && existing.importedAt) || new Date().toISOString(),
               });
               cardStmtLearned = true;
             }
@@ -271,6 +451,7 @@ export function createStatementIntake(ctx) {
           const merged = mergeTransactions(state.records, ncbRecs);
           state.records = merged.records;
           added += merged.added;
+          await persist();
           const period = ncbKeys.length
             ? ncbKeys.length === 1
               ? ncbKeys[0]
@@ -312,6 +493,7 @@ export function createStatementIntake(ctx) {
           state.warnings.push(`${file.name} did not contain transactions we could read.`);
           continue;
         }
+        if (parsed.warnings.length) state.warnings.push(...parsed.warnings);
         const recs = parsed.transactions.map((t) => ({
           ...t,
           id: transactionIdentity(t),
@@ -323,12 +505,7 @@ export function createStatementIntake(ctx) {
         const merged = mergeTransactions(state.records, recs);
         state.records = merged.records;
         added += merged.added;
-        await Store.putStatement({
-          hash,
-          source_file: file.name,
-          period: parsed.period,
-          importedAt: new Date().toISOString(),
-        });
+        await persist();
         if (parsed.period) periods.push(parsed.period);
         for (const seg of splitCardStatements(lines)) {
           try {
@@ -381,25 +558,52 @@ export function createStatementIntake(ctx) {
             );
           }
         }
-        setProgress(i, 'done', merged.added);
+        await Store.putStatement({
+          hash,
+          source_file: file.name,
+          period: parsed.period,
+          importedAt: new Date().toISOString(),
+        });
+        setProgress(i, parsed.warnings.length ? 'partial' : 'done', merged.added);
       }
-      await persist();
-      if (bankAdded || bankDupes) {
-        await persistBank();
+      if (bankAdded || bankDupes || bankStmtLearned) {
         state._bankStatements = await Store.allBankStatements();
       }
       if (cardLearned) await Store.setMeta('bankCardAccounts', state.cardAccounts);
       if (cardStmtLearned) state._cardStatements = await Store.allCardStatements();
+      if (investAdded) state._investmentStatements = await Store.investmentStatements.all();
     } finally {
       setTimeout(closeProgress, 700);
     }
-    if ((!hadCardBefore && state.records.length) || (!hadBankBefore && state.bankRecords.length))
+    const investmentsOnly =
+      !hadInvestBefore &&
+      (state._investmentStatements || []).length > 0 &&
+      !state.records.length &&
+      !state.bankRecords.length;
+    if (
+      (!hadCardBefore && state.records.length) ||
+      (!hadBankBefore && state.bankRecords.length) ||
+      investmentsOnly
+    )
       state.view = defaultDataView();
     render();
-    if (!bankAdded && !added && (dupes || bankDupes) && !failed)
+    const anyAdded = bankAdded || added || investAdded;
+    if (!anyAdded && (dupes || bankDupes || investDupes) && !failed)
       toast(`Already imported, so nothing changed.`);
-    else if (!bankAdded && !added && failed)
+    else if (!anyAdded && failed)
       toast(`We couldn't read ${failed === 1 ? 'that statement' : 'those statements'}.`);
+    else if (investAdded && !bankAdded && !added && state.view !== 'position')
+      toast(
+        `Investment statement${investAdded === 1 ? '' : 's'} added. You'll find ${investAdded === 1 ? 'it' : 'them'} under Position.`
+      );
+    if ((bankStmtLearned || cardStmtLearned) && typeof ctx.reconcileEnteredBalances === 'function')
+      await ctx.reconcileEnteredBalances();
+    if (state.warnings.length)
+      toast(
+        state.warnings.length === 1
+          ? state.warnings[0]
+          : `${state.warnings.length} statements need review. ${state.warnings[0]}`
+      );
     const welcomed = await maybeWelcomeFirstTime();
     if (!welcomed) {
       maybeOfferInstall();
@@ -410,19 +614,25 @@ export function createStatementIntake(ctx) {
 
   async function persistBank() {
     await Store.replaceBankTransactions(state.bankRecords);
+    const updatedAt = new Date().toISOString();
+    await Store.setMeta('lastLocalUpdate', updatedAt);
+    state.lastLocalUpdate = updatedAt;
   }
 
   // Persist the ledger-rule confirmations (income-confirmed deposits, round-trip
   // pairs). Pure metadata, no transaction is ever changed.
   async function persistLedgerRules() {
-    await Store.setMeta('bankConfirmedIncomeIds', state.confirmedIncomeIds || []);
-    await Store.setMeta('bankRefundIncomeIds', state.refundIncomeIds || []);
-    await Store.setMeta('bankSharedAccounts', state.sharedAccounts || []);
-    await Store.setMeta('bankHouseholdPayees', state.householdPayees || []);
+    await Store.setMetaMany([
+      { key: 'bankConfirmedIncomeIds', value: state.confirmedIncomeIds || [] },
+      { key: 'bankRefundIncomeIds', value: state.refundIncomeIds || [] },
+      { key: 'bankSharedAccounts', value: state.sharedAccounts || [] },
+      { key: 'bankHouseholdPayees', value: state.householdPayees || [] },
+    ]);
   }
 
   /* progress dialog for imports */
   let progressState = null;
+  let progressRelease = null;
   function openProgress(files) {
     const rows = files.map((f, i) =>
       el(
@@ -452,6 +662,11 @@ export function createStatementIntake(ctx) {
     const box = el('div', { class: 'picker wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'import-progress-title' }, ...kids);
     const overlay = el('div', { class: 'overlay' }, box);
     document.body.append(overlay);
+    // Deliberately NOT dismissible - an import in flight has no safe cancel - but
+    // it takes the rest of the contract: focus in, focus held, the page behind
+    // inert and unscrollable, and the floating chrome out of the way. Without it
+    // a person could tab into the page underneath a "working" curtain.
+    progressRelease = enterModal(overlay, { dismissible: false });
     progressState = overlay;
   }
   function setProgress(i, status, added) {
@@ -463,9 +678,15 @@ export function createStatementIntake(ctx) {
     else if (status === 'duplicate') s.innerHTML = `<span class="muted">Already imported</span>`;
     else if (status === 'reconwarn')
       s.innerHTML = `<span class="warnc">Added · check balance</span>`;
+    else if (status === 'partial')
+      s.innerHTML = `<span class="warnc">Added · part could not be read</span>`;
     else if (status === 'failed') s.innerHTML = `<span class="warnc">Couldn't read - try another copy</span>`;
   }
   function closeProgress() {
+    if (progressRelease) {
+      progressRelease();
+      progressRelease = null;
+    }
     if (progressState) {
       progressState.remove();
       progressState = null;
@@ -474,7 +695,9 @@ export function createStatementIntake(ctx) {
 
   async function persist() {
     await Store.replaceTransactions(state.records);
-    await Store.setMeta('lastLocalUpdate', new Date().toISOString());
+    const updatedAt = new Date().toISOString();
+    await Store.setMeta('lastLocalUpdate', updatedAt);
+    state.lastLocalUpdate = updatedAt;
   }
 
   async function persistRules() {
@@ -545,4 +768,3 @@ export function createStatementIntake(ctx) {
     ingestDesktopPaths,
   };
 }
-

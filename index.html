@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="./interface/treemap.css" />
     <link rel="stylesheet" href="./interface/income-chart.css" />
     <link rel="stylesheet" href="./interface/flow-chart.css" />
+    <link rel="stylesheet" href="./interface/premium.css" />
     <link rel="modulepreload" href="./application/app-controller.js" />
   </head>
   <body>
@@ -73,7 +74,7 @@
               >
                 <path d="M12 5v14M5 12h14" /></svg
             ></span>
-            <span class="btn-label">Add statement</span>
+            <span class="btn-label">Add</span>
             <input
               id="add-input"
               class="file-trigger-input"
@@ -215,7 +216,7 @@
                 />
               </label>
               <div class="menu-sep"></div>
-              <div class="menu-label">Private backup</div>
+              <div id="export-menu-backup-label" class="menu-label">Private backup</div>
               <button id="exp-export" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
                   ><svg

@@ -33,8 +33,14 @@ import {
   requireCtx,
   formatDisplayDate,
   MONTHS_SHORT,
-  isPrivacyMode,
+  parseTransferNarrative,
 } from '../core/shared-helpers.js';
+import { renderColumnChart } from './chart-surface.js';
+import { categoriseBankRows } from '../analysis/bank-categorise.js';
+import { monthTickOf } from './chart-helpers.js';
+import { rulesToMerchantOverrides } from '../../settings/category-rules.js';
+import { makeProseMoney, currencyPrefix } from '../core/money-format.js';
+import { chartInfo, collapsibleCard } from './decision-header.js';
 
 
 // Shared, empty keep-upper / small-words set for smartTitle when tidying a bank
@@ -106,13 +112,14 @@ export function createAccountsRenderer(ctx) {
    * transfers are shown but set apart. No categorisation, no card merchant
    * rules, no merging with card data (D1). */
   function bankMoney(n, currency) {
-    const { symbol = '$', locale = 'en-JM', decimals = 2, code = 'JMD' } = state.cfg.currency || {};
-    // A non-base currency (USD) is shown with its own prefix so a US$ figure is
-    // never mistaken for a JMD one. The base currency keeps the plain symbol.
-    const sym =
-      currency && currency !== code ? (currency === 'USD' ? 'US$' : currency + ' ') : symbol;
-    return formatMoney(n, sym, locale, decimals);
+    const { locale = 'en-JM', decimals = 2 } = state.cfg.currency || {};
+    return formatMoney(n, currencyPrefix(currency, state.cfg), locale, decimals);
   }
+
+  /* The same amount, written for a sentence rather than a value slot. Insights
+     and the review notes below are prose; bankMoney stays the exact figure for
+     rows, totals and headline slots. */
+  const prose = makeProseMoney(state.cfg || {});
 
   let _cbKey = null,
     _cbVal = null;
@@ -126,7 +133,9 @@ export function createAccountsRenderer(ctx) {
       _cbKey.ci === state.confirmedIncomeIds &&
       _cbKey.ri === state.refundIncomeIds &&
       _cbKey.sa === state.sharedAccounts &&
-      _cbKey.hp === state.householdPayees
+      _cbKey.hp === state.householdPayees &&
+      _cbKey.cp === state.compiled &&
+      _cbKey.ru === state.rules
     ) {
       return _cbVal;
     }
@@ -139,11 +148,21 @@ export function createAccountsRenderer(ctx) {
     // Apply the evidence-backed exclusions on top (cash/ABM self-deposits out of
     // income by default, shared-account support to household kept off the
     // personal headline).
-    const out = applyLedgerRules(base, {
+    const ruled = applyLedgerRules(base, {
       confirmedIncomeIds: new Set(state.confirmedIncomeIds || []),
       refundIncomeIds: new Set(state.refundIncomeIds || []),
       sharedAccounts: state.sharedAccounts || [],
       householdPayees: state.householdPayees || [],
+    });
+    // Category parity with the card ledger. Bank rows previously reached every
+    // screen with no category at all, so a personal rule a person had already
+    // written only ever worked on one of their two statement types. Same
+    // categorise() door, same personal rules, bank profile.
+    const out = categoriseBankRows(ruled, state.compiled, {
+      fallback: (state.cfg.special || {}).fallback || 'Uncategorised',
+      merchantOverrides: rulesToMerchantOverrides(state.rules || []),
+      routes: ((state.cfg.accountCategoryRoutes || {}).bank) || [],
+      resolver: state.resolver,
     });
     _cbKey = {
       br: state.bankRecords,
@@ -154,6 +173,8 @@ export function createAccountsRenderer(ctx) {
       ri: state.refundIncomeIds,
       sa: state.sharedAccounts,
       hp: state.householdPayees,
+      cp: state.compiled,
+      ru: state.rules,
     };
     _cbVal = out;
     // INVARIANT: this array is now shared by reference across every caller
@@ -211,7 +232,7 @@ export function createAccountsRenderer(ctx) {
       currentIncome: a.cashIn,
       prevIncome,
       verdict,
-      bankMoney,
+      proseMoney: prose,
       prevLabel,
       monthLabel,
       bankMonthsList,
@@ -248,13 +269,7 @@ export function createAccountsRenderer(ctx) {
     const trend = bankAnalysis(bankFlowOverTime, classifiedBank());
     if (!trend.length) return null;
     const p = resolved();
-    const monShort = (m) => {
-      const x = /-(\d{2})$/.exec(m);
-      return x ? MONTHS_SHORT[+x[1] - 1] : m;
-    };
     const shown = trend.slice(-12);
-    const H = 150;
-    const max = Math.max(1, ...shown.map((t) => Math.max(t.moneyIn, t.moneyOut)));
     const sec = el('section', { class: 'card' });
     sec.append(
       el(
@@ -263,85 +278,36 @@ export function createAccountsRenderer(ctx) {
         el('h3', { class: 'card-title' }, icon(iconSpark()), 'Cash in and out over time')
       )
     );
-    sec.append(
-      el(
-        'div',
-        { class: 'acct-trend-legend muted small' },
-        el(
-          'span',
-          { class: 'acct-trend-key' },
-          el('span', { class: 'acct-trend-swatch in' }),
-          'Cash inflow'
-        ),
-        el(
-          'span',
-          { class: 'acct-trend-key' },
-          el('span', { class: 'acct-trend-swatch out' }),
-          'Cash outflow'
-        )
-      )
-    );
-    const chart = el('div', { class: 'trend acct-trend' });
-    const bars = el('div', { class: 'acct-trend-bars' });
-    for (const t of shown) {
-      const inPeriod = p && t.month >= p.from && t.month <= p.to;
-      bars.append(
-        el(
-          'button',
-          {
-            class: 'acct-trend-col' + (inPeriod ? ' in-period' : ''),
-            'aria-label': isPrivacyMode()
-              ? `${t.month}: amounts hidden. Focus this month.`
-              : `${t.month}: in ${bankMoney(t.moneyIn)}, out ${bankMoney(t.moneyOut)}. Focus this month.`,
 
-            title: `${t.month}: in ${bankMoney(t.moneyIn)} \u00b7 out ${bankMoney(t.moneyOut)}`,
-            onclick: () => {
-              state.period = { type: 'custom', from: t.month, to: t.month };
-              clearFilters();
-              clearBankFilters();
-              state.showAllTx = false;
-              state.bankShowAllTx = false;
-              render();
-            },
-          },
-          el(
-            'div',
-            { class: 'acct-trend-pair' },
-            el('span', {
-              class: 'acct-trend-bar in',
-              style: `height:${Math.max(2, (t.moneyIn / max) * H)}px`,
-            }),
-            el('span', {
-              class: 'acct-trend-bar out',
-              style: `height:${Math.max(2, (t.moneyOut / max) * H)}px`,
-            })
-          ),
-          el('span', { class: 'acct-trend-mlabel' }, monShort(t.month))
-        )
-      );
-    }
-    chart.append(bars);
-    sec.append(chart);
-    sec.append(
-      renderExplainer(
-        el,
-        'Money arriving in and leaving your accounts each month, transfers between your own accounts excluded. Select a month to focus the tab on it.',
-        { label: 'How this chart is worked out' }
-      )
-    );
+    // Year on the ticks whenever these rows cross one (monthTickOf).
+    const monthTick = monthTickOf(MONTHS_SHORT, shown);
+    sec.append(renderColumnChart({ el, monthLabel, monthShort: monthTick }, {
+      label: 'Cash in and out by month',
+      money: bankMoney,
+      rows: shown.map((t) => ({ ...t, inPeriod: !!(p && t.month >= p.from && t.month <= p.to), selected: !!(p && p.from === t.month && p.to === t.month), detail: 'Own-account transfers excluded' })),
+      series: [
+        { key: 'moneyIn', label: 'Cash inflow', tone: 'in' },
+        { key: 'moneyOut', label: 'Cash outflow', tone: 'out' },
+      ],
+      onSelect: (t) => {
+        state.period = { type: 'custom', from: t.month, to: t.month };
+        clearFilters();
+        clearBankFilters();
+        state.showAllTx = false;
+        state.bankShowAllTx = false;
+        render();
+      },
+    }));
     return sec;
   }
 
+  // The third hand-written copy of the leading strip, and the one that had
+  // drifted furthest: it understood neither a channel code in front of
+  // "Transfer" nor "trf from", so the same row read one way here and another in
+  // the transaction list. Now delegates to the ONE shared narrative parser.
   function cleanCounterparty(desc) {
-    let s = cleanBankCounterparty(desc); // strip stray header fragments first
-    s = s.replace(/^transfer\s+(to|from)\s+/i, '');
-    s = s.replace(/^trf\s+to:?\s+/i, '');
-    s = s.replace(/^\d{2,}[,\s-]+/, ''); // leading ref group "12, " / "12345 "
-    s = s.replace(/^\d{4,}-/, ''); // "1234-" style prefix
-    s = s.replace(/[\s,-]+\d{3,}\s*$/, '').trim(); // trailing account tail
-    s = s.replace(/[\s-]+$/, '').trim(); // dangling dash
-
-    return smartTitle(s, CP_LABEL_SET, CP_LABEL_SET);
+    const party = parseTransferNarrative(cleanBankCounterparty(desc)).party;
+    return smartTitle(party, CP_LABEL_SET, CP_LABEL_SET);
   }
 
   // Confirm a cash/ABM deposit as the person's own income (moves it back into
@@ -383,20 +349,18 @@ export function createAccountsRenderer(ctx) {
       !confirmedRefunds.length
     )
       return null;
-    const sec = el('section', { class: 'card acct-review' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Review & adjustments')
-      )
-    );
+    const sec = el('div', {});
     if (deposits.length) {
       sec.append(
         el(
           'p',
-          { class: 'muted small' },
-          `${bankMoney(a.cashDeposits)} in cash/ABM deposits are not yet confirmed as income, because a machine deposit can be your own cash or cash for someone else. Confirm any that are genuinely your income.`
+          { class: 'muted small review-note' },
+          `${prose(a.cashDeposits)} in cash/ABM deposits are not yet confirmed as income`,
+          chartInfo(
+            el,
+            '',
+            'A machine deposit can be your own cash or cash for someone else, so it is not counted as income until you say so. Confirm any that are genuinely your income.'
+          )
         )
       );
       const list = el('div', { class: 'recurring-list' });
@@ -456,7 +420,7 @@ export function createAccountsRenderer(ctx) {
         el(
           'p',
           { class: 'muted small', style: 'margin-top:8px' },
-          `Support to household: ${bankMoney(a.householdSupport)} sent from your shared account to a household member. This is tracked here but kept out of your personal money-out figure.`
+          `Support to household: ${prose(a.householdSupport)} sent from your shared account to a household member. This is tracked here but kept out of your personal money-out figure.`
         )
       );
     }
@@ -465,8 +429,13 @@ export function createAccountsRenderer(ctx) {
         sec.append(
           el(
             'p',
-            { class: 'muted small', style: 'margin-top:8px' },
-            `${bankMoney(a.refunds)} came back as refunds or reversals. This money is not yet confirmed as income, since a refund is money returned rather than earned. Confirm any that are genuinely your income.`
+            { class: 'muted small review-note', style: 'margin-top:8px' },
+            `${prose(a.refunds)} came back as refunds or reversals`,
+            chartInfo(
+              el,
+              '',
+              'A refund is money returned rather than earned, so it is not counted as income until you say so. Confirm any that are genuinely your income.'
+            )
           )
         );
         const list = el('div', { class: 'recurring-list' });
@@ -523,7 +492,16 @@ export function createAccountsRenderer(ctx) {
         );
       }
     }
-    return sec;
+    const waiting = deposits.length + refunds.length;
+    const card = collapsibleCard(el, {
+      title: 'Review & adjustments',
+      icon: icon(iconInfo()),
+      summary: waiting ? `${waiting} to confirm` : 'Nothing to confirm',
+      body: sec,
+      name: 'activity-review',
+    });
+    if (card) card.classList.add('acct-review');
+    return card;
   }
 
   // Account-statement reconciliation, relocated into "Data & settings" to
@@ -666,13 +644,22 @@ export function createAccountsRenderer(ctx) {
         'div',
         { class: 'stmt-summary' },
         stat(
-          `${totalOk}/${totalN}`,
+          // "N of M", the frame the rest of the app uses for the same fact.
+          // The card panel directly above this one reads "20 of 20 statements
+          // reconcile." and the coverage strip below reads "21 of 21 months";
+          // this tile alone said "58/58". Three formats for one idea, two of
+          // them touching, so a reader comparing card and account reconciliation
+          // had to translate between them first.
+          `${totalOk} of ${totalN}`,
           allOk ? 'Statements reconcile' : 'Reconcile, rest need a look',
-          allOk ? 'good' : 'warn'
+          allOk ? 'neutral' : 'warn'
         ),
         stat(spanText, `Covered \u00b7 ${accountsN} account${accountsN === 1 ? '' : 's'}`),
         stat(
-          latestImport ? new Date(latestImport).toLocaleDateString(state.cfg.currency.locale) : '-',
+          // formatDisplayDate, like every other date in the app. This one line
+          // used the browser locale, so "Last updated" printed 9/8/2026 while
+          // every date beside it read 08-Sep-26.
+          latestImport ? formatDisplayDate(String(latestImport).slice(0, 10)) : '-',
           'Last updated'
         )
       )
@@ -687,7 +674,7 @@ export function createAccountsRenderer(ctx) {
           { class: 'muted small stmt-note' },
           gaps.length
             ? `No statement for ${gaps.slice(0, 3).map(monthLabel).join(', ')}${gaps.length > 3 ? ` and ${gaps.length - 3} more` : ''}, so that stretch is incomplete. Add those PDFs for a full picture.`
-            : 'Every month in that range has a statement, so nothing is missing.'
+            : 'All months covered.'
         )
       );
     }
@@ -720,14 +707,14 @@ export function createAccountsRenderer(ctx) {
         : 'no dated statements';
       const health = g.failed
         ? el('span', { class: 'recon-warn' }, `${g.failed} of ${g.n} need a look`)
-        : el('span', { class: 'recon-ok' }, '\u2713 all reconcile');
+        : el('span', { class: 'recon-ok' }, 'All reconcile');
       return el(
         'div',
         { class: 'stmt-card' + (g.failed ? ' attn' : '') },
         el(
           'div',
           { class: 'stmt-card-head' },
-          el('span', { class: 'stmt-dot ' + (g.failed ? 'warn' : 'good') }),
+          el('span', { class: 'stmt-dot ' + (g.failed ? 'warn' : 'neutral') }),
           el('span', { class: 'stmt-card-name' }, `Account ${g.account}`)
         ),
         el(
@@ -754,7 +741,7 @@ export function createAccountsRenderer(ctx) {
     }
 
     if (healthy.length) {
-      const details = el('details', { class: 'explainer stmt-accounts-more' });
+      const details = el('details', { class: 'disclosure explainer stmt-accounts-more' });
       details.append(
         el(
           'summary',
@@ -764,7 +751,7 @@ export function createAccountsRenderer(ctx) {
       );
       const grid = el('div', { class: 'stmt-grid' });
       for (const g of healthy) grid.append(renderAccountCard(g));
-      details.append(el('div', { class: 'explainer-body' }, grid));
+      details.append(el('div', { class: 'disclosure-body explainer-body' }, grid));
       wrap.append(details);
     }
 

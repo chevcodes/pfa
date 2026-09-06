@@ -23,8 +23,6 @@ import { committedFlexible, buildCommittedFlexibleModel } from './committed-flex
 import { spendBreakdown, buildSpendBreakdownModel } from './spend-breakdown.js';
 import { resolveIntention, paceForMonth, buildPaceModel } from './category-intentions.js';
 import { buildForecast, snapshotForAccuracy } from './forecast.js';
-import { accuracyReport, buildAccuracyModel } from './forecast-accuracy.js';
-import { buildForecastChartModel } from './forecast-chart-model.js';
 import {
   cashAndDebt,
   recordedNetWorth,
@@ -33,6 +31,8 @@ import {
   buildNetWorthModel,
 } from './position.js';
 import { tagTotals, buildTagModel } from './tag-totals.js';
+import { investmentNetWorthItems } from './investments.js';
+import { knownAccounts, resolveBalances, overlayCashAndDebt } from './balance-updates.js';
 
 // FIX (period seam): the app's resolved() returns MONTH-granularity bounds
 // ('YYYY-MM'), but the pure analysis modules compare against full ISO dates
@@ -59,39 +59,116 @@ export function createProvenModels(ctx) {
   requireCtx(ctx, ['state', 'classifiedBank', 'todayISO'], 'createProvenModels');
   const { state, classifiedBank, todayISO } = ctx;
 
-  /* ---- shared commitment-and-income primitive (memoised, single slot) ----
-   * Keyed on the exact inputs that change the result: the classified bank
-   * array reference (already memoised upstream, so its identity is stable
-   * until bank data changes), the card-statements reference, today, and cfg. */
+  let _cdKey = null,
+    _cdVal = null;
+  function reconciledCashDebt() {
+    const cb = classifiedBank();
+    const cs = state._cardStatements;
+    const asOf = todayISO();
+    if (
+      _cdVal &&
+      _cdKey.cb === cb &&
+      _cdKey.cs === cs &&
+      _cdKey.asOf === asOf &&
+      _cdKey.cfg === state.cfg &&
+      _cdKey.fx === state.fxRates
+    ) {
+      return _cdVal;
+    }
+    _cdVal = cashAndDebt({
+      bankRecords: cb,
+      cardStatements: cs || [],
+      cfg: state.cfg,
+      asOf,
+      fx: state.fxRates || null,
+    });
+    _cdKey = { cb, cs, asOf, cfg: state.cfg, fx: state.fxRates };
+    return _cdVal;
+  }
+
+  let _balKey = null,
+    _balVal = null;
+  function balances() {
+    const cd = reconciledCashDebt();
+    const bs = state._bankStatements;
+    const updates = state.balanceUpdates;
+    if (_balVal && _balKey.cd === cd && _balKey.bs === bs && _balKey.updates === updates) return _balVal;
+    _balVal = resolveBalances({
+      known: knownAccounts({
+        cashDebt: cd,
+        bankRecords: classifiedBank(),
+        bankStatements: bs || [],
+        cardStatements: state._cardStatements || [],
+      }),
+      updates: updates || [],
+    });
+    _balKey = { cd, bs, updates };
+    return _balVal;
+  }
+
+  let _liveKey = null,
+    _liveVal = null;
+  function liveCashDebt() {
+    const cd = reconciledCashDebt();
+    const b = balances();
+    if (_liveVal && _liveKey.cd === cd && _liveKey.b === b) return _liveVal;
+    _liveVal = overlayCashAndDebt(cd, b);
+    _liveKey = { cd, b };
+    return _liveVal;
+  }
+
+  function enteredCash() {
+    const live = liveCashDebt();
+    if (!live || !live.entered || !live.entered.cash) return null;
+    return {
+      liquid: live.liquid,
+      perAccount: live.perAccount,
+      asOf: live.entered.asOf,
+      cardBalance: live.entered.card ? live.cardBalance : null,
+    };
+  }
+
   let _cipKey = null,
     _cipVal = null;
   function commitmentIncome() {
     const cb = classifiedBank();
     const cs = state._cardStatements;
     const asOf = todayISO();
+    const entered = liveCashDebt();
     if (
       _cipVal &&
       _cipKey &&
       _cipKey.cb === cb &&
       _cipKey.cs === cs &&
       _cipKey.asOf === asOf &&
-      _cipKey.cfg === state.cfg
+      _cipKey.cfg === state.cfg &&
+      _cipKey.entered === entered
     ) {
       return _cipVal;
     }
+    const cash = enteredCash();
     _cipVal = commitmentAndIncomePrimitive({
       bankRecords: cb,
       cardStatements: cs || [],
       cfg: state.cfg,
       asOf,
+      liquidNow: cash
+        ? {
+            total: cash.liquid,
+            perAccount: cash.perAccount,
+            staleAccounts: liquidBalance(cb, resolveOpts(state.cfg), asOf).staleAccounts,
+          }
+        : null,
     });
-    _cipKey = { cb, cs, asOf, cfg: state.cfg };
+    _cipKey = { cb, cs, asOf, cfg: state.cfg, entered };
     return _cipVal;
   }
 
   // "Available now" three-layer view-model (Overview surface).
   function availableNow() {
-    return buildAvailableNowModel(commitmentIncome(), state.cfg);
+    // The person's own guilt-free share drives Overview's lead figure, so the
+    // saved plan is read here rather than each surface deriving its own.
+    return buildAvailableNowModel(commitmentIncome(), state.cfg, state._planTarget || null);
   }
 
   /* ---- committed vs flexible (period-scoped) ----
@@ -188,65 +265,19 @@ export function createProvenModels(ctx) {
     _fc.set(horizonDays, { cb, cs, asOf, cfg: state.cfg, val });
     return val;
   }
-  function forecastChart(horizonDays = 30) {
-    return buildForecastChartModel(forecast(horizonDays));
-  }
   // A snapshot for accuracy tracking; the caller persists it to the
   // forecastSnapshots store (never written here - this module has no I/O).
   function forecastSnapshot(horizonDays = 90) {
     return snapshotForAccuracy(forecast(horizonDays));
   }
 
-  /* ===========================================================================
-   * D (forecast accuracy loop): scores stored forecast snapshots against what
-   * ACTUALLY happened. liquidAt is a thin wrapper around the SAME
-   * liquidBalance(bankRecords, opts, asOf) primitive Overview/Position/the
-   * forecast itself all read - so a scored "actual" can never disagree with
-   * the balance shown anywhere else in the app. bankMaxDate is derived from
-   * the SAME classifiedBank() rows every other bank-row reader in this app
-   * already uses, so "does the ledger reach this horizon" is judged on the
-   * identical data the forecast itself was built from.
-   *
-   * minToScore is config-driven (cfg.insights.accuracyMinToScore, default 3),
-   * matching this app's existing tuning-surface pattern (categorySpikeMin,
-   * paceMin, newMerchantMin, etc.) - no change to forecast-accuracy.js needed,
-   * since accuracyReport already accepts minToScore as a parameter.
-   * ======================================================================== */
-  // Default aligned to the forecast chart's own default (30 days, ahead-render.js's
-  // renderForecastChart(30)) rather than an unrelated 90-day default - the two
-  // cards must describe the same window unless a caller deliberately asks
-  // otherwise. 90-day snapshots simply won't exist going forward under this
-  // default, so nothing here silently mixes two horizons' scored history.
-  function accuracyFor(horizonDays = 30) {
-    const cb = classifiedBank();
-    const opts = resolveOpts(state.cfg);
-    const liquidAt = (dateISO) => {
-      const r = liquidBalance(cb, opts, dateISO);
-      return r ? r.total : null;
-    };
-    const bankMaxDate = cb.reduce((mx, r) => ((r.date || '') > mx ? r.date || '' : mx), '');
-    const minToScore = (state.cfg.insights && state.cfg.insights.accuracyMinToScore) || 3;
-    const report = accuracyReport(state.forecastSnapshots || [], liquidAt, {
-      todayISO: todayISO(),
-      bankMaxDate,
-      horizonDays,
-      minToScore,
-    });
-    return buildAccuracyModel(report, state.cfg);
-  }
-
-  /* ---- position: cash & debt (reconciled) + coverage net worth + summary ---- */
   function positionModels() {
     const asOf = todayISO();
-    const cd = cashAndDebt({
-      bankRecords: classifiedBank(),
-      cardStatements: state._cardStatements || [],
-      cfg: state.cfg,
-      asOf,
-    });
+    const cd = reconciledCashDebt();
     const nw = recordedNetWorth({
       reconciled: cd,
       manualAssets: state.manualAssets || [],
+      investments: investmentNetWorthItems(state._investmentStatements || []),
       asOf,
       fx: state.fxRates || null,
     });
@@ -257,12 +288,24 @@ export function createProvenModels(ctx) {
       asOf,
       fx: state.fxRates || null,
     });
+    const live = liveCashDebt();
+    const liveNetWorth =
+      live === cd
+        ? nw
+        : recordedNetWorth({
+            reconciled: live,
+            manualAssets: state.manualAssets || [],
+            investments: investmentNetWorthItems(state._investmentStatements || []),
+            asOf,
+            fx: state.fxRates || null,
+          });
     return {
-      cashDebt: cd,
-      netWorth: nw,
+      cashDebt: live,
+      netWorth: liveNetWorth,
       summary,
-      cashDebtModel: buildCashDebtModel(cd, state.cfg),
-      netWorthModel: buildNetWorthModel(nw, state.cfg),
+      balances: balances(),
+      cashDebtModel: buildCashDebtModel(live, state.cfg),
+      netWorthModel: buildNetWorthModel(liveNetWorth, state.cfg),
     };
   }
 
@@ -286,10 +329,10 @@ export function createProvenModels(ctx) {
     paceFor,
     intentionFor,
     forecast,
-    forecastChart,
     forecastSnapshot,
     positionModels,
+    balances,
+    enteredCash,
     tags,
-    accuracyFor,
   };
 }

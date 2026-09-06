@@ -12,8 +12,13 @@ import { isUnrecognised } from '../analysis/reporting-core.js';
 // (the Overview combined CSV in data-export.js) reuses the identical helper
 // rather than a weaker hand-rolled one, and the two can never drift.
 export function csvEscape(v) {
-  const s = String(v == null ? '' : v);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  let s = String(v == null ? '' : v);
+  if (/^[=+@\t\r]/.test(s) || (/^-/.test(s) && !/^-\d+(?:\.\d+)?$/.test(s))) s = "'" + s;
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+export function csvDocument(lines) {
+  return lines.join('\r\n') + '\r\n';
 }
 
 export function toCSV(rows, currency = 'JMD') {
@@ -35,7 +40,7 @@ export function toCSV(rows, currency = 'JMD') {
         .join(',')
     );
   }
-  return lines.join('\n');
+  return csvDocument(lines);
 }
 
 // The Detailed counterpart to toCSV: every pipeline stage side by side, for
@@ -78,7 +83,7 @@ export function toDetailedCSV(rows, currency = 'JMD') {
         .join(',')
     );
   }
-  return lines.join('\n');
+  return csvDocument(lines);
 }
 
 // Shared multi-key sort for bank-ledger record lists: account (alphabetical),
@@ -100,7 +105,7 @@ export function sortBankRecords(records) {
 // the columns differ (flow direction, running balance, owning account) and the
 // two ledgers are kept apart (D1). Pure and testable, mirroring toCSV. Internal
 // transfers are marked so a spreadsheet can exclude them the way the app does.
-export function bankRowToCsvFields(r, currency) {
+export function bankRowToCsvFields(r) {
   const flow = r.internalTransfer
     ? 'Internal transfer'
     : r.direction === 'in'
@@ -120,14 +125,14 @@ export function bankToCSV(records, currency = 'JMD') {
   const rows = sortBankRecords(records);
   const lines = [head.join(',')];
   for (const r of rows) {
-    const { flow, signed, bal, cp } = bankRowToCsvFields(r, currency);
+    const { flow, signed, bal, cp } = bankRowToCsvFields(r);
     lines.push(
       [r.date, r.account || '', r.currency || currency, cp, flow, signed, bal]
         .map(csvEscape)
         .join(',')
     );
   }
-  return lines.join('\n');
+  return csvDocument(lines);
 }
 
 export function bankToDetailedCSV(records, currency = 'JMD') {
@@ -148,7 +153,7 @@ export function bankToDetailedCSV(records, currency = 'JMD') {
   const rows = sortBankRecords(records);
   const lines = [head.join(',')];
   for (const r of rows) {
-    const { flow, signed, bal, cp } = bankRowToCsvFields(r, currency);
+    const { flow, signed, bal, cp } = bankRowToCsvFields(r);
     lines.push(
       [
         r.date,
@@ -168,7 +173,7 @@ export function bankToDetailedCSV(records, currency = 'JMD') {
         .join(',')
     );
   }
-  return lines.join('\n');
+  return csvDocument(lines);
 }
 
 // Contribute-back export (Manage Data): a deliberately minimal CSV of
@@ -211,5 +216,5 @@ export function buildUnknownMerchantsCSV(rows, fallback = 'Uncategorised') {
   const list = [...groups.values()].sort((a, b) => b.count - a.count);
   const lines = [['Description', 'Occurrences'].join(',')];
   for (const g of list) lines.push([g.description, g.count].map(csvEscape).join(','));
-  return { csv: lines.join('\n'), count: list.length };
+  return { csv: csvDocument(lines), count: list.length };
 }

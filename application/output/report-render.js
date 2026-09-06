@@ -318,10 +318,7 @@ export function renderReport(doc, model) {
           : value
       )
     );
-    if (sub)
-      b.appendChild(
-        rp(doc, 'div', { class: 'rp-sum-sub' + (opts.tone ? ' tone-' + opts.tone : '') }, sub)
-      );
+    if (sub) b.appendChild(rp(doc, 'div', { class: 'rp-sum-sub' }, sub));
     return b;
   };
   grid.appendChild(
@@ -329,7 +326,7 @@ export function renderReport(doc, model) {
       'Total spend',
       s.totalSpend,
       s.vsPrev ? `${s.vsPrev.text} (was ${s.vsPrev.prevMoney})` : 'No comparable period yet',
-      { lead: true, tone: s.vsPrev ? s.vsPrev.dir : null }
+      { lead: true }
     )
   );
   grid.appendChild(block('Purchases', s.nPurchases, s.vsAvg || null));
@@ -512,7 +509,7 @@ export function renderReport(doc, model) {
         doc,
         'p',
         { class: 'rp-empty' },
-        `A calm ${String(model.period).toLowerCase()} - nothing stands out against the usual pattern.`
+        `No material change was detected against the usual pattern for ${String(model.period).toLowerCase()}.`
       )
     );
   }
@@ -1019,4 +1016,70 @@ export function renderOverviewReport(doc, model) {
   );
 
   return root;
+}
+
+// The Plan, printed. Deliberately compact: three rows, what a normal month
+// actually does against what it is meant to do, and the one figure the tab
+// leads with. It never appears alone - the caller appends it to the report the
+// current view already produces.
+export function renderPlanSection(doc, model) {
+  if (!model) return null;
+  const wrap = rp(doc, 'section', { class: 'rp-sec rp-plan' });
+  wrap.appendChild(
+    rp(doc, 'h2', { class: 'rp-h' }, reportIconEl(doc, 'chart', 18), rp(doc, 'span', {}, model.title))
+  );
+  wrap.appendChild(
+    rp(
+      doc,
+      'p',
+      { class: 'rp-note' },
+      `Take-home ${model.takeHome} in a normal month, from ${model.basis}.` +
+        (model.usingDefault ? ' Shares are the starting 60/20/20 split; no plan has been saved yet.' : '')
+    )
+  );
+
+  const table = rp(doc, 'table', { class: 'rp-table rp-plan-table' });
+  const thead = rp(doc, 'thead');
+  const hrow = rp(doc, 'tr');
+  for (const h of ['Group', 'Actual', 'Share', 'Plan', 'Target', 'Tracking']) {
+    hrow.appendChild(rp(doc, 'th', {}, h));
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+  const tbody = rp(doc, 'tbody');
+  for (const g of model.groups) {
+    const row = rp(doc, 'tr');
+    row.appendChild(rp(doc, 'td', {}, g.label));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.actual));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.share));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.target));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.targetShare));
+    row.appendChild(rp(doc, 'td', {}, g.tracking));
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  wrap.appendChild(
+    rp(
+      doc,
+      'p',
+      { class: 'rp-note' },
+      `${model.free.amount} ${model.free.label}. ${model.free.note}`
+    )
+  );
+  if (model.unaccounted) {
+    wrap.appendChild(
+      rp(doc, 'p', { class: 'rp-note' }, `${model.unaccounted} a month did not go out at all.`)
+    );
+  }
+  if (model.drawdown) wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, model.drawdown));
+  for (const f of model.foreign) wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, f));
+  if (model.savedOn) {
+    wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, `Plan saved ${model.savedOn}.`));
+  }
+  if (model.gaps.length) {
+    wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, `Thin on data: ${model.gaps.join('; ')}.`));
+  }
+  return wrap;
 }

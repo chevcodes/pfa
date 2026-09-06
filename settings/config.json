@@ -1,7 +1,6 @@
 {
   "app": {
-    "name": "Personal Finance Analyser",
-    "shortName": "Finance Analyser"
+    "name": "Personal Finance Analyser"
   },
   "currency": {
     "code": "JMD",
@@ -114,47 +113,61 @@
       }
     ]
   },
-  "bankMovementKinds": {
-    "note": "Bank-native movement kinds for the Accounts tab. Not the card spending taxonomy: bank money is income, transfers, bills, fees, tax and cash. A row's kind is decided in read-statements.js bankMovementKind() - own-account/round-trip first, then cash deposit, then household, then a resolved merchant's category coarsened via categoryToKind, then the statement's own printed TYPE matched against typeRules (plain uppercase substrings, no regex), then direction. Adding a rule here changes the breakdown with no code change.",
-    "labels": {
-      "income": "Income",
-      "payment": "Payments to people",
-      "bill": "Bills & standing payments",
-      "fees": "Fees & charges",
-      "tax": "Government & tax",
-      "cash-withdrawal": "Cash withdrawals",
-      "cash-deposit": "Cash deposits",
-      "household": "Support to household",
-      "refund": "Refunds & reversals",
-      "internal": "Between your own accounts",
-      "other": "Other movements"
-    },
-    "order": [
-      "income",
-      "payment",
-      "bill",
-      "fees",
-      "tax",
-      "cash-withdrawal",
-      "cash-deposit",
-      "household",
-      "refund",
-      "internal",
-      "other"
+  "accountCategoryRoutes": {
+    "note": "Account-type routing for categories the shared register cannot get right for both ledgers. A term can mean different things depending on which statement it appears on: 'insurance premium' on a CARD is the card issuer's own insurance fee (Fees & Interest), while the same words on a BANK statement are the person paying their insurer (Insurance). Applied only AFTER the shared engine has produced `from`, and only for the named profile, so the card ledger is untouched and no rule is invented for a category the engine did not already choose. These change the LABEL a row carries, never the amount and never which plan group it lands in when both categories share one group.",
+    "bank": [
+      { "match": "INSURANCE PREMIUM", "from": "Fees & Interest", "to": "Insurance" }
+    ]
+  },
+  "planBands": {
+    "note": "The Plan tab's conscious-spending groups. Every spending category belongs to exactly one group, and each group carries a target share of a normal month's take-home. defaults are the starting split (60/20/20), a reference point a person tunes - never a pass mark and never a grade. seed places only the categories whose group is NOT a judgement call; everything in seed.ask is a real decision and is put to the person rather than guessed. A category's group is decided by OBLIGATION, not by rhythm: a bill you must pay is fixed, while dining or entertainment is free spending however regularly it recurs. Recurrence is therefore never used to infer a group. Detected recurring standing debits count as fixed because a direct debit is a contractual obligation, not merely a repeated one.",
+    "groups": [
+      { "key": "fixed", "label": "Fixed expenses", "meaning": "money you are obliged to pay" },
+      { "key": "setAside", "label": "Savings & investments", "meaning": "money moving toward the future" },
+      { "key": "free", "label": "Free spending", "meaning": "yours to enjoy, guilt-free" }
     ],
-    "colours": {
-      "income": "#3f9d6b",
-      "payment": "#2f6fb0",
-      "bill": "#5a78c2",
-      "fees": "#b5642e",
-      "tax": "#c98a1b",
-      "cash-withdrawal": "#4aa3a3",
-      "cash-deposit": "#6b8e3d",
-      "household": "#9a5aa8",
-      "refund": "#3f9d6b",
-      "internal": "#8a8f99",
-      "other": "#557f9e"
-    },
+    "defaults": { "fixed": 60, "setAside": 20, "free": 20 },
+    "seed": {
+      "fixed": [
+        "Utilities",
+        "Telecom",
+        "Insurance",
+        "Loan Repayment",
+        "Government & Tax",
+        "Fees & Interest"
+      ],
+      "setAside": [],
+      "free": [
+        "Dining & Takeout",
+        "Entertainment & Recreation",
+        "Subscriptions",
+        "Online Shopping",
+        "Retail & Department",
+        "Hotels & Travel"
+      ],
+      "ask": [
+        "Groceries",
+        "Fuel & Transport",
+        "Auto & Vehicle",
+        "Pharmacy & Health",
+        "Home & Services",
+        "Courier & Shipping",
+        "Banking & Transfers"
+      ]
+    }
+  },
+  "bankMovementKinds": {
+    "note": "Bank-native movement rules used by the Plan tab to distinguish money set aside from neutral transfers and to coarsen bank categories. A row's kind is decided in bank-analysis.js bankMovementKind(): setAsideRules first, then own-account/round-trip, cash deposit, household, resolved category, statement type, and finally direction.",
+    "setAsideRules": [
+      { "match": "INVESTMENT", "label": "Investment account", "investment": true },
+      { "match": "BROKERAGE", "label": "Brokerage account", "investment": true },
+      { "match": "MUTUAL FUND", "label": "Mutual fund", "investment": true },
+      { "match": "UNIT TRUST", "label": "Unit trust", "investment": true },
+      { "match": "FIXED DEPOSIT", "label": "Fixed deposit" },
+      { "match": "PENSION", "label": "Pension" },
+      { "match": "RETIREMENT", "label": "Retirement account" },
+      { "match": "SINKING FUND", "label": "Sinking fund" }
+    ],
     "categoryToKind": {
       "Insurance": "bill",
       "Banking & Transfers": "bill",
@@ -181,12 +194,6 @@
       { "match": "ELECTRONIC DEBIT", "kind": "bill" },
       { "match": "PC-BILL PAYMENT", "kind": "bill" }
     ]
-  },
-  "confidence": {
-    "confident": "high",
-    "review": "low",
-    "ruleConfidence": 0.9,
-    "unknownConfidence": 0
   },
   "categories": [
     {
@@ -311,7 +318,7 @@
           "mcafee",
           "1password",
           "anthropic",
-          "claude",
+          "\\bclaude\\b",
           "perplexity",
           "midjourney",
           "streaming"
@@ -516,6 +523,7 @@
         "universal": [
           "pharmac(y|ies)",
           "drug\\s*store",
+          "\\bdrugs?\\b",
           "hospital",
           "\\bclinic\\b",
           "dental",
@@ -526,7 +534,8 @@
           "medlab",
           "optical",
           "eye\\s*care"
-        ]
+        ],
+        "head": ["^dr\\.?\\s"]
       }
     },
     {
@@ -606,7 +615,7 @@
           "\\bresort\\b",
           "\\bhotel\\b",
           "guest\\s*house",
-          "villa",
+          "\\bvillas?\\b",
           "all-?suite",
           "\\binn\\b"
         ],
@@ -763,25 +772,6 @@
       }
     }
   ],
-  "locationTokens": [
-    "piarco",
-    "nmia",
-    "norman manley",
-    "maracas",
-    "caymanas",
-    "devon house",
-    "fort lauderda",
-    "west palm bea",
-    "lake wales",
-    "lakeland",
-    "okeechobee",
-    "montgomery",
-    "bellevue",
-    "plantation",
-    "george town",
-    "drax hall",
-    "trincity"
-  ],
   "keepUpper": [
     "KFC",
     "GCT",
@@ -849,13 +839,11 @@
     "largeChargeMin": 10000,
     "largeChargeZ": 3.5,
     "largeChargeMinPeers": 2,
-    "minMonthsForComparison": 2,
     "maxInsights": 3,
     "newMerchantMin": 2000,
     "driverShare": 0.5,
     "incompleteDayMargin": 3,
     "incompleteSpendRatio": 0.6,
-    "minPaymentTrapRatio": 1.15,
     "categorySpikeZ": 3.5,
     "categorySpikeMin": 10000,
     "categorySpikeMinMonths": 3,

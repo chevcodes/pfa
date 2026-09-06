@@ -548,6 +548,7 @@ async function hasRealDataPresent() {
   if ((await Store.allStatements()).length) return true;
   if ((await Store.allBankStatements()).length) return true;
   if ((await Store.allCardStatements()).length) return true;
+  if (Store.investmentStatements && (await Store.investmentStatements.all()).length) return true;
   return false;
 }
 
@@ -611,11 +612,19 @@ async function clearPersona(reload = true) {
   await Store.clearBankTransactions();
   await Store.clearBankStatements();
   await Store.clearCardStatements();
+  await Store.tags.clear();
+  await Store.transactionSplits.clear();
+  await Store.forecastSnapshots.clear();
+  if (Store.investmentStatements) await Store.investmentStatements.clear();
+  if (Store.balanceUpdates) await Store.balanceUpdates.clear();
   await Store.setMeta('bankCardAccounts', []);
   await Store.setMeta('bankMyAccounts', []);
   await Store.setMeta('bankConfirmedIncomeIds', []);
   await Store.setMeta('bankRefundIncomeIds', []);
-  await Store.setMeta('bankRoundTripIds', []);
+  await Store.setMeta('bankSharedAccounts', []);
+  await Store.setMeta('bankHouseholdPayees', []);
+  await Store.setMeta('financeGoalLog', []);
+  await Store.setMeta('planSetAside', []);
   await Store.setMeta('firstName', null);
   await Store.setMeta('lastImportedFrom', null);
   await Store.setMeta(MOCK_FLAG_KEY, null);
@@ -633,13 +642,13 @@ function mountPersonaSwitcher() {
   host.id = 'pfa-mock-switcher';
   host.setAttribute(
     'style',
-    'position:fixed;left:12px;bottom:12px;z-index:2147483000;font:13px system-ui,Segoe UI,Roboto,sans-serif;color:#10161f;'
+    'position:relative;margin:12px;z-index:auto;font:13px system-ui,Segoe UI,Roboto,sans-serif;color:#10161f;'
   );
 
   const panel = document.createElement('div');
   panel.setAttribute(
     'style',
-    'display:none;width:300px;padding:12px;background:#fff;border:2px dashed #B4460E;border-radius:12px;box-shadow:0 8px 30px rgba(16,24,40,.18);margin-bottom:8px;'
+    'display:none;width:min(300px,calc(100vw - 24px));box-sizing:border-box;padding:12px;background:#fff;border:2px dashed #B4460E;border-radius:12px;box-shadow:0 8px 30px rgba(16,24,40,.18);margin-bottom:8px;'
   );
 
   const title = document.createElement('div');
@@ -654,9 +663,10 @@ function mountPersonaSwitcher() {
   status.setAttribute('style', 'margin-bottom:10px;font-weight:650;');
 
   const select = document.createElement('select');
+  select.name = 'sample-persona';
   select.setAttribute(
     'style',
-    'width:100%;padding:8px;border:1px solid #d0d5dd;border-radius:8px;margin-bottom:8px;'
+    'width:100%;min-height:44px;padding:8px;border:1px solid #d0d5dd;border-radius:8px;margin-bottom:8px;'
   );
   for (const key of Object.keys(PERSONAS)) {
     const opt = document.createElement('option');
@@ -682,14 +692,14 @@ function mountPersonaSwitcher() {
   loadBtn.textContent = 'Load this sample customer';
   loadBtn.setAttribute(
     'style',
-    'width:100%;padding:9px;border:0;border-radius:8px;background:#0F6CBD;color:#fff;font-weight:650;cursor:pointer;margin-bottom:8px;'
+    'width:100%;min-height:44px;padding:9px;border:0;border-radius:8px;background:#0F6CBD;color:#fff;font-weight:650;cursor:pointer;margin-bottom:8px;'
   );
 
   const clearBtn = document.createElement('button');
   clearBtn.textContent = 'Clear to an empty app';
   clearBtn.setAttribute(
     'style',
-    'width:100%;padding:9px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#10161f;font-weight:650;cursor:pointer;'
+    'width:100%;min-height:44px;padding:9px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#10161f;font-weight:650;cursor:pointer;'
   );
 
   loadBtn.onclick = async () => {
@@ -729,7 +739,7 @@ function mountPersonaSwitcher() {
   const pill = document.createElement('button');
   pill.setAttribute(
     'style',
-    'display:block;padding:8px 12px;background:#B4460E;color:#fff;border:0;border-radius:999px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(16,24,40,.18);'
+    'display:block;min-height:44px;padding:8px 12px;background:#B4460E;color:#fff;border:0;border-radius:999px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(16,24,40,.18);opacity:.32;transition:opacity .15s;'
   );
 
   const refresh = async () => {
@@ -744,6 +754,17 @@ function mountPersonaSwitcher() {
       pill.textContent = 'Sample data';
     }
   };
+
+  for (const [ev, o] of [
+    ['pointerenter', '1'],
+    ['pointerleave', '.32'],
+    ['focus', '1'],
+    ['blur', '.32'],
+  ]) {
+    pill.addEventListener(ev, () => {
+      pill.style.opacity = panel.style.display === 'block' ? '1' : o;
+    });
+  }
 
   pill.onclick = () => {
     const open = panel.style.display === 'block';

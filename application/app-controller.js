@@ -43,16 +43,26 @@ import {
   withConfigDefaults,
   DEV_SIGNATURE,
   LOCAL_DEV_HOSTS,
+  isLocalDevHost,
   bankRowsInapplicable as bankRowsInapplicablePure,
   cardRowsInapplicable as cardRowsInapplicablePure,
+  makeMoneyShort,
+  privateViewOn,
+  isoToday,
+  selectOnFocus,
+  syncLayoutInsets,
+  enterModal,
+  displayText,
 } from './core/shared-helpers.js';
 import { setBankDescriptorCleanupRules } from './statements/read-statements.js';
 import {
   bankFlowOverTime,
   detectBankStandingDebits,
+  detectLargeBankOutflows,
   analyseCombinedOverview,
   analyseRollup,
   analyseBankActivity,
+  setCounterpartyCasing,
 } from './analysis/bank-analysis.js';
 import { compileRules, merchantLabel } from './statements/categorise.js';
 import { compileFromRaw } from './statements/merchant-resolver.js';
@@ -62,7 +72,6 @@ import {
   summarise,
   attentionItems,
   orderCategoriesForPicker,
-  buildHeroSection,
   renderInsightList,
   renderShareBar,
   MONEY_IN_PALETTE,
@@ -102,6 +111,7 @@ import {
   iconPie,
   iconStore,
   iconList,
+  iconLabel,
   iconTag,
   iconAlert,
   iconSpark,
@@ -119,13 +129,18 @@ import {
 import { createAccountsRenderer } from './ui/accounts-render.js';
 import { createCategoryPicker } from './ui/category-picker.js';
 import { createManageData } from './ui/manage-data.js';
+import { commitAndRender, createReversible } from './ui/reversible.js';
 import { createDataExport } from './output/data-export.js';
 import { createCardsRenderer } from './ui/cards-render.js';
 import { createAheadRenderer } from './ui/ahead-render.js';
+import { createBalanceUpdates } from './ui/balance-updates-render.js';
 import { createOverviewRenderer } from './ui/overview-render.js';
 import { createProvenModels } from './analysis/proven-models.js';
+import { buildReviewCauses } from './analysis/review-causes.js';
+import { typicalIncome } from './analysis/plan.js';
+import { makeProseMoney } from './core/money-format.js';
 import { ensureMigrated } from './analysis/goal-migrate.js';
-import { evaluateGoal } from './analysis/goals.js';
+import { evaluateGoal, goalOffTrack } from './analysis/goals.js';
 import { makeIntention } from './analysis/category-intentions.js';
 import { makeTag } from './analysis/tag-totals.js';
 import {
@@ -135,19 +150,24 @@ import {
   canDeleteCategory,
 } from './analysis/custom-categories.js';
 import { createPositionRenderer } from './ui/position-render.js';
-import { createForecastChartRenderer } from './ui/forecast-chart-render.js';
+import { createInvestmentsRenderer } from './ui/investments-render.js';
+import { createPlanRenderer } from './ui/plan-render.js';
+import { PLAN_DRAFT_KEY, readPlanDraft } from './analysis/plan-draft.js';
+import { bankCategoryCoverage } from './analysis/bank-categorise.js';
 import { createIncomeChartRenderer } from './ui/income-chart-render.js';
 import { createFlowChartRenderer } from './ui/flow-chart-render.js';
 import { createActivityRenderer } from './ui/activity-render.js';
 import { createGoalController } from './ui/app-goals.js';
 import { createStatementIntake } from './ui/app-intake.js';
 import { createAppMessages } from './ui/app-messages.js';
+import { repairInvestmentStatementTotal, statementIntegrity } from './analysis/investments.js';
 
 import { makeManualAsset, NET_WORTH_CLASSES } from './analysis/position.js';
 import { categoryTotalsWithSplits, splitsByTxnId } from './analysis/transaction-splits.js';
 
 function bootUI() {
   const $ = (sel, root = document) => root.querySelector(sel);
+  let fieldSeq = 0;
   const el = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -158,9 +178,14 @@ function bootUI() {
       else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
       else n.setAttribute(k, v);
     }
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(n.tagName) && !n.id && !n.name)
+      n.id = `ui-field-${++fieldSeq}`;
+    const plainText = /^(OPTION|TEXTAREA)$/.test(n.tagName);
     for (const kid of kids.flat())
       if (kid != null && kid !== false)
-        n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+        n.append(
+          kid.nodeType ? kid : plainText ? document.createTextNode(String(kid)) : displayText(kid)
+        );
     return n;
   };
 
@@ -354,7 +379,6 @@ function bootUI() {
     myAccounts: [],
     cardAccounts: [],
     view: 'overview',
-    bankWarnings: [],
     bankAccount: 'all',
     activityTab: 'analysis',
     // Accounts-ledger transaction filter (Recommendation 1). Parallel to
@@ -392,6 +416,10 @@ function bootUI() {
     // proven-models accessors. Additive; no existing field is touched.
     categoryIntentions: [],
     manualAssets: [],
+    balanceUpdates: [],
+    _investmentStatements: [],
+    investmentAccount: 'all',
+    accountNames: {},
     forecastSnapshots: [],
     tags: [],
     transactionSplits: [],
@@ -408,13 +436,9 @@ function bootUI() {
     const { symbol = '$', locale = 'en-JM', decimals = 2 } = state.cfg.currency || {};
     return formatMoney(n, symbol, locale, decimals);
   };
-  const moneyShort = (n) => {
-    const { symbol = '$' } = state.cfg.currency || {};
-    const a = Math.abs(n);
-    if (a >= 1e6) return symbol + (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'M';
-    if (a >= 1e3) return symbol + Math.round(n / 1e3) + 'k';
-    return symbol + Math.round(n);
-  };
+  // Compact money for axis ticks and dense chart labels, from THE formatter
+  // (core/money-format.js) so it passes the same privacy gate as money0.
+  const moneyShort = (n) => makeMoneyShort(state.cfg, { millionDecimals: null })(n);
   const pct = (x) => `${Math.round(x * 100)}%`;
   const monthShort = (ym) => {
     const m = /^(\d{4})-(\d{2})$/.exec(ym);
@@ -442,8 +466,26 @@ function bootUI() {
         )
       );
     t.classList.add('show');
+    t.hidden = false;
     clearTimeout(t._h);
-    t._h = setTimeout(() => t.classList.remove('show'), undoFn ? 10000 : 8000);
+    // A faded-out toast used to keep its Undo button in the DOM, focusable, with
+    // a real hit box. A keyboard user could tab to an invisible "Undo" and
+    // reverse something they could not see, and a click at that spot did the
+    // same. Now the toast is emptied and marked hidden once it goes, so there is
+    // nothing left to reach. This matters more now that nearly every choice
+    // offers an undo.
+    t._h = setTimeout(
+      () => {
+        t.classList.remove('show');
+        setTimeout(() => {
+          if (!t.classList.contains('show')) {
+            t.innerHTML = '';
+            t.hidden = true;
+          }
+        }, 400);
+      },
+      undoFn ? 10000 : 8000
+    );
   };
 
   // Private, on-device usage tally (Round 1 foundation): a plain count of how
@@ -460,7 +502,9 @@ function bootUI() {
     state._usageTally[key] = (state._usageTally[key] || 0) + 1;
     clearTimeout(_usageTallyTimer);
     _usageTallyTimer = setTimeout(() => {
-      Store.setMeta('usageTally', state._usageTally);
+      Store.setMeta('usageTally', { ...state._usageTally }).catch((error) =>
+        console.warn('Usage tally could not be saved.', error)
+      );
     }, 800);
   }
 
@@ -908,7 +952,11 @@ function bootUI() {
     // its keyboard handler both derive purely from this array. Every view
     // dispatch, drill, LABELS entry and mountView cache key is id-based, not
     // position-based, so none of them are affected.
-    if (state.bankRecords.length || (state._cardStatements || []).length) {
+    if (
+      state.bankRecords.length ||
+      (state._cardStatements || []).length ||
+      (state._investmentStatements || []).length
+    ) {
       v.push('position');
     }
 
@@ -931,6 +979,66 @@ function bootUI() {
     return availableViews()[0] || 'overview';
   }
 
+  const REPORTING_PERIOD_OPTIONS = [
+    ['latest-complete', 'Latest complete month'],
+    ['current-month', 'Current month'],
+    ['previous-month', 'Previous month'],
+    ['last-3', 'Last 3 months'],
+    ['last-6', 'Last 6 months'],
+    ['this-year', 'This year'],
+    ['all', 'All time'],
+    ['custom', 'Custom range'],
+  ];
+  const REPORTING_PERIOD_TYPES = new Set(REPORTING_PERIOD_OPTIONS.map(([type]) => type));
+  let workspaceWrite = Promise.resolve();
+  let queuedWorkspace = '';
+
+  function workspaceSnapshot() {
+    return {
+      version: 1,
+      view: state.view,
+      activityTab: state.activityTab,
+      period: {
+        type: state.period.type,
+        from: state.period.from || null,
+        to: state.period.to || null,
+      },
+    };
+  }
+
+  function applyWorkspaceSnapshot(saved) {
+    if (!saved || typeof saved !== 'object') return;
+    if (availableViews().includes(saved.view)) state.view = saved.view;
+    if (saved.activityTab === 'analysis' || saved.activityTab === 'transactions') {
+      state.activityTab = saved.activityTab;
+    }
+    const period = saved.period;
+    if (period && REPORTING_PERIOD_TYPES.has(period.type)) {
+      const month = (value) => (/^\d{4}-\d{2}$/.test(String(value || '')) ? value : null);
+      state.period = {
+        type: period.type,
+        from: period.type === 'custom' ? month(period.from) : null,
+        to: period.type === 'custom' ? month(period.to) : null,
+      };
+      if (state.period.type === 'custom' && (!state.period.from || !state.period.to)) {
+        state.period = { type: 'latest-complete', from: null, to: null };
+      }
+    }
+  }
+
+  function saveWorkspaceSnapshot() {
+    const snapshot = workspaceSnapshot();
+    const signature = JSON.stringify(snapshot);
+    if (signature === queuedWorkspace) return;
+    queuedWorkspace = signature;
+    workspaceWrite = workspaceWrite
+      .then(() => Store.setMeta('workspaceState', snapshot))
+      .catch((error) => {
+        if (queuedWorkspace === signature) queuedWorkspace = '';
+        console.warn('Workspace state could not be saved.', error);
+      });
+  }
+
   let _covKey = null;
   let _viewCache = {},
     _epochSnap = null;
@@ -944,15 +1052,14 @@ function bootUI() {
     const hasBank = state.bankRecords.length > 0;
     const views = availableViews();
     if (views.length && !views.includes(state.view)) state.view = views[0];
+    saveWorkspaceSnapshot();
     app.dataset.view = state.view;
     if (previousView && previousView !== state.view) {
       app.classList.remove('view-enter');
       requestAnimationFrame(() => app.classList.add('view-enter'));
     }
-    if (state.records.length) {
-      recompute();
-      buildCategoryColours();
-    }
+    recompute();
+    if (state.records.length) buildCategoryColours();
     if (
       !_covKey ||
       _covKey.cs !== state._cardStatements ||
@@ -986,7 +1093,13 @@ function bootUI() {
 
     renderPeriodBar();
     renderLedgerSwitch(views);
-    if (!hasCard && !hasBank) {
+    updateHeaderAvailability();
+    // Both pinned bars have just been (re)built, so this is the one moment
+    // their real heights are knowable. Everything that must clear them -
+    // the page's bottom padding, scroll anchoring, the popovers - reads the
+    // numbers published here.
+    requestAnimationFrame(syncLayoutInsets);
+    if (!hasCard && !hasBank && !(state._investmentStatements || []).length) {
       _viewCache = {};
       app.append(renderEmpty());
       updateFooter();
@@ -999,6 +1112,7 @@ function bootUI() {
       resolved(),
       state._cardStatements,
       state._bankStatements,
+      state._investmentStatements,
       state.catColour,
       state.warnings,
       state.cardAccounts,
@@ -1006,6 +1120,27 @@ function bootUI() {
       state.tags,
       state.transactionSplits,
       state.manualAssets,
+      state.accountNames,
+      state.balanceUpdates,
+      // Goal and plan state belong in the epoch for the same reason every
+      // ledger input does: a cached view built against a goal, its log, its
+      // safety floor or a saved plan is stale the moment any of them changes.
+      // Without these, clearing a goal left every other destination showing
+      // figures derived from it until something unrelated forced a rebuild.
+      state.goal,
+      state.goalLog,
+      state._goalBoundary,
+      state._planTarget,
+      state._planGroups,
+      state._planSetAside,
+      state._planDraft,
+      // Private view is now a RENDER input, not a stylesheet overlay: every
+      // figure is masked by the formatter as the DOM is built (core/
+      // privacy.js), so a cached view built with figures visible is stale the
+      // moment the mode flips. Folding it into the epoch invalidates every
+      // destination's cache at once, rather than leaving each view's own
+      // signature to remember a global state it does not own.
+      privateViewOn(),
     ];
     if (
       !_epochSnap ||
@@ -1026,15 +1161,7 @@ function bootUI() {
     }
 
     if (state.view === 'activity') {
-      const p = resolved();
-      const sig =
-        (p
-          ? [state.period.type, p.from || '', p.to || '', p.prevFrom || '', p.prevTo || ''].join(
-              '|'
-            )
-          : state.period.type) +
-        '|' +
-        activityTabSignature();
+      const sig = activityViewSignature();
 
       mountView(app, 'activity', sig, () => {
         const w = renderActivity();
@@ -1057,7 +1184,8 @@ function bootUI() {
       // calendar day and silently returns the STALE pre-click DOM, so the
       // draft form never actually appears. A real, pre-existing bug this
       // session's testing surfaced, not something newly introduced.
-      const sig = new Date().toISOString().slice(0, 10) + '|' + draftSignature();
+      const sig =
+        isoToday() + '|' + draftSignature() + '|' + planDraftSignature();
       mountView(app, 'ahead', sig, () => {
         const w = renderAhead();
         w.append(renderManageData());
@@ -1071,7 +1199,7 @@ function bootUI() {
       // Anchored to today (reconciled balances), independent of the period
       // selector, so its cache signature is the date + the data epoch (handled
       // by the epoch check above).
-      const sig = new Date().toISOString().slice(0, 10);
+      const sig = `${isoToday()}|${state.investmentAccount}`;
       mountView(app, 'position', sig, () => {
         const w = renderPosition();
         w.append(renderManageData());
@@ -1091,6 +1219,36 @@ function bootUI() {
       return [w];
     });
     updateFooter();
+  }
+
+  /* The Activity view's cache key, in ONE place.
+   *
+   * Activity is the only view whose DOM is also rebuilt locally, outside
+   * render(): typing in the search box, or toggling a category chip, swaps the
+   * ledger in place so the caret and focus survive. That is deliberate - but it
+   * means the cached nodes stop matching the signature they were filed under.
+   *
+   * The consequence was a dead control. "Clear all" reset the module-scope
+   * search text and called render(); the signature it then computed was the
+   * same one the cache was filed under (both "no search"), because the search
+   * had never been through render() in the first place. mountView handed back
+   * the cached DOM - still showing the search - and the button did nothing.
+   *
+   * The invariant: the cached signature must always describe the cached DOM.
+   * noteActivityDomRebuilt restores it after every local rebuild. */
+  function activityViewSignature() {
+    const p = resolved();
+    return (
+      (p
+        ? [state.period.type, p.from || '', p.to || '', p.prevFrom || '', p.prevTo || ''].join('|')
+        : state.period.type) +
+      '|' +
+      activityTabSignature()
+    );
+  }
+
+  function noteActivityDomRebuilt() {
+    if (_viewCache.activity) _viewCache.activity.sig = activityViewSignature();
   }
 
   function mountView(app, name, sig, build) {
@@ -1121,11 +1279,25 @@ function bootUI() {
     state.view = id;
     trackUsage('view-' + id);
     render();
+    // Move focus into the panel the person just chose. The tabs are a proper
+    // tablist (roving tabindex, arrow keys, aria-controls="app") and #app is
+    // already role="tabpanel" with tabindex="-1" - but focus was never moved
+    // there, so activating a tab left focus on <body>: the next Tab restarted
+    // from the top of the document, and nothing announced that the view had
+    // changed. Everything needed for this was in place except the one line.
+    const panel = $('#app');
+    if (panel && typeof panel.focus === 'function') panel.focus({ preventScroll: true });
     if (anchorId) smoothScrollToEl(anchorId);
     else window.scrollTo({ top: _viewScroll[id] || 0, left: 0, behavior: 'auto' });
   }
 
   function drillToAccountsPayee(key, label) {
+    // Clear the CARD facets too. This only reset the bank side, so drilling to
+    // a payee while a card-side category or merchant drill was still active
+    // left that filter in place and the list showed the OLD selection - the
+    // click appeared to do nothing. Symmetric with drillToTransactions, which
+    // has always cleared the bank side before applying a card-side narrow.
+    resetCardDrillFacets();
     resetBankDrillFacets();
     state.bankFilter.payeeKey = key;
     state.bankFilter.payeeLabel = label;
@@ -1144,13 +1316,11 @@ function bootUI() {
     resetBankDrillFacets();
     state.bankAccount = turningOff ? 'all' : account;
     state.bankShowAllTx = true;
-    render();
-    smoothScrollToEl('#acct-tx');
-  }
-  function drillToBankKind(kind) {
-    resetBankDrillFacets();
-    state.bankFilter.kind = kind;
-    state.bankShowAllTx = true;
+    if (state.view !== 'activity') {
+      state.view = 'activity';
+      state.activityTab = 'transactions';
+      trackUsage('view-activity');
+    }
     render();
     smoothScrollToEl('#acct-tx');
   }
@@ -1198,13 +1368,24 @@ function bootUI() {
       overview: 'Overview',
       activity: 'Activity',
 
-      ahead: 'Forecast',
+      ahead: 'Plan',
       position: 'Position',
     };
     const TABS = views.map((id) => [id, LABELS[id]]);
     const ids = TABS.map(([id]) => id);
     const tabDomId = (id) => 'ledger-tab-' + id;
-    const switchTo = (id) => switchLedgerView(id);
+    // Tapping the tab you are already on returns to the top of it - the phone
+    // idiom every native tab bar uses. It replaces a floating back-to-top
+    // button that had nowhere to sit on a 375px screen without covering a
+    // transaction row (it was clipping the date of the lowest visible one), and
+    // it puts the action on a surface the thumb is already on.
+    const switchTo = (id) => {
+      if (state.view === id) {
+        smoothScrollToTop();
+        return;
+      }
+      switchLedgerView(id);
+    };
     const focusTab = (id) => {
       const b = $('#' + tabDomId(id));
       if (b) b.focus();
@@ -1297,10 +1478,11 @@ function bootUI() {
     if (ca) {
       cardSummary = {
         total_spend: ca.total_spend,
+        total_outflow: ca.total_outflow,
         n_transactions: ca.n_transactions,
       };
-      cardSpendTotal = ca.total_spend;
-      cardSpendByMonth = Object.assign({}, ca.by_month);
+      cardSpendTotal = ca.total_outflow;
+      cardSpendByMonth = Object.assign({}, ca.by_month_outflow);
     }
     const ov = analyseCombinedOverview({
       bankRecords: recs,
@@ -1316,7 +1498,7 @@ function bootUI() {
     const rollAllTrend = analyseRollup({
       bankRecords: cb,
       cardSpendTotal: 0,
-      cardSpendByMonth: asum ? asum.by_month : {},
+      cardSpendByMonth: asum ? asum.by_month_outflow : {},
       cardStatements: [],
     }).trend;
     let prevIncome = null;
@@ -1389,7 +1571,7 @@ function bootUI() {
       el(
         'p',
         { class: 'muted' },
-        'Add a supported bank or card statement PDF and your money picture appears straight away.'
+        'Add a supported bank, card or investment statement PDF and your money picture appears straight away.'
       )
     );
     lines.append(
@@ -1408,7 +1590,7 @@ function bootUI() {
       el('div', { class: 'empty-icon', html: emojiCard() }),
       el('h2', {}, 'Nothing here yet'),
       lines,
-      el('button', { class: 'btn primary lg', onclick: pickStatements }, 'Add statement')
+      el('button', { class: 'btn primary lg', onclick: pickStatements }, 'Add')
     );
     // Format support is a caveat on the button above it, not a headline
     // sentence, so it sits here as fine print alongside the drop-hint rather
@@ -1421,7 +1603,7 @@ function bootUI() {
         el(
           'p',
           { class: 'muted small empty-drop-hint' },
-          'Supports Scotiabank bank and credit-card statements, plus NCB credit-card statements.'
+          'Supports Scotiabank bank, credit-card and investment statements, plus NCB credit-card and investment statements.'
         )
       );
     }
@@ -1504,35 +1686,48 @@ function bootUI() {
     if (!bar) return;
     bar.innerHTML = '';
     const months = allLedgerMonths();
-    if (!months.length) return; // nothing imported in either ledger yet
-    if (state.view === 'position' || state.view === 'ahead') {
-      const isPosition = state.view === 'position';
+    bar.classList.toggle('is-empty', !months.length);
+    if (!months.length) {
+      bar.append(
+        el(
+          'div',
+          { class: 'period-left period-live period-empty' },
+          el('span', { class: 'period-icon', html: iconCal() }),
+          el('span', { class: 'period-live-title' }, 'No statements loaded')
+        )
+      );
+      return;
+    }
+    // Views whose content does NOT vary by reporting period state it in plain
+    // text rather than offering a control that appears to do something.
+    //
+    // Overview joined these three. Its headline - what is spendable right now,
+    // where cash moved, what needs attention - is deliberately period-
+    // independent, so changing the dropdown moved almost nothing on screen and
+    // read as broken. Worse, it could HIDE a blocking item by narrowing the
+    // window: something needing attention should not disappear because a person
+    // was looking at last month. Overview now always reads the full imported
+    // range (see overview-render's allTimePeriod), and says so.
+    const LIVE_VIEWS = {
+      position: ['Position today', 'Latest recorded balances'],
+      ahead: ['Plan for a normal month', 'Uses current balances and expected payments'],
+      overview: ['Where things stand now', 'Covers everything imported'],
+    };
+    if (LIVE_VIEWS[state.view]) {
+      const [title, showing] = LIVE_VIEWS[state.view];
       bar.append(
         el(
           'div',
           { class: 'period-left period-live' },
           el('span', { class: 'period-icon', html: iconCal() }),
-          el('span', { class: 'period-live-title' }, isPosition ? 'Position today' : 'Forecast from today')
+          el('span', { class: 'period-live-title' }, title)
         ),
         el('div', { id: 'ledger-switch', class: 'ledger-switch', hidden: '' }),
-        el(
-          'div',
-          { class: 'period-showing muted small' },
-          isPosition ? 'Latest recorded balances' : 'Uses current balances and expected payments'
-        )
+        el('div', { class: 'period-showing muted small' }, showing)
       );
       return;
     }
-    const opts = [
-      ['latest-complete', 'Latest complete month'],
-      ['current-month', 'Current month'],
-      ['previous-month', 'Previous month'],
-      ['last-3', 'Last 3 months'],
-      ['last-6', 'Last 6 months'],
-      ['this-year', 'This year'],
-      ['all', 'All time'],
-      ['custom', 'Custom range'],
-    ];
+    const opts = REPORTING_PERIOD_OPTIONS;
     const sel = el('select', {
       class: 'period-select',
       name: 'reporting-period',
@@ -1579,9 +1774,14 @@ function bootUI() {
         class: 'mini',
         name: 'period-from',
         'aria-label': 'Custom range start month',
+        // REPLACED, never mutated in place. resolved() memoises on the
+        // IDENTITY of state.period, so editing a field of the existing object
+        // left every consumer holding the previously resolved window: the
+        // dropdown moved, the label and every figure did not.
         onchange: (e) => {
-          state.period.from = e.target.value;
-          if (state.period.from > state.period.to) state.period.to = state.period.from;
+          const from = e.target.value;
+          const to = state.period.to < from ? from : state.period.to;
+          state.period = { ...state.period, from, to };
           render();
         },
       });
@@ -1590,8 +1790,9 @@ function bootUI() {
         name: 'period-to',
         'aria-label': 'Custom range end month',
         onchange: (e) => {
-          state.period.to = e.target.value;
-          if (state.period.to < state.period.from) state.period.from = state.period.to;
+          const to = e.target.value;
+          const from = state.period.from > to ? to : state.period.from;
+          state.period = { ...state.period, from, to };
           render();
         },
       });
@@ -1642,62 +1843,241 @@ function bootUI() {
   // reload/remove/clear/contribute controls can never drift between tabs. Built
   // fresh on each call (a DOM node cannot live in two places), but only one
   // caller runs per render.
-  function manageDataBody() {
+  // Re-run the classification pipeline over statements ALREADY imported. A new
+  // personal rule or account tag used to reach only the rows imported after it,
+  // because nothing recompiled the existing ones - the only way to apply a rule
+  // retrospectively was to delete the statements and add them again. This
+  // recompiles the rules, drops the derived caches and rebuilds, so a rule
+  // written today reclassifies everything already here.
+  async function reapplyRules() {
+    state.compiled = compileRules(state.cfg.categories);
+    state.brandRules = compileBrandRules(state.cfg);
+    _rcKey = null;
+    _colKey = null;
+    buildCategoryColours();
+    recompute();
+    // The bank ledger keys its cache on state.rules / state.compiled, so a new
+    // array identity is what makes it rebuild rather than serve the old rows.
+    state.rules = [...(state.rules || [])];
+    trackUsage('manage-reapply-rules');
+    render();
+    const cov = bankCategoryCoverage(classifiedBank());
+    toast(`Rules re-applied. ${cov.categorised} of ${cov.total} bank rows categorised.`);
+  }
+
+  function dataAtAGlance() {
+    const bankRows = (state.bankRecords || []).length;
+    const cardRows = (state.rows || []).length;
+    const months = allLedgerMonths().length;
+    const statementCounts = importedStatementCounts();
+    const stats = el('div', { class: 'sec-glance' });
+    const add = (value, label) => stats.append(secItem(label, value));
+    add(String(statementCounts.total), 'statements');
+    add(String(bankRows + cardRows), 'transactions');
+    add(String(months), months === 1 ? 'month' : 'months');
+    return stats;
+  }
+
+  function importedStatementCounts() {
+    const bank = (state._bankStatements || []).length;
+    const card = (state._cardStatements || []).length;
+    const investment = (state._investmentStatements || []).length;
+    return { bank, card, investment, total: bank + card + investment };
+  }
+
+  function renderInvestmentStatementTrust() {
+    const statements = state._investmentStatements || [];
+    if (!statements.length) return null;
+    const reconciled = statements.filter((statement) => {
+      const integrity = statementIntegrity(statement, state.cfg.currency.code);
+      return integrity.pagesOk && integrity.crossCheckOk && !integrity.unreadRows;
+    }).length;
     return el(
       'div',
-      { class: 'sec-manage-wrap' },
+      { class: 'sec-section' },
+      el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' Investment statements'),
+      el(
+        'p',
+        { class: 'muted small' },
+        `${reconciled} of ${statements.length} statement${statements.length === 1 ? '' : 's'} reconcile.`
+      )
+    );
+  }
+
+  function foldSection(title, kids, opts = {}) {
+    const d = el('details', { class: 'disclosure sec-fold' + (opts.danger ? ' is-danger' : '') });
+    if (opts.open) d.open = true;
+    d.append(
+      el(
+        'summary',
+        {},
+        el('span', { class: 'sec-fold-title' }, title),
+        opts.meta ? el('span', { class: 'sec-fold-meta' }, opts.meta) : null
+      )
+    );
+    const body = el('div', { class: 'disclosure-body sec-fold-body' });
+    for (const k of kids) if (k) body.append(k);
+    d.append(body);
+    return d;
+  }
+
+  /* One sentence naming what is outstanding, in the same wording the folds
+     beneath use for the same facts, so the summary and the section it
+     summarises can never describe the same state two ways. */
+  function attentionSummary(unknown, unreconciled) {
+    const parts = [];
+    if (unknown) parts.push(`${unknown} to review`);
+    if (unreconciled)
+      parts.push(`${unreconciled} statement${unreconciled === 1 ? '' : 's'} that do not add up`);
+    return parts.join(' \u00b7 ');
+  }
+
+  function manageDataBody() {
+    const wrap = el('div', { class: 'sec-manage-wrap' });
+    const statementCount = importedStatementCounts().total;
+    const unknown = (state.rows || []).filter((r) => r.category === FALLBACK()).length;
+    const unreconciled = [...(state._bankStatements || []), ...(state._cardStatements || [])].filter(
+      (statement) => !statement.reconciled
+    ).length;
+    const attentionCount = unknown + unreconciled;
+    wrap.append(
       el(
         'div',
-        { class: 'sec-section sec-manage' },
-        el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' Manage data'),
+        { class: 'settings-status' + (attentionCount ? ' needs-attention' : '') },
+        el('span', { class: 'settings-status-dot', 'aria-hidden': 'true' }),
         el(
-          'p',
-          { class: 'muted small' },
-          'Everything lives only on this device - transactions, category corrections, personal rules and dismissed flags. Export rules or Export history first if you want to keep them.'
-        ),
-        el(
-          'p',
-          { class: 'muted small' },
-          'Usage counts (which screens and actions get opened) are kept privately on this device to help decide what to improve, and nothing about them ever leaves it.'
-        ),
+          'strong',
+          {},
+          // NAME what needs attention. "4 items need attention" is a count of
+          // two different things added together, so a person has to open every
+          // fold below to find out which. The summary line is the one thing
+          // this section says before anything is opened; it should be the
+          // thing a person can act on.
+          attentionCount ? attentionSummary(unknown, unreconciled) : 'No review items'
+        )
+      )
+    );
+
+    const covCard = renderCoverage({ always: true, nested: true });
+    wrap.append(
+      foldSection('Statements & coverage', [
+        dataAtAGlance(),
+        renderCardStatementTrust(),
+        renderBankStatementTrust(),
+        renderInvestmentStatementTrust(),
+        covCard,
         el(
           'div',
-          { class: 'manage-actions' },
-          el('button', { class: 'btn sm ghost', onclick: reloadConfig }, 'Reload configuration'),
+          { class: 'manage-actions settings-actions' },
+          el('button', { class: 'btn sm ghost', onclick: openRemoveStatement }, 'Remove imported file')
+        ),
+      ], { meta: `${statementCount} statement${statementCount === 1 ? '' : 's'}` })
+    );
+
+    const reviewPanel = unknown
+      ? el(
+          'div',
+          { class: 'settings-rule-panel is-attention' },
           el(
-            'button',
-            { class: 'btn sm ghost', onclick: openRemoveStatement },
-            'Remove a statement'
+            'div',
+            { class: 'settings-rule-copy' },
+            el('strong', {}, 'Needs review'),
+            el('span', { class: 'muted small' }, `${unknown} unrecognised transaction${unknown === 1 ? '' : 's'}`)
           ),
           el(
             'button',
-            { class: 'btn sm danger', onclick: confirmClearAll },
-            'Clear all data and start over'
+            {
+              class: 'btn sm ghost',
+              onclick: () => {
+                state.period = { type: 'all' };
+                drillToTransactions({ category: FALLBACK() });
+              },
+            },
+            'Review'
           )
         )
+      : null;
+
+    const rulesPanel = el(
+      'div',
+      { class: 'settings-rule-panel' },
+      el(
+        'div',
+        { class: 'settings-rule-copy' },
+        el('strong', {}, 'Category rules'),
+        el('span', { class: 'muted small' }, 'Run matching again or restore the built-in defaults.')
       ),
       el(
         'div',
-        { class: 'sec-section sec-contribute' },
-        el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' Help us recognise more merchants'),
-        el(
-          'p',
-          { class: 'muted small' },
-          'Send us the places we could not identify, so we can add them to a future update. Only the statement text and how often it appeared are included - nothing else.'
-        ),
+        { class: 'manage-actions settings-actions' },
+        el('button', { class: 'btn sm', onclick: reapplyRules }, 'Reapply'),
+        el('button', { class: 'btn sm ghost', onclick: reloadConfig }, 'Restore defaults')
+      )
+    );
+
+    wrap.append(
+      foldSection(
+        'Rules and categories',
+        [
+          el(
+            'div',
+            { class: 'settings-rules-grid' },
+            el('div', { class: 'settings-rule-stack' }, reviewPanel, rulesPanel),
+            customCategoriesSection()
+          )
+        ],
+        { meta: unknown ? `${unknown} to review` : `${(state.rules || []).length} personal` }
+      )
+    );
+
+    wrap.append(
+      foldSection('Profile & privacy', [
+        nameSection(),
         el(
           'div',
-          { class: 'manage-actions' },
+          { class: 'sec-section settings-privacy' },
+          el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' Privacy'),
           el(
-            'button',
-            { class: 'btn sm ghost', onclick: exportUnknownMerchants },
-            'Share unrecognised places'
+            'p',
+            { class: 'muted small' },
+            'Your statements, corrections and settings stay on this device.'
+          ),
+          el(
+            'div',
+            { class: 'manage-actions settings-actions' },
+            el('button', { class: 'btn sm ghost', onclick: exportUnknownMerchants }, 'Share unrecognised places')
           )
-        )
-      ),
-      customCategoriesSection(),
-      nameSection()
+        ),
+      ], { meta: state.firstName ? 'Personalised' : 'On-device' })
     );
+
+    wrap.append(
+      foldSection(
+        'Start over',
+        [
+          el(
+            'p',
+            { class: 'muted small' },
+            `This clears ${(state.rows || []).length + (state.bankRecords || []).length} transactions and every correction. Export first if you want to keep them.`
+          ),
+          el(
+            'div',
+            { class: 'manage-actions' },
+            el('button', { class: 'btn sm danger', onclick: confirmClearAll }, 'Clear all data')
+          ),
+        ],
+        {
+          danger: true,
+          // Every other row in this section says what it holds before it is
+          // opened. This one said nothing, so the only row whose consequences
+          // are irreversible was also the only one a person had to open to
+          // find out what it was.
+          meta: 'Clears this device',
+        }
+      )
+    );
+
+    return wrap;
   }
 
   // The one place a person can see and correct the name the app greets them by.
@@ -1714,11 +2094,18 @@ function bootUI() {
       placeholder: 'Not set',
       'aria-label': 'Your first name',
     });
+    selectOnFocus(nameInput);
     const saveName = async () => {
       const v = nameInput.value.trim();
-      await setFirstNameManual(v);
-      render();
-      toast(v ? `We\u2019ll greet you as ${v}.` : 'Name cleared. Greetings will drop the name.');
+      await commitAndRender({
+        commit: () => setFirstNameManual(v),
+        render,
+        notify: (savedName) => toast(
+          savedName
+            ? `We\u2019ll greet you as ${savedName}.`
+            : 'Name cleared. Greetings will drop the name.'
+        ),
+      });
     };
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1765,10 +2152,7 @@ function bootUI() {
    * ======================================================================== */
   function customCategoriesSection() {
     const customs = (state.cfg.categories || []).filter((c) => c.custom);
-    const list = el('div', {
-      class: 'manage-actions',
-      style: 'flex-direction:column;align-items:stretch;gap:6px',
-    });
+    const list = el('div', { class: 'settings-category-list' });
     for (const c of customs) {
       const check = canDeleteCategory(
         c.name,
@@ -1798,16 +2182,20 @@ function bootUI() {
       list.append(
         el(
           'div',
-          { class: 'manage-actions', style: 'justify-content:space-between' },
+          { class: 'settings-category-row' },
           el('span', {}, c.name),
           btn
         )
       );
     }
+    // A placeholder is not a label: it disappears the moment someone types, and
+    // is announced inconsistently. Every other field in this section names
+    // itself; these two did not.
     const nameInput = el('input', {
       type: 'text',
       class: 'name-field',
       placeholder: 'New category name',
+      'aria-label': 'New category name',
       maxlength: '40',
     });
     const addBtn = el(
@@ -1823,15 +2211,15 @@ function bootUI() {
     );
     return el(
       'div',
-      { class: 'sec-section sec-custom-categories' },
-      el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' Custom categories'),
+      { class: 'settings-rule-panel sec-custom-categories' },
       el(
-        'p',
-        { class: 'muted small' },
-        'Categories you add here can be filed to any transaction from the category picker, alongside the built-in list.'
+        'div',
+        { class: 'settings-rule-copy' },
+        el('strong', {}, 'Custom categories'),
+        el('span', { class: 'muted small' }, 'Add your own option to the transaction picker.')
       ),
       customs.length ? list : null,
-      el('div', { class: 'manage-actions' }, nameInput, addBtn)
+      el('div', { class: 'manage-actions settings-category-form' }, nameInput, addBtn)
     );
   }
 
@@ -1845,18 +2233,23 @@ function bootUI() {
       return;
     }
     const cat = makeCustomCategory({ name });
-    state.customCategories = [...state.customCategories, cat];
-    await Store.setMeta('customCategories', state.customCategories);
-    state.cfg.categories = mergeCategories(
-      state.cfg.categories.filter((c) => !c.custom),
-      state.customCategories
-    );
-    state.compiled = compileRules(state.cfg.categories);
-    _colKey = null;
-    buildCategoryColours();
-    trackUsage('manage-add-category');
-    render();
-    toast(`Category "${name}" added.`);
+    const customCategories = [...state.customCategories, cat];
+    await commitAndRender({
+      commit: async () => {
+        await Store.setMeta('customCategories', customCategories);
+        state.customCategories = customCategories;
+        state.cfg.categories = mergeCategories(
+          state.cfg.categories.filter((c) => !c.custom),
+          state.customCategories
+        );
+        state.compiled = compileRules(state.cfg.categories);
+        _colKey = null;
+        buildCategoryColours();
+        trackUsage('manage-add-category');
+      },
+      render,
+      notify: () => toast(`Category "${name}" added.`),
+    });
   }
 
   async function removeCustomCategory(name) {
@@ -1871,20 +2264,25 @@ function bootUI() {
       toast('That category is in use and cannot be removed.');
       return;
     }
-    state.customCategories = state.customCategories.filter(
+    const customCategories = state.customCategories.filter(
       (c) => c.name.toLowerCase() !== name.toLowerCase()
     );
-    await Store.setMeta('customCategories', state.customCategories);
-    state.cfg.categories = mergeCategories(
-      state.cfg.categories.filter((c) => !c.custom),
-      state.customCategories
-    );
-    state.compiled = compileRules(state.cfg.categories);
-    _colKey = null;
-    buildCategoryColours();
-    trackUsage('manage-remove-category');
-    render();
-    toast(`Category "${name}" removed.`);
+    await commitAndRender({
+      commit: async () => {
+        await Store.setMeta('customCategories', customCategories);
+        state.customCategories = customCategories;
+        state.cfg.categories = mergeCategories(
+          state.cfg.categories.filter((c) => !c.custom),
+          state.customCategories
+        );
+        state.compiled = compileRules(state.cfg.categories);
+        _colKey = null;
+        buildCategoryColours();
+        trackUsage('manage-remove-category');
+      },
+      render,
+      notify: () => toast(`Category "${name}" removed.`),
+    });
   }
 
   // The standalone "Data & settings" card for Overview/Accounts (and the
@@ -1894,22 +2292,109 @@ function bootUI() {
   // two stacked cards that used to sit at the Cards tail become one. Now a
   // collapsed, opt-in card everywhere (the actions are all low-frequency), and
   // the title is honest: "Data & settings" genuinely holds management now.
+  function goalStanding() {
+    try {
+      if (!state.goal) return null;
+      const migrated = ensureMigrated(state.goal);
+      if (!migrated) return null;
+      const ctx = buildNewEngineProgressCtx(migrated, {
+        month: latestCompleteGoalMonth(),
+        enteredCash: provenModels.enteredCash(),
+      });
+      if (!ctx) return null;
+      const evaluated = evaluateGoal(migrated, ctx, state.cfg);
+      if (!evaluated || !evaluated.progress || !evaluated.model) return null;
+      const { progress, model } = evaluated;
+      const offTrack = goalOffTrack(progress, model);
+      return {
+        type: progress.type,
+        offTrack,
+        good: model.tone === 'good',
+        tone: model.tone || 'neutral',
+        tag: model.tag || '',
+        title: offTrack ? `Your goal is off track - ${model.tag || 'behind'}` : '',
+        detail: model.detail,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  let _rvKey = null,
+    _rvVal = null;
+  function reviewCauses() {
+    const cb = classifiedBank();
+    const commitments = commitmentsModel();
+    const trend = overviewModel().rollAllTrend || [];
+    const today = isoToday();
+    const key = [
+      state.rows,
+      cb,
+      commitments,
+      trend,
+      state._bankStatements,
+      state._cardStatements,
+      state._investmentStatements,
+      state.goal,
+      state.goalLog,
+      state.balanceUpdates,
+      state._planTarget,
+      state._planSetAside,
+      state.cfg,
+      state.brandRules,
+      state.merchants,
+      today,
+      privateViewOn(),
+    ];
+    if (_rvVal && _rvKey && key.every((value, i) => value === _rvKey[i])) return _rvVal;
+    const standing = goalStanding();
+    const goal = state.goal ? ensureMigrated(state.goal) : null;
+    _rvVal = buildReviewCauses({
+      bankStatements: state._bankStatements || [],
+      cardStatements: state._cardStatements || [],
+      investmentStatements: state._investmentStatements || [],
+      cardRows: state.rows || [],
+      bankRows: cb,
+      commitments,
+      cardLarge: attentionItems(state.rows || [], state.cfg, state.brandRules, state.merchants).filter(
+        (flag) => flag.type === 'large'
+      ),
+      bankLarge: detectLargeBankOutflows(cb, state.cfg),
+      goalStanding: standing,
+      intent: {
+        goalType: goal ? goal.type : null,
+        planSaved: !!state._planTarget,
+        savingKeys: state._planSetAside || [],
+      },
+      takeHome: typicalIncome(trend, today).amount,
+      cfg: state.cfg,
+      brandRules: state.brandRules,
+      merchants: state.merchants,
+      money: makeProseMoney(state.cfg),
+      today,
+    });
+    _rvKey = key;
+    return _rvVal;
+  }
+
+  function openCause(link) {
+    if (!link) return;
+    trackUsage('overview-open-cause');
+    const month = String(link.date || '').slice(0, 7);
+    const p = resolved();
+    if (month && (!p || month < p.from || month > p.to)) state.period = { type: 'custom', from: month, to: month };
+    if (link.kind === 'transaction') {
+      if (activityDrillToTransaction) activityDrillToTransaction({ ledger: link.ledger, id: link.id });
+      return;
+    }
+    if (link.kind === 'merchant') return drillToTransactions(link.patch);
+    if (link.kind === 'payee') return drillToAccountsPayee(link.key, cleanCounterparty(link.label));
+    if (link.kind === 'view') switchLedgerView(link.view, link.anchorId ? { anchorId: link.anchorId } : {});
+  }
+
   function renderManageData() {
     const details = el('details', { class: 'card secondary' });
     details.append(el('summary', {}, icon(iconInfo()), ' Data & settings'));
-    // Round 3: both ledgers' reconciliation trust lines now live together
-    // here, since Right Now is the one place covering both ledgers at once
-    // (Cards and Accounts, each of which used to host one line separately,
-    // have both retired). Shown ONLY on Right Now so neither line clutters
-    // the Overview hub or the Ahead forecast; each returns null when nothing
-    // is stored for that ledger, so this stays inert for a single-ledger
-    // device.
-    if (state.view === 'activity') {
-      const cardTrust = renderCardStatementTrust();
-      if (cardTrust) details.append(cardTrust);
-      const bankTrust = renderBankStatementTrust();
-      if (bankTrust) details.append(bankTrust);
-    }
     details.append(manageDataBody());
     return details;
   }
@@ -1933,10 +2418,61 @@ function bootUI() {
     return 'This device keeps its own private history. Nothing leaves your device.';
   }
 
+  function hasLedgerData() {
+    return (
+      state.records.length > 0 ||
+      state.bankRecords.length > 0 ||
+      (state._investmentStatements || []).length > 0
+    );
+  }
+
   function updateFooter() {
     const f = $('#footer');
     if (!f) return;
+    f.hidden = !hasLedgerData();
     f.textContent = statusText();
+  }
+
+  /* A control should say what it can do.
+   *
+   * On a first run the header offered Export and Hide at full strength with
+   * nothing behind either: the Export menu opened four enabled items - a CSV of
+   * no transactions, a print of a report that builds zero elements, a rules
+   * file, and an "encrypted backup" of an empty database - and Hide toggled the
+   * privacy of figures that did not exist.
+   *
+   * This is the same rule the plan's Save button already follows ("nothing to
+   * save reads as nothing to save"), applied to the two header actions that had
+   * never been checked against the empty state.
+   */
+  function updateHeaderAvailability() {
+    const hasAnything = hasLedgerData();
+    const exportBtn = $('#export-btn');
+    const exportMenu = $('#export-menu');
+    const privacyBtn = $('#privacy-btn') || $('#privacy-label')?.closest('button');
+    if (exportBtn) {
+      const label = $('.btn-label', exportBtn);
+      exportBtn.disabled = false;
+      exportBtn.classList.toggle('is-restore', !hasAnything);
+      exportBtn.title = hasAnything ? 'Export or restore data' : 'Restore an encrypted backup';
+      exportBtn.setAttribute('aria-label', hasAnything ? 'Export' : 'Restore');
+      if (label) label.textContent = hasAnything ? 'Export' : 'Restore';
+    }
+    if (exportMenu) {
+      const items = [...exportMenu.children];
+      const backupLabel = $('#export-menu-backup-label');
+      for (const item of items) item.hidden = !hasAnything;
+      if (backupLabel) {
+        backupLabel.hidden = false;
+        backupLabel.textContent = hasAnything ? 'Private backup' : 'Restore from backup';
+      }
+      const restoreItem = $('#exp-import');
+      if (restoreItem) restoreItem.hidden = false;
+    }
+    if (privacyBtn) {
+      privacyBtn.disabled = !hasAnything;
+      privacyBtn.title = hasAnything ? 'Hide figures' : 'No figures to hide yet';
+    }
   }
 
   /* ---- tooltip ---- */
@@ -1964,10 +2500,18 @@ function bootUI() {
    * Category correction (reversible)
    * =================================================================== */
   let pickerEl = null;
+  // The shared modal contract's release, held so closePicker can undo exactly
+  // what openOverlay did (focus back, background live again, page scrollable).
+  let releaseModal = null;
+
   function closePicker() {
     if (pickerEl) {
       pickerEl.remove();
       pickerEl = null;
+    }
+    if (releaseModal) {
+      releaseModal();
+      releaseModal = null;
     }
   }
 
@@ -1975,9 +2519,15 @@ function bootUI() {
   // it as the current picker so closePicker() can dismiss it. Extracted from the
   // inline picker pattern so code outside bootUI (accounts-render.js) can open a
   // modal without ever touching the private pickerEl variable directly.
+  //
+  // Focus, Escape, the focus trap, the inert background and the scroll lock all
+  // come from enterModal (core/shared-helpers.js), which the passphrase prompt
+  // and the import progress box enter through too - so there is ONE answer to
+  // "what does a modal do", not one per construction site.
   function openOverlay(overlay) {
     document.body.append(overlay);
     pickerEl = overlay;
+    releaseModal = enterModal(overlay, { onDismiss: closePicker });
   }
   // Read-only counterpart to openOverlay: hand the live overlay element to code
   // outside bootUI (category-picker.js) so it can inspect the current modal (for
@@ -2042,7 +2592,17 @@ function bootUI() {
     iconPhone,
     iconAlert,
     iconChart,
-    iconInfo,
+    // Late-bound on purpose. createDataExport runs 400 lines below this call,
+    // so the function does not exist yet and passing it directly would hand
+    // over undefined; the arrow body is only evaluated when the banner's
+    // button is actually pressed, by which point it does. Same idiom as
+    // currentBankViewRows above.
+    //
+    // It was not passed at all before, and the banner's handler called a bare
+    // `doExportHistory()` that resolved to nothing: pressing "Back up now"
+    // threw ReferenceError, dismissed the banner, and produced no backup and no
+    // error the person could see. Found by eslint's no-undef, not by the suite.
+    doExportHistory: (...args) => doExportHistory(...args),
   });
 
   const {
@@ -2050,7 +2610,6 @@ function bootUI() {
     onAddInputChange,
     setFirstNameManual,
     ingestFiles,
-    persistBank,
     persistLedgerRules,
     persist,
     persistRules,
@@ -2071,6 +2630,7 @@ function bootUI() {
     money0,
     iconSpinner,
     el,
+    reconcileEnteredBalances: () => balanceUpdates.reconcileAfterImport(),
   });
   /* Export menu: CSV, print, encrypted history.
    * The CSV / rules / encrypted-history orchestration moved to data-export.js
@@ -2121,6 +2681,11 @@ function bootUI() {
       const host = $('#print-report');
       if (host && !host.firstChild) buildReportForCurrentView();
     });
+    // A rotation or a window drag changes both bars: the header wraps
+    // differently and the bottom bar docks or undocks entirely. Re-measure,
+    // or every offset that clears them is left describing the old shape.
+    window.addEventListener('resize', () => requestAnimationFrame(syncLayoutInsets));
+    window.addEventListener('orientationchange', () => requestAnimationFrame(syncLayoutInsets));
     // Best-effort secondary cleanup only. The on-screen "Back to dashboard"
     // control is the reliable way out; these events are not guaranteed to fire
     // on an installed iOS PWA when a share sheet is cancelled.
@@ -2144,14 +2709,40 @@ function bootUI() {
       privacyBtn.setAttribute('title', action);
       privacyBtn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
     };
+    let foregroundPrivacy = null;
+    const maskForBackground = () => {
+      if (foregroundPrivacy != null) return;
+      foregroundPrivacy = document.documentElement.dataset.privacy === 'on' ? 'on' : 'off';
+      if (foregroundPrivacy === 'on') return;
+      document.documentElement.dataset.privacy = 'on';
+      paintPrivacy();
+      render();
+    };
+    const restoreFromBackground = () => {
+      if (foregroundPrivacy == null) return;
+      const next = foregroundPrivacy;
+      foregroundPrivacy = null;
+      if (document.documentElement.dataset.privacy === next) return;
+      document.documentElement.dataset.privacy = next;
+      paintPrivacy();
+      render();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') maskForBackground();
+      else restoreFromBackground();
+    });
+    window.addEventListener('pagehide', maskForBackground);
+    window.addEventListener('pageshow', () => {
+      if (document.visibilityState !== 'hidden') restoreFromBackground();
+    });
     privacyBtn.addEventListener('click', async () => {
       const hidden = document.documentElement.dataset.privacy === 'on';
       const next = hidden ? 'off' : 'on';
+      await Store.setMeta('privacy', next);
       document.documentElement.dataset.privacy = next;
       paintPrivacy();
       render();
       toast(next === 'on' ? 'Figures hidden.' : 'Figures visible.');
-      await Store.setMeta('privacy', next);
     });
     paintPrivacy();
 
@@ -2167,11 +2758,11 @@ function bootUI() {
     themeBtn.addEventListener('click', async () => {
       const cur = document.documentElement.dataset.theme || 'auto';
       const next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+      await Store.setMeta('theme', next);
       document.documentElement.dataset.theme = next;
       paintTheme();
       buildCategoryColours();
       if (state.records.length) render();
-      await Store.setMeta('theme', next);
     });
     paintTheme();
 
@@ -2309,25 +2900,46 @@ function bootUI() {
   // classifiedBank is now in scope (destructured above); todayISO anchors the
   // forecast/position/available-now models to real "today", never the period
   // selector (those surfaces are period-independent by design).
-  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const todayISO = () => isoToday();
   const provenModels = createProvenModels({ state, classifiedBank, todayISO });
 
-  const { renderForecastChart } = createForecastChartRenderer({
+  const { renderInvestments } = createInvestmentsRenderer({
+    state,
     el,
+    icon,
+    iconChart,
+    bankMoney,
+    monthLabel,
+    render,
+  });
+
+  const balanceUpdates = createBalanceUpdates({
+    state,
+    el,
+    icon,
+    iconInfo,
+    Store,
+    render,
+    toast,
     provenModels,
     bankMoney,
-    money0,
+    classifiedBank,
+    trackUsage,
+    switchLedgerView,
+    smoothScrollToEl,
   });
 
   const { renderPosition } = createPositionRenderer({
     state,
     el,
     icon,
+    renderInvestments,
     provenModels,
     trackUsage,
     toast,
     bankMoney,
     money0,
+    moneyShort,
     iconInfo,
     iconStore,
     iconAlert,
@@ -2339,6 +2951,8 @@ function bootUI() {
     smoothScrollToEl,
     drillToAccount,
     pickStatements,
+    balanceUpdates,
+    changeSetting: (...args) => reversible.change(...args),
   });
 
   async function saveDailyForecastSnapshot() {
@@ -2386,6 +3000,70 @@ function bootUI() {
   // openOverlay stands in for the private pickerEl in openRemoveStatement and
   // confirmClearAll. Placed after every passed-in member is initialised,
   // before start().
+  // ONE way to change a stored setting and be able to put it back. Passed to
+  // every renderer that offers a choice, so undo is the default rather than
+  // something each call site has to remember to build.
+  const reversible = createReversible({
+    Store,
+    state,
+    render,
+    toast,
+  });
+
+  let resetActivityViewState = () => {};
+  function resetWorkspaceState({ rules, updatedAt, keepManualName = true, keepRules = true }) {
+    state.rules = rules;
+    // Mirror in memory exactly what doClearAll just wrote to meta, so the
+    // render that follows cannot show a name or a group assignment the
+    // database no longer holds.
+    if (!keepManualName) {
+      state.firstName = '';
+      state.firstNameSource = null;
+    }
+    if (!keepRules) state._planGroups = null;
+    state.records = [];
+    state.rows = [];
+    state.allSummary = null;
+    state.bankRecords = [];
+    state._bankStatements = [];
+    state._cardStatements = [];
+    state._investmentStatements = [];
+    state.investmentAccount = 'all';
+    state.accountNames = {};
+    state.balanceUpdates = [];
+    state.tags = [];
+    state.transactionSplits = [];
+    state.forecastSnapshots = [];
+    state.cardAccounts = [];
+    state.myAccounts = [];
+    state.confirmedIncomeIds = [];
+    state.refundIncomeIds = [];
+    state.sharedAccounts = [];
+    state.householdPayees = [];
+    state.goalLog = [];
+    state._planDraft = null;
+    state._planSetAside = [];
+    state.coverage = null;
+    state.warnings = [];
+    state.period = { type: 'latest-complete', from: null, to: null };
+    state.activityTab = 'analysis';
+    state.view = 'overview';
+    state.lastImportedFrom = null;
+    state.lastLocalUpdate = updatedAt;
+    clearFilters();
+    clearBankFilters();
+    state.showAllTx = false;
+    state.bankShowAllTx = false;
+    resetActivityViewState();
+    _rcKey = null;
+    _rsKey = null;
+    _rsVal = null;
+    _covKey = null;
+    _viewCache = {};
+    _epochSnap = null;
+    queuedWorkspace = '';
+  }
+
   const { reloadConfig, openRemoveStatement, confirmClearAll } = createManageData({
     state,
     el,
@@ -2395,10 +3073,10 @@ function bootUI() {
     closePicker,
     openOverlay,
     openModal,
-    persist,
-    persistBank,
+    classifiedBank,
     applyThemeColours,
     buildCategoryColours,
+    resetWorkspaceState,
   });
 
   // Data export/import group (CSV, personal rules, encrypted history) lives in
@@ -2443,15 +3121,14 @@ function bootUI() {
     el,
     toast,
     render,
-    persist,
     persistRules,
-    persistBank,
-    persistLedgerRules,
     openModal,
     closePicker,
     classifiedBank,
     visibleRows,
     defaultDataView,
+    applyWorkspaceSnapshot,
+    buildCategoryColours,
     currentBankViewRows: (...args) => printReports.currentBankViewRows(...args),
   });
 
@@ -2557,12 +3234,10 @@ function bootUI() {
   });
 
   
-  const {
-    renderActivity,
-    activityTabSignature,
-    drillToTransaction,
-  } = createActivityRenderer({
+  const activityRenderer = createActivityRenderer({
+    noteActivityDomRebuilt,
     state,
+    balanceUpdates,
     el,
     icon,
     provenModels,
@@ -2573,6 +3248,8 @@ function bootUI() {
     iconInfo,
     iconPie,
     iconRepeat,
+    iconFlag,
+    iconLabel,
     previousPeriod: () => {
       const p = resolved();
       return p && p.prevFrom && p.prevTo ? { from: p.prevFrom, to: p.prevTo } : null;
@@ -2621,7 +3298,14 @@ function bootUI() {
     iconChevron,
     resetCardDrillFacets,
     drillToTransactions,
+    reversible,
   });
+  const {
+    renderActivity,
+    activityTabSignature,
+    drillToTransaction,
+  } = activityRenderer;
+  resetActivityViewState = activityRenderer.resetActivityViewState;
   activityDrillToTransaction = drillToTransaction;
 
   const { renderOverview } = createOverviewRenderer({
@@ -2642,6 +3326,9 @@ function bootUI() {
     dismissReview,
     pickStatements,
     drillToTransactions,
+    reviewCauses,
+    openCause,
+    balanceUpdates,
   });
 
   // Ahead - Coming Up (Round 2 of the restructuring plan) lives in
@@ -2651,6 +3338,24 @@ function bootUI() {
   // and the plain helper functions above (bankMonthsList, commitmentsModel,
   // drillToAccountsPayee, switchLedgerView, pickStatements, trackUsage) are all
   // initialised, and before start() runs the first render.
+  const { renderPlanHero, renderPlanLever, renderCoverage, planDraftSignature, planModel } = createPlanRenderer({
+    state,
+    el,
+    icon,
+    iconPie,
+    money0,
+    moneyShort,
+    classifiedBank,
+    commitmentsModel,
+    overviewModel,
+    render,
+    toast,
+    Store,
+    trackUsage,
+    monthLabel,
+    reversible,
+  });
+
   const { renderAhead, draftSignature } = createAheadRenderer({
     state,
     el,
@@ -2674,7 +3379,6 @@ function bootUI() {
     restoreGoal,
     liveGoalProgress,
     provenModels,
-    renderForecastChart,
     Store,
     // Step 3: the SAME context-builder and month-resolver checkMonthlyGoalIfDue
     // now uses, so the live card and the monthly log can never silently
@@ -2690,6 +3394,11 @@ function bootUI() {
     money0,
     moneyShort,
     monthLabel,
+    renderPlanHero,
+    renderPlanLever,
+    planModel,
+    reversible,
+    balanceUpdates,
   });
 
   // Print-model + report-driver group lives in reporting.js (Stage 5). It is the
@@ -2708,6 +3417,10 @@ function bootUI() {
     $,
     el,
     toast,
+    // The Plan is a first-class part of what a person would print; without this
+    // the report described their spending and said nothing about the plan it is
+    // measured against.
+    planModel,
     iconX,
     toggleExportMenu,
     bankRecordsInPeriod,
@@ -2735,6 +3448,21 @@ function bootUI() {
   const { printReport, buildReportForCurrentView, exitPrint } = printReports;
 
   /* ---- start ---- */
+  async function storedArray(key) {
+    const value = await Store.getMeta(key, []);
+    return Array.isArray(value) ? value : [];
+  }
+
+  async function storedObject(key) {
+    const value = await Store.getMeta(key, null);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  }
+
+  async function storedString(key) {
+    const value = await Store.getMeta(key, null);
+    return typeof value === 'string' && value ? value : null;
+  }
+
   async function start() {
     const res = await fetch(new URL('../settings/config.json', import.meta.url));
     if (!res.ok) throw new Error(`Could not load configuration (HTTP ${res.status}).`);
@@ -2758,7 +3486,7 @@ function bootUI() {
     // + custom - never a second, separately-maintained list. A custom
     // category carries empty patterns (assign-only), so merging it in never
     // changes what any OTHER category matches.
-    state.customCategories = await Store.getMeta('customCategories', []);
+    state.customCategories = await storedArray('customCategories');
     state.cfg.categories = mergeCategories(state.cfg.categories, state.customCategories);
     state.compiled = compileRules(state.cfg.categories);
     state.brandRules = compileBrandRules(state.cfg);
@@ -2800,34 +3528,44 @@ function bootUI() {
     }
     state.keepUpper = new Set(state.cfg.keepUpper);
     state.smallWords = new Set(state.cfg.smallWords);
+    // The bank counterparty reader title-cased against an empty set until now,
+    // so "GCT"/"FCIB"/"NCB" came out as "Gct"/"Fcib"/"Ncb" on bank rows while
+    // the card row beside them read correctly. Same config, same casing, both
+    // ledgers - pushed in exactly as the cleanup rules above are.
+    setCounterpartyCasing(state.keepUpper);
     applyThemeColours();
-    document.documentElement.dataset.theme = await Store.getMeta(
+    const storedTheme = await Store.getMeta(
       'theme',
       (state.cfg.display && state.cfg.display.theme) || 'auto'
     );
+    document.documentElement.dataset.theme = ['auto', 'light', 'dark'].includes(storedTheme)
+      ? storedTheme
+      : 'auto';
     document.documentElement.dataset.privacy =
       (await Store.getMeta('privacy', 'off')) === 'on' ? 'on' : 'off';
     buildCategoryColours();
-    state.deviceId = await Store.getMeta('deviceId', null);
+    state.deviceId = await storedString('deviceId');
     if (!state.deviceId) {
       state.deviceId = 'dev-' + fnv1a(String(Date.now()) + Math.random());
       await Store.setMeta('deviceId', state.deviceId);
     }
-    state.lastImportedFrom = await Store.getMeta('lastImportedFrom', null);
-    state.firstName = await Store.getMeta('firstName', null);
-    state.firstNameSource = await Store.getMeta('firstNameSource', null);
+    state.lastImportedFrom = await storedObject('lastImportedFrom');
+    state.lastLocalUpdate = await storedString('lastLocalUpdate');
+    state.firstName = await storedString('firstName');
+    state.firstNameSource = await storedString('firstNameSource');
     state.rules = await Store.allRules();
     state.records = await Store.allTransactions();
     // Bank ledger (Phase 1): load its own store and the "my accounts" list.
     state.bankRecords = await Store.allBankTransactions();
     state._bankStatements = await Store.allBankStatements();
-    state.myAccounts = await Store.getMeta('bankMyAccounts', []);
-    state.cardAccounts = await Store.getMeta('bankCardAccounts', []);
-    state.confirmedIncomeIds = await Store.getMeta('bankConfirmedIncomeIds', []);
-    state.refundIncomeIds = await Store.getMeta('bankRefundIncomeIds', []);
-    state.sharedAccounts = await Store.getMeta('bankSharedAccounts', []);
-    state.householdPayees = await Store.getMeta('bankHouseholdPayees', []);
-    state._usageTally = await Store.getMeta('usageTally', {});
+    state.myAccounts = await storedArray('bankMyAccounts');
+    state.cardAccounts = await storedArray('bankCardAccounts');
+    state.confirmedIncomeIds = await storedArray('bankConfirmedIncomeIds');
+    state.refundIncomeIds = await storedArray('bankRefundIncomeIds');
+    state.sharedAccounts = await storedArray('bankSharedAccounts');
+    state.householdPayees = await storedArray('bankHouseholdPayees');
+    state.accountNames = (await storedObject('accountNames')) || {};
+    state._usageTally = (await storedObject('usageTally')) || {};
     // Non-destructive migration from the old goal shape (runway/clear-card/
     // spend-ceiling with .params) to the proven goals.js shape (cushion/
     // clear-card/spend-ceiling, flat fields). Inert on its own: nothing yet
@@ -2839,11 +3577,17 @@ function bootUI() {
     // Re-persist only if migration actually changed the shape, so a fresh
     // save is never written for a goal that was already current or absent.
     if (state.goal && state.goal.migratedFrom) await Store.setMeta('financeGoal', state.goal);
-    state.goalLog = await Store.getMeta('financeGoalLog', []);
+    state.goalLog = await storedArray('financeGoalLog');
     // Step 2 continued: the safety-boundary, under its OWN storage key,
     // deliberately independent of financeGoal - see ahead-render.js's own
     // comment on why. null/absent means the frozen contract's 'none' state.
-    state._goalBoundary = await Store.getMeta('financeGoalBoundary', null);
+    state._goalBoundary = await storedObject('financeGoalBoundary');
+    state._planTarget = await storedObject('planTarget');
+    state._planGroups = await storedObject('planGroups');
+    state._planSetAside = await storedArray('planSetAside');
+    // Work started but not committed - typed percentages and half-answered
+    // wizard questions. Restored so the Plan tab opens where it was left.
+    state._planDraft = readPlanDraft(await storedObject(PLAN_DRAFT_KEY));
     // v4 record-schema guard + new analysis stores. Defensive: a storage.js
     // that predates versioning has no ensureSchema / typed stores, so each is
     // feature-detected and boot can never crash on an older storage layer.
@@ -2856,6 +3600,18 @@ function bootUI() {
     }
     state.categoryIntentions = Store.categoryIntentions ? await Store.categoryIntentions.all() : [];
     state.manualAssets = Store.manualAssets ? await Store.manualAssets.all() : [];
+    state.balanceUpdates = Store.balanceUpdates ? await Store.balanceUpdates.all() : [];
+    const storedInvestmentStatements = Store.investmentStatements
+      ? await Store.investmentStatements.all()
+      : [];
+    state._investmentStatements = storedInvestmentStatements.map((statement) =>
+      repairInvestmentStatementTotal(statement, state.cfg.currency.code)
+    );
+    const repairedInvestmentStatements = state._investmentStatements.filter(
+      (statement, index) => statement !== storedInvestmentStatements[index]
+    );
+    if (repairedInvestmentStatements.length)
+      await Store.investmentStatements.putMany(repairedInvestmentStatements);
     state.forecastSnapshots = Store.forecastSnapshots ? await Store.forecastSnapshots.all() : [];
     state.tags = Store.tags ? await Store.tags.all() : [];
     state.transactionSplits = Store.transactionSplits ? await Store.transactionSplits.all() : [];
@@ -2864,6 +3620,7 @@ function bootUI() {
     await saveDailyForecastSnapshot();
 
     state.view = defaultDataView();
+    applyWorkspaceSnapshot(await Store.getMeta('workspaceState', null));
     document.title = state.cfg.app.name;
     const brand = $('#brand-name');
     if (brand) brand.textContent = state.cfg.app.name;
@@ -2891,15 +3648,36 @@ function bootUI() {
     // nothing to unregister. A real deployment (any non-localhost host) still
     // gets the full offline PWA. Any worker left over from a past localhost
     // session is torn down so it cannot keep serving a stale shell.
-    const isLocalDev = LOCAL_DEV_HOSTS.includes(location.hostname);
+    const isLocalDev = isLocalDevHost(location.hostname);
     if ('serviceWorker' in navigator) {
       if (isLocalDev) {
-        navigator.serviceWorker
-          .getRegistrations()
-          .then((regs) => regs.forEach((r) => r.unregister()))
-          .catch((err) => {
-            console.warn('Service worker cleanup (localhost) failed:', err);
-          });
+        // Unregistering alone was not enough to undo a worker left behind by an
+        // earlier session. It removes the REGISTRATION but leaves everything
+        // that worker had already cached in CacheStorage, and the page that is
+        // open right now stays under the control of the worker that served it.
+        // The result was a developer editing files and seeing nothing change
+        // until they closed everything - which is exactly the symptom this
+        // teardown existed to prevent. Evict the caches too, and when the page
+        // was actually being controlled, reload ONCE so the next load comes
+        // from the network.
+        (async () => {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          const wasControlled = !!navigator.serviceWorker.controller;
+          await Promise.all(regs.map((r) => r.unregister()));
+          if (typeof caches !== 'undefined' && caches.keys) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+          // sessionStorage, so it can only ever happen once per tab and can
+          // never become a reload loop.
+          if ((regs.length || wasControlled) && !sessionStorage.getItem('pfaSwCleared')) {
+            sessionStorage.setItem('pfaSwCleared', '1');
+            console.info('Removed a leftover service worker and its caches on a dev host; reloading once for fresh files.');
+            location.reload();
+          }
+        })().catch((err) => {
+          console.warn('Service worker cleanup (dev host) failed:', err);
+        });
       } else {
         const swUrl = new URL('../service-worker.js', import.meta.url).href;
         const swScope = new URL('../', import.meta.url).href;

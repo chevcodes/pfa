@@ -99,12 +99,12 @@ note(
   'both unreconciled statements (card + bank) are blocking'
 );
 
-// 3) review purchases folded into ONE optional item, counting both rows
-const review = optional.find((i) => /second look/i.test(i.title));
+const review = optional.find((i) => /marked for review/i.test(i.title));
 note(
-  !!review && /2 purchases/.test(review.title),
-  'unrecognised + needs-review rows fold into one optional item counting both'
+  !!review && /\$5,000/.test(review.title) && !/2 purchases/.test(review.title),
+  'unrecognised + needs-review rows fold into one neutral optional item'
 );
+note(review.actions[0].label === 'Dismiss', 'optional review actions do not ask the app to judge a purchase as fine');
 
 // 4) duplicate + spike are optional
 note(

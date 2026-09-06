@@ -1,4 +1,7 @@
 /* commitment-income.js - shared commitment-and-income primitive (see spec). */
+// median and typicalMonthlyValue come from shared-helpers.js - five files
+// carried byte-identical private copies of median before this.
+import { median, typicalMonthlyValue, rowBalance , sortedCardStatements } from '../core/shared-helpers.js';
 export function resolveOpts(cfg = {}) {
   const ahead = (cfg && cfg.ahead) || {};
   const insights = (cfg && cfg.insights) || {};
@@ -45,12 +48,6 @@ function nextOccurrenceAfter(asOf, day) {
   }
   return cand;
 }
-function median(nums) {
-  if (!nums.length) return 0;
-  const s = nums.slice().sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
 function maxConsecutiveGap(monthKeys) {
   const idx = monthKeys
     .map((m) => +m.slice(0, 4) * 12 + +m.slice(5, 7))
@@ -92,6 +89,7 @@ export function detectRecurring(records, direction, opts, asOf = null) {
   const by = new Map();
   for (const r of records || []) {
     if (isInternal(r)) continue;
+    if (wantIn && (r.refund || r.excludedFromIncome)) continue;
     if (ccyOf(r, opts.baseCurrency) !== opts.baseCurrency) continue;
     if ((dirOf(r) === 'in') !== wantIn) continue;
     if (asOf && dateOf(r) > asOf) continue;
@@ -108,17 +106,16 @@ export function detectRecurring(records, direction, opts, asOf = null) {
     if (months.length < opts.minMonths) continue;
     if (maxConsecutiveGap(months) > opts.maxGapMonths) continue;
     const vals = [...byMonth.values()];
-    const typical = median(vals);
+    const typical = typicalMonthlyValue(vals).amount;
     if (typical <= 0) continue;
     const steady = vals.filter((a) => Math.abs(a - typical) <= typical * opts.tolerance).length;
     if (steady < opts.minMonths) continue;
     const days = rows.map((r) => domOf(dateOf(r))).sort((a, b) => a - b);
     const typicalDay = days[days.length >> 1];
-    const recent = rows
-      .slice()
-      .sort((a, b) => (dateOf(a) < dateOf(b) ? -1 : 1))
+    const recent = [...byMonth.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .slice(-3)
-      .map(amtOf);
+      .map(([, amount]) => amount);
     out.push({
       key,
       occurrences: rows.length,
@@ -165,9 +162,7 @@ export function expectedIncome(bankRecords, opts, asOf) {
   };
 }
 export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) {
-  const stmts = (cardStatements || [])
-    .slice()
-    .sort((a, b) => String(a.statementKey || '').localeCompare(String(b.statementKey || '')));
+  const stmts = sortedCardStatements(cardStatements);
   const latest = stmts[stmts.length - 1] || null;
   if (!latest) return { amount: 0, basis: 'no-card-statement', stale: true };
   const due =
@@ -177,7 +172,9 @@ export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) 
         ? Number(latest.newBalance)
         : null;
   const dueDate = latest.dueDate || latest.payBy || null;
-  if (due == null) return { amount: 0, basis: 'no-amount-due', stale: true };
+  if (due == null || !Number.isFinite(due))
+    return { amount: 0, basis: 'no-amount-due', stale: true };
+  if (due <= 0) return { amount: 0, basis: 'nothing-due', dueDate, stale: false };
   if (!dueDate)
     return {
       amount: 0,
@@ -191,6 +188,7 @@ export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) 
       basis: 'no-income-date',
       stale: true,
       knownAmount: Math.round(due * 100) / 100,
+      dueDate,
     };
   const inWindow = String(dueDate) > String(asOf) && String(dueDate) < String(nextIncomeDate);
   return {
@@ -245,13 +243,10 @@ export function liquidBalance(bankRecords, opts, asOf) {
     if (asOf && dateOf(r) > asOf) continue;
     const acct = r.account || r.Account || 'unknown';
     seenAccts.add(acct);
-    const bal =
-      r.balanceAfter != null
-        ? Number(r.balanceAfter)
-        : r['Running Balance'] !== undefined && r['Running Balance'] !== ''
-          ? Number(r['Running Balance'])
-          : null;
-    if (bal == null || Number.isNaN(bal)) continue;
+    // The shared reader (shared-helpers' rowBalance) - the same one Activity's
+    // account chip uses, so the two cannot diverge on which column counts.
+    const bal = rowBalance(r);
+    if (bal == null) continue;
     const seq = r.seq != null ? r.seq : 0;
     const cur = byAcct.get(acct);
     const key = [dateOf(r), seq];
@@ -273,6 +268,7 @@ export function commitmentAndIncomePrimitive({
   cfg = {},
   asOf,
   manualFutureItems = [],
+  liquidNow = null,
 }) {
   const opts = resolveOpts(cfg);
   const gaps = [];
@@ -302,7 +298,7 @@ export function commitmentAndIncomePrimitive({
       basis: 'card',
     });
   commitments.sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1));
-  const liquid = liquidBalance(bankRecords, opts, asOf);
+  const liquid = liquidNow || liquidBalance(bankRecords, opts, asOf);
   if (liquid.staleAccounts > 0)
     gaps.push(liquid.staleAccounts + ' account(s) with no current balance');
   const layer1 = Math.round(liquid.total * 100) / 100;

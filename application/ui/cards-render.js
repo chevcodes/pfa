@@ -1,3 +1,4 @@
+import { chartInfo, collapsibleCard } from './decision-header.js';
 /*
  * cards-render.js  -  card-side building blocks reused by Right Now.
  *
@@ -15,6 +16,7 @@
 import {
   detectPeriodNewMerchants,
   attentionItems,
+  largeChargeSentence,
   appendExpandable,
   renderShareBar,
 } from '../analysis/reporting-core.js';
@@ -28,6 +30,7 @@ import {
   normaliseEair,
   medianRecentPayment,
   renderExplainer,
+  commitmentLink,
 } from '../analysis/reporting-periods.js';
 import {
   missingMonths,
@@ -37,7 +40,6 @@ import {
   averageForeignRates,
 } from '../analysis/reporting-insights.js';
 import { merchantLabel } from '../statements/categorise.js';
-import { merchantRuleKeyFromDescription } from '../../settings/category-rules.js';
 // classifyInternalTransfers is no longer imported here directly: both call
 // sites that used it (renderRecurring's bank standing debits, and
 // renderCardStatementTrust's bank-to-card payment match) now read
@@ -45,12 +47,23 @@ import { merchantRuleKeyFromDescription } from '../../settings/category-rules.js
 // the same function Accounts and Overview use - so this file can no longer
 // apply a different set of ledger rules than the other two tabs.
 import { linkCardPayments } from '../statements/read-statements.js';
-import { counterpartyAccountTokens } from '../analysis/bank-analysis.js';
+import { counterpartyAccountTokens, analyseIncomePattern } from '../analysis/bank-analysis.js';
 import {
   requireCtx,
   formatDisplayDate,
   isPrivacyMode,
+  markProportional,
+  typicalMonthlyValue,
+  MONTHS_SHORT,
+  sortedCardStatements,
 } from '../core/shared-helpers.js';
+import { chartIsHidden, renderHiddenChart,
+  monthTickOf,
+  yearSpanLabel,
+} from './chart-helpers.js';
+import { renderColumnChart, chartTooltip, chartSvg, renderDonutChart } from './chart-surface.js';
+import { staggerIn, drawPath, growIn } from './motion.js';
+import { makeForeignMoney, makeProseMoney } from '../core/money-format.js';
 
 // Real SVG nodes (createElementNS), mirroring forecast-chart-render.js's own
 // discipline, so the payoff chart is a genuine drawing rather than literal
@@ -79,14 +92,11 @@ export function createCardsRenderer(ctx) {
       'moneyShort',
       'pct',
       'monthLabel',
-      'monthShort',
       'catColour',
       'isReview',
       'allMonths',
       'pickStatements',
       'secItem',
-      'showTip',
-      'hideTip',
       'highestCompleteMonth',
       'classifiedBank',
       'commitmentsModel',
@@ -127,14 +137,11 @@ export function createCardsRenderer(ctx) {
     moneyShort,
     pct,
     monthLabel,
-    monthShort,
     catColour,
     isReview,
     allMonths,
     pickStatements,
     secItem,
-    showTip,
-    hideTip,
     highestCompleteMonth,
     classifiedBank,
     commitmentsModel,
@@ -156,10 +163,9 @@ export function createCardsRenderer(ctx) {
     iconBack,
     iconPeak,
     iconGap,
-    trackUsage,
-    resetBankDrillFacets,
     drillToTransactions,
   } = ctx;
+  const foreignMoney = makeForeignMoney();
 
   // Reuses Activity's own drillToTransaction (threaded through ctx from
   // app.js, since _txSearch and its reset live only in activity-render.js) -
@@ -175,6 +181,13 @@ export function createCardsRenderer(ctx) {
     if (state.period.type === 'this-year') return p.prevFrom.slice(0, 4);
     return 'the period before';
   };
+
+  /* Money inside a SENTENCE reads short; money in a value slot reads exact.
+     An insight is a sentence - "A charge of $21,839.32 on 2026-07-06 is larger
+     than usual" makes a reader parse eight digits mid-clause to learn one
+     thing: it was big. makeProseMoney is that rule, already applied to the
+     plan, position and forecast prose; the insight strip is now inside it. */
+  const prose = makeProseMoney(state.cfg || {});
   function histMonthlyAverage() {
     // D-audit item 7. The "typical month" every insight compares against was a
     // plain mean of complete months, so one unusually large month (a big one-off
@@ -193,21 +206,11 @@ export function createCardsRenderer(ctx) {
     const complete = months.filter((m) => !inc || m !== inc.month);
     const vals = complete.map((m) => state.allSummary.by_month[m] || 0);
     if (!vals.length) return 0;
-    const med = (a) => {
-      const s = a.slice().sort((x, y) => x - y);
-      const m = s.length >> 1;
-      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-    };
-    const centre = med(vals);
-    const mad = med(vals.map((v) => Math.abs(v - centre)));
-    // Need enough months for a robust spread to mean anything; below that, and
-    // when MAD is zero, fall back to the plain mean of every complete month.
-    const kept =
-      vals.length >= 4 && mad > 0
-        ? vals.filter((v) => Math.abs((0.6745 * (v - centre)) / mad) <= 3.5)
-        : vals;
-    const use = kept.length ? kept : vals;
-    return use.reduce((x, y) => x + y, 0) / use.length;
+    // The shared rule (shared-helpers.js), not a second copy of it: the cushion
+    // goal's typical-income figure asks the identical question of a different
+    // series, and the two must not drift apart on what counts as unusual or on
+    // how much history is enough to judge that.
+    return typicalMonthlyValue(vals).amount;
   }
 
   function buildInsights(a) {
@@ -258,7 +261,7 @@ export function createCardsRenderer(ctx) {
             tone: diff > 0 ? 'up' : 'down',
             kind: 'overall-change',
             icon: diff > 0 ? iconUp() : iconDown(),
-            text: `${driver.label} was the main reason spending ${diff > 0 ? 'rose' : 'fell'} this period, ${money0(Math.abs(diff))} ${diff > 0 ? 'more' : 'less'} than ${prevLabel()}.`,
+            text: `${driver.label} was the main reason spending ${diff > 0 ? 'rose' : 'fell'} this period, ${prose(Math.abs(diff))} ${diff > 0 ? 'more' : 'less'} than ${prevLabel()}.`,
             onClick: () => drillToTransactions({ kind: 'spend' }),
           });
         }
@@ -292,14 +295,24 @@ export function createCardsRenderer(ctx) {
       // skip the move insight when the current-period value is 0 (the category
       // vanished). Only the "down to $0.00" case is suppressed; any genuine up or
       // down move where the category still has spend (best.cur > 0) is unaffected.
-      if (best && best.cur > 0)
+      if (best && best.cur > 0) {
+        // A category with no meaningful spend last period reports its whole
+        // total as "up", so the rise and the new total come out within a cent
+        // of each other: "up $30,500.00 ... now $30,500.01". The arithmetic is
+        // right - base was $0.01 - but read as an error, because "up by" claims
+        // a comparison against something that was not really there. When the
+        // previous period is effectively nothing, say so instead.
+        const priorWasNothing = best.cur - Math.abs(best.d) < 1;
         out.push({
           tone: best.d > 0 ? 'up' : 'down',
           kind: 'category-move',
           icon: iconTag(catColour(best.cat)),
-          text: `${best.cat} is ${best.d > 0 ? 'up' : 'down'} ${money0(Math.abs(best.d))} on ${prevLabel()}, now ${money0(best.cur)}.`,
+          text: priorWasNothing && best.d > 0
+            ? `${best.cat} is new since ${prevLabel()}: ${prose(best.cur)}.`
+            : `${best.cat} is ${best.d > 0 ? 'up' : 'down'} ${prose(Math.abs(best.d))} on ${prevLabel()}, now ${prose(best.cur)}.`,
           onClick: () => drillToTransactions({ category: best.cat }),
         });
+      }
     }
 
     // 3) Large / unusual single transaction in the period.
@@ -324,7 +337,7 @@ export function createCardsRenderer(ctx) {
         tone: 'up',
         kind: 'large-charge',
         icon: iconAlert(),
-        text: `A ${f.row.displayName} charge of ${money0(f.row.amount)} on ${f.row.date} is larger than usual for that place.`,
+        text: largeChargeSentence(f.row, prose),
         // f.row is a real, already-identified transaction record (this
         // insight exists precisely BECAUSE one specific row was flagged),
         // so this now anchors straight to it - opened, scrolled to,
@@ -344,7 +357,7 @@ export function createCardsRenderer(ctx) {
         tone: 'new',
         kind: 'new-merchant',
         icon: iconSpark(),
-        text: `New this period: ${newBig.label} (${money0(newBig.amount)}).`,
+        text: `New this period: ${newBig.label} (${prose(newBig.amount)}).`,
         onClick: () =>
           drillToTransactions({
             merchant: newBig.key,
@@ -361,7 +374,7 @@ export function createCardsRenderer(ctx) {
         tone: 'info',
         kind: 'recurring',
         icon: iconRepeat(),
-        text: `${rec.length} likely regular commitment${rec.length === 1 ? '' : 's'} totalling about ${money0(totalRec)} a month, such as ${rec
+        text: `${rec.length} likely regular commitment${rec.length === 1 ? '' : 's'} totalling about ${prose(totalRec)} a month, such as ${rec
           .slice(0, 2)
           .map((r) => r.label)
           .join(' and ')}.`,
@@ -377,7 +390,7 @@ export function createCardsRenderer(ctx) {
         tone: 'info',
         kind: 'foreign',
         icon: iconGlobe(),
-        text: `${fx.length} foreign-currency purchase${fx.length === 1 ? '' : 's'} this period, ${money0(fxTotal)} in total.`,
+        text: `${fx.length} foreign-currency purchase${fx.length === 1 ? '' : 's'} this period, ${prose(fxTotal)} in total.`,
         onClick: () => drillToTransactions({ foreignOnly: true }),
       });
     }
@@ -388,7 +401,7 @@ export function createCardsRenderer(ctx) {
         tone: 'up',
         kind: 'fees',
         icon: iconReceipt(),
-        text: `You paid ${money0(a.total_fees)} in fees and tax this period.`,
+        text: `You paid ${prose(a.total_fees)} in fees and tax this period.`,
         onClick: () => drillToTransactions({ kind: 'fee' }),
       });
     // 8) Refunds in the period.
@@ -397,7 +410,7 @@ export function createCardsRenderer(ctx) {
         tone: 'down',
         kind: 'refunds',
         icon: iconBack(),
-        text: `${money0(a.total_refunds)} came back to the card in refunds this period.`,
+        text: `${prose(a.total_refunds)} came back to the card in refunds this period.`,
         onClick: () => drillToTransactions({ kind: 'refund' }),
       });
 
@@ -408,7 +421,7 @@ export function createCardsRenderer(ctx) {
         tone: 'up',
         kind: 'high-month',
         icon: iconPeak(),
-        text: `${monthLabel(hi.month)} is your highest-spending month so far at ${money0(hi.amount)}.`,
+        text: `${monthLabel(hi.month)} is your highest-spending month so far at ${prose(hi.amount)}.`,
         onClick: () => {
           state.period = { type: 'custom', from: hi.month, to: hi.month };
           clearFilters();
@@ -432,13 +445,14 @@ export function createCardsRenderer(ctx) {
 
   /* ---- 3) spending over time ---- */
   function renderTrend() {
-    const sec = el('section', { class: 'card' });
-    const head = el(
-      'div',
-      { class: 'card-head' },
-      el('h3', { class: 'card-title' }, icon(iconChart()), 'Spending over time')
-    );
-    if (state.filter.month !== 'all')
+    const sec = el('div', {});
+    const head = el('div', { class: 'card-head' });
+    const months = allMonths();
+    const shown = months.length > 13 ? months.slice(-13) : months;
+    const yr = yearSpanLabel(shown);
+    if (yr) head.append(el('span', { class: 'card-period' }, yr));
+    const monthFiltered = state.filter.month !== 'all';
+    if (monthFiltered)
       head.append(
         el(
           'button',
@@ -449,99 +463,53 @@ export function createCardsRenderer(ctx) {
           'Show all months'
         )
       );
-    sec.append(head);
+    if (yr || monthFiltered) sec.append(head);
 
-    const months = allMonths();
-    const shown = months.length > 13 ? months.slice(-13) : months;
     const vals = shown.map((m) => state.allSummary.by_month[m] || 0);
-    const max = Math.max(...vals, 1);
     const inc = detectIncompleteMonth(state.rows, months, new Date());
     const avg = histMonthlyAverage();
     const p = resolved();
+    const card = (body) =>
+      collapsibleCard(el, {
+        title: 'Spending over time',
+        icon: icon(iconChart()),
+        summary: avg > 0 ? `Typically ${prose(avg)} a month on card` : `${shown.length} month${shown.length === 1 ? '' : 's'} of card purchases`,
+        body,
+        name: 'activity-spending-over-time',
+      });
 
-    const chart = el('div', { class: 'trend' });
-    // H matches the unified month-chart plot height. Bars are % of this height
-    // (below), so the spending trend fills its plot like income and flow rather
-    // than the old raw-pixel scale that left it a different density.
-    const H = 150;
-    const avgY = avg > 0 ? H - Math.min(H, (avg / max) * H) : null;
-    if (avgY != null) {
-      chart.append(
-        el(
-          'div',
-          {
-            class: 'trend-avg',
-            style: `top:${avgY}px`,
-            title: `Typical month ${money0(avg)}`,
-          },
-          el('span', { class: 'trend-avg-label' }, `avg ${moneyShort(avg)}`)
-        )
-      );
+    if (chartIsHidden()) {
+      sec.append(renderHiddenChart(el, 'Spending by month', { height: '170px' }));
+      return card(sec);
     }
-    const barsWrap = el('div', { class: 'trend-bars' });
-    for (let i = 0; i < shown.length; i++) {
-      const m = shown[i];
-      const v = vals[i];
-      const h = Math.max(3, (v / max) * H);
-      const incomplete = inc && inc.month === m;
-      const inPeriod = p && m >= p.from && m <= p.to;
-      const selected =
-        state.filter.month === m ||
-        (state.filter.month === 'all' && inPeriod && p.kind === 'month');
-      const col = el(
-        'button',
-        {
-          class:
-            'trend-col' +
-            (inPeriod ? ' in-period' : '') +
-            (selected ? ' selected' : '') +
-            (incomplete ? ' incomplete' : ''),
-          'aria-label': isPrivacyMode()
-            ? `${monthLabel(m)}: amount hidden${incomplete ? ', may be incomplete' : ''}`
-            : `${monthLabel(m)}: ${money0(v)}${incomplete ? ', may be incomplete' : ''}`,
-          onmousemove: (e) =>
-            showTip(
-              e,
-              `${monthLabel(m)}`,
-              `${money0(v)}${incomplete ? ' · may be incomplete' : ''}`
-            ),
-          onmouseleave: hideTip,
-          onclick: (e) => {
-            if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
-              const rect = e.currentTarget.getBoundingClientRect();
-              showTip(
-                { clientX: rect.left + rect.width / 2, clientY: rect.top + 8 },
-                `${monthLabel(m)}`,
-                `${money0(v)}${incomplete ? ' · may be incomplete' : ''}`
-              );
-              clearTimeout(state.tipTimer);
-              state.tipTimer = setTimeout(hideTip, 1800);
-            }
-            if (inPeriod) applyFilter({ month: state.filter.month === m ? 'all' : m });
-            else {
-              state.period = { type: 'custom', from: m, to: m };
-              clearFilters();
-              render();
-            }
-          },
-        },
-        el('span', { class: 'trend-bar', style: `height:${h}px` }),
-        el('span', { class: 'trend-mlabel' }, monthShort(m).replace(/ \d+$/, ''))
-      );
-      barsWrap.append(col);
-    }
-    chart.append(barsWrap);
-    sec.append(chart);
-    if (avgY != null)
-      sec.append(el('p', { class: 'muted small mobile-context' }, `Typical month ${money0(avg)}.`));
-    sec.append(
-      el(
-        'p',
-        { class: 'muted small' },
-        'Purchases only. Select a bar to focus the dashboard on that month.'
-      )
-    );
-    return sec;
+
+    // This used to strip the year back off every tick, which is exactly what
+    // made a multi-year axis unreadable without hovering. monthTickOf decides
+    // once for the whole axis instead.
+    sec.append(renderColumnChart({ el, money0, moneyShort, monthLabel, monthShort: monthTickOf(MONTHS_SHORT, shown) }, {
+      label: 'Purchases by month',
+      rows: shown.map((m, i) => ({
+        month: m,
+        amount: vals[i],
+        incomplete: !!(inc && inc.month === m),
+        inPeriod: !!(p && m >= p.from && m <= p.to),
+        selected: state.filter.month === m || (state.filter.month === 'all' && p && m >= p.from && m <= p.to && p.kind === 'month'),
+      })),
+      // Named for its scope, like the treemap's "card transactions": this
+      // chart reads the card ledger only, so it is smaller than the same
+      // tab's discretionary-spending figure and must say why.
+      series: [{ key: 'amount', label: 'Card purchases', tone: 'out' }],
+      guide: avg > 0 ? avg : null,
+      onSelect: (row) => {
+        if (row.inPeriod) applyFilter({ month: state.filter.month === row.month ? 'all' : row.month });
+        else {
+          state.period = { type: 'custom', from: row.month, to: row.month };
+          clearFilters();
+          render();
+        }
+      },
+    }));
+    return card(sec);
   }
 
   /* ---- 4) spending by category ---- */
@@ -665,7 +633,11 @@ export function createCardsRenderer(ctx) {
       el(
         'div',
         { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconStore()), 'Top places'),
+        // Scoped like the treemap's "card transactions" and the trend chart's
+        // "Card purchases": this reads the card ledger only, so it can never
+        // be confused with Activity's "Biggest payments", which ranks every
+        // outflow across card and bank.
+        el('h3', { class: 'card-title' }, icon(iconStore()), 'Top places on the card'),
         state.filter.merchant
           ? el(
               'button',
@@ -684,26 +656,32 @@ export function createCardsRenderer(ctx) {
       return sec;
     }
     const total = a.total_spend || list.reduce((s, m) => s + m.amount, 0) || 1;
-    const bar = renderShareBar(el, {
-      segments: list.slice(0, 6).map((m) => ({
-        amount: m.amount,
-        key: m.key,
-        label: m.merchant,
-        onActivate: () =>
-          drillToTransactions({
-            merchant: m.key,
-            merchantLabel: m.merchant,
-            category: 'all',
-          }),
-      })),
-      palette: list.slice(0, 6).map((m) => catColour(m.category)),
-      grandTotal: total,
-      remainderLabel: 'Other places',
-      centerValue: moneyShort(total),
-      centerLabel: 'total',
-      ariaLabel: `Spending split across ${list.length} place${list.length === 1 ? '' : 's'}`,
-    });
-    if (bar) sec.append(bar);
+    // Was a six-chip share BAR - the pattern premium.css itself describes as
+    // illegible, and the one composition shape on this screen that nothing
+    // else in the app speaks any more. The top places plus their remainder
+    // are a real part-to-whole, so they use the same ring every other
+    // part-to-whole on the screen uses, carrying each place's own category
+    // colour.
+    const top = list.slice(0, 5);
+    const named = top.reduce((sum, m) => sum + m.amount, 0);
+    const remainder = Math.max(0, total - named);
+    const ring = renderDonutChart(
+      { el, money0 },
+      {
+        label: `Card spending split across ${list.length} place${list.length === 1 ? '' : 's'}`,
+        total,
+        money: money0,
+        segments: [
+          ...top.map((m) => ({ label: m.merchant, amount: m.amount, colour: catColour(m.category) })),
+          remainder > 0
+            ? { label: 'Other places', amount: remainder, colour: 'var(--dim)' }
+            : null,
+        ].filter(Boolean),
+        // A card figure, not an axis tick - see activity-render's donut centre.
+        centre: { value: money0(total), label: 'on the card' },
+      }
+    );
+    if (ring) sec.append(ring);
     const table = el('table', { class: 'grid merch' });
     table.append(
       el(
@@ -765,58 +743,242 @@ export function createCardsRenderer(ctx) {
     return sec;
   }
 
+  /* WHEN the month's committed money actually leaves.
+   *
+   * Every commitment already carries the day of the month it typically lands
+   * (expectedDay, reporting-periods.js) and nothing has ever drawn it. The
+   * monthly total answers "how much is spoken for"; this answers the question
+   * that decides whether a month is comfortable or tight - whether the load
+   * falls before or after payday, and whether it lands in one lump.
+   *
+   * A stem per DAY (not per commitment): several charges on the same day are
+   * one demand on the balance, which is how the money is actually felt.
+   * Height encodes an amount, so the whole chart is withdrawn in private view
+   * exactly like every other chart in the app.
+   */
+  function renderCommitmentTimeline(items) {
+    // Payday is the reference the whole chart exists against - "before or
+    // after payday" cannot be read off stems alone. Taken from the SAME
+    // income detector the income card uses, so the two can never disagree
+    // about which day money arrives.
+    let payDay = null;
+    try {
+      const income = analyseIncomePattern(classifiedBank(), state.cfg, new Date());
+      const d = income && Number(income.expectedDay);
+      if (Number.isFinite(d) && d >= 1 && d <= 31) payDay = d;
+    } catch (_) {
+      payDay = null;
+    }
+    const byDay = new Map();
+    for (const it of items || []) {
+      const day = Number(it && it.expectedDay);
+      if (!Number.isFinite(day) || day < 1 || day > 31) continue;
+      const slot = byDay.get(day) || { day, total: 0, names: [] };
+      slot.total += Number(it.typical) || 0;
+      slot.names.push(it.label);
+      byDay.set(day, slot);
+    }
+    const slots = [...byDay.values()].sort((a, b) => a.day - b.day);
+    // One stem is a fact, not a distribution - there is no "when" to read.
+    if (slots.length < 2) return null;
+    if (chartIsHidden()) {
+      return renderHiddenChart(el, 'When fixed expenses land', { height: '150px' });
+    }
+
+    const W = 1000;
+    const H = 150;
+    const PAD_X = 26;
+    const BASE = H - 34;
+    const TOP = 18;
+    const span = W - PAD_X * 2;
+    const peak = slots.reduce((m, s) => Math.max(m, s.total), 0) || 1;
+    const xOf = (day) => PAD_X + ((day - 1) / 30) * span;
+    const yOf = (total) => BASE - (total / peak) * (BASE - TOP);
+
+    const wrap = markProportional(
+      el('div', { class: 'commit-when', role: 'group', 'aria-label': 'When fixed expenses land' })
+    );
+    const tips = chartTooltip(el, wrap);
+    const svg = chartSvg('svg', {
+      viewBox: `0 0 ${W} ${H}`,
+      preserveAspectRatio: 'none',
+      class: 'commit-when-svg',
+      'aria-hidden': 'true',
+    });
+
+    svg.append(
+      chartSvg('line', { x1: PAD_X, x2: W - PAD_X, y1: BASE, y2: BASE, class: 'commit-when-axis' })
+    );
+
+    if (payDay != null) {
+      svg.append(
+        chartSvg('line', {
+          x1: xOf(payDay),
+          x2: xOf(payDay),
+          y1: TOP - 6,
+          y2: BASE,
+          class: 'commit-when-payday',
+        })
+      );
+    }
+
+    // The viewBox is stretched horizontally to fill the card, so nothing that
+    // must keep its proportions is drawn in here - no round dots, no text. A
+    // vertical stem is the one shape a horizontal stretch cannot distort.
+    const STEM_W = 7;
+    const stems = [];
+    for (const slot of slots) {
+      const y = yOf(slot.total);
+      const stem = chartSvg('rect', {
+        x: xOf(slot.day) - STEM_W / 2,
+        y,
+        width: STEM_W,
+        height: Math.max(2, BASE - y),
+        rx: STEM_W / 2,
+        class: 'commit-when-stem',
+      });
+      svg.append(stem);
+      stems.push(stem);
+    }
+    wrap.append(svg);
+
+    const axis = el('div', { class: 'commit-when-days', 'aria-hidden': 'true' });
+    for (const day of [1, 8, 15, 22, 29]) {
+      axis.append(
+        el('span', { style: `left:${(xOf(day) / W) * 100}%` }, String(day))
+      );
+    }
+    wrap.append(axis);
+
+    if (payDay != null) {
+      wrap.append(
+        el(
+          'span',
+          { class: 'commit-when-payday-label', style: `left:${(xOf(payDay) / W) * 100}%` },
+          'Payday'
+        )
+      );
+    }
+
+    // Without a figure on it, the stems said "these days are heavier than
+    // those" and nothing else - a shape with no magnitude. Naming the tallest
+    // day gives every other stem a scale to be read against, and it is the
+    // one number this chart genuinely needs.
+    const heaviest = slots.reduce((a, b) => (b.total > a.total ? b : a), slots[0]);
+    // A chart label, not a value slot: "$10,000.00" is eleven characters of
+    // chip floating over a 3px stem, and at full precision it was wide enough
+    // to cover the "Paid" marker beside it whenever the heaviest day fell near
+    // payday. The exact figure is in this stem's own tooltip.
+    const peakLabel = el(
+      'span',
+      {
+        class: 'commit-when-peak',
+        style: `left:${(xOf(heaviest.day) / W) * 100}%; top:${(yOf(heaviest.total) / H) * 100}%`,
+      },
+      prose(heaviest.total)
+    );
+    wrap.append(peakLabel);
+
+    // Hit targets are HTML over the picture, the same arrangement the column
+    // charts use: a 5px dot is not a pointer target and never a keyboard one.
+    const hits = el('div', { class: 'commit-when-targets' });
+    slots.forEach((slot, i) => {
+      const shown = slot.names.slice(0, 4);
+      const detail = [
+        `Day ${slot.day}${ordinal(slot.day)}`,
+        money0(slot.total),
+        ...shown,
+        slot.names.length > shown.length ? `+${slot.names.length - shown.length} more` : null,
+      ].filter(Boolean);
+      const target = el('button', {
+        type: 'button',
+        class: 'commit-when-target',
+        'aria-label': detail.join('. '),
+        style: `left:${(xOf(slot.day) / W) * 100}%`,
+      });
+      tips.bind(target, detail);
+      target.addEventListener('keydown', (event) => {
+        let next = null;
+        if (event.key === 'ArrowRight') next = (i + 1) % slots.length;
+        if (event.key === 'ArrowLeft') next = (i + slots.length - 1) % slots.length;
+        if (next != null) {
+          event.preventDefault();
+          hits.children[next].focus();
+        }
+      });
+      hits.append(target);
+    });
+    wrap.append(hits);
+
+    staggerIn(stems, () => [{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], {
+      step: 28,
+      duration: 420,
+    });
+    return wrap;
+  }
+
+  function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
+  }
+
   /* ---- regular payments (recurring, whole-history) ---- */
   function renderRecurring() {
     const { rec, bankDebits, combined } = commitmentsModel();
     if (!rec.length && !bankDebits.length) return null;
-    const sec = el('section', { class: 'card' });
+    const sec = el('div', {});
     sec.append(
       el(
         'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconRepeat()), 'Regular commitments')
-      )
-    );
-    sec.append(
-      el(
-        'div',
-        { class: 'hero-figure' },
+        { class: 'hero-figure metric-with-info' },
         el(
           'div',
-          { class: 'fact-value', style: 'font-size:26px' },
+          { class: 'fact-value metric-value metric--major' },
           `${money0(combined.total)} a month`
         ),
-        el(
-          'div',
-          { class: 'muted small' },
-          `${combined.items.length} regular commitment${combined.items.length === 1 ? '' : 's'}${combined.lapsed.length ? ` \u00b7 ${combined.lapsed.length} may have ended` : ''}`
+        chartInfo(
+          el,
+          '',
+          `${combined.items.length} regular commitment${combined.items.length === 1 ? '' : 's'}${combined.lapsed.length ? `; ${combined.lapsed.length} may have ended` : ''}. This is a typical month across your history, not the selected period.`
         )
       )
     );
+    const when = renderCommitmentTimeline(combined.items);
+    if (when) sec.append(when);
+
     const scaleMax = combined.items
       .concat(combined.lapsed)
       .reduce((m, it) => Math.max(m, it.typical || 0), 0);
     const commitDrill = (item) => {
-      if (item.source === 'card')
-        return () =>
-          drillToTransactions({
-            merchant: merchantRuleKeyFromDescription(item.label),
-            merchantLabel: item.label,
-            category: 'all',
-          });
-      if (item.key) return () => drillToAccountsPayee(item.key, cleanCounterparty(item.label));
-      return null;
+      const link = commitmentLink(item);
+      if (!link) return null;
+      if (link.kind === 'merchant') return () => drillToTransactions(link.patch);
+      return () => drillToAccountsPayee(link.key, cleanCounterparty(link.label));
     };
     const renderCommitRow = (item, opts = {}) => {
       const lapsed = !!opts.lapsed;
+      // The day it lands and whether its price has crept up are both already
+      // detected (expectedDay / risen, reporting-periods.js) and were both
+      // thrown away at render. The day is what makes a commitment plannable;
+      // a sustained rise is the one thing about a standing charge a person
+      // actually needs told, since nothing else on screen would ever reveal it.
       const sub = lapsed
         ? item.lastMonth
           ? `last charged ${monthLabel(item.lastMonth)}`
           : 'last charge unknown'
-        : '';
+        : item.expectedDay
+          ? `${item.expectedDay}${ordinal(item.expectedDay)} of the month`
+          : '';
       const width =
         scaleMax > 0 ? Math.max(4, Math.min(100, Math.round((item.typical / scaleMax) * 100))) : 0;
-      const colour = lapsed ? 'var(--dim)' : catColour(item.category);
+      // These tracks answer "how big is this against the largest", not "which
+      // category is it" - the label already says that. Colouring them by
+      // category left most of them grey (several categories hash to the same
+      // neutral) so the track read as a disabled row rather than a
+      // measurement. Money leaving takes the outflow colour, the same
+      // language the Top spending bars use.
+      const colour = lapsed ? 'var(--dim)' : 'var(--flow-out)';
       const ariaLabel = lapsed
         ? `${item.label}: was about ${money0(item.typical)} a month, ${sub}`
         : `${item.label}: about ${money0(item.typical)} a month`;
@@ -826,20 +988,23 @@ export function createCardsRenderer(ctx) {
           'span',
           { class: 'commit-name' },
           el('span', { class: 'commit-name-main' }, item.label),
-          sub ? el('span', { class: 'commit-name-sub muted small' }, sub) : null
+          sub ? el('span', { class: 'commit-name-sub muted small' }, sub) : null,
+          !lapsed && item.risen ? el('span', { class: 'commit-risen' }, 'went up') : null
         ),
         el(
           'span',
           { class: 'commit-amt num ' + (lapsed ? 'muted' : 'strong') },
           `${money0(item.typical)}/mo`
         ),
-        el(
-          'span',
-          { class: 'commit-bar' },
-          el('span', {
-            class: 'commit-bar-fill',
-            style: `width:${width}%;background:${colour}`,
-          })
+        markProportional(
+          el(
+            'span',
+            { class: 'commit-bar' },
+            el('span', {
+              class: 'commit-bar-fill',
+              style: `width:${width}%;background:${colour}`,
+            })
+          )
         ),
       ];
       const cls = 'commit-row' + (lapsed ? ' lapsed' : '');
@@ -873,7 +1038,14 @@ export function createCardsRenderer(ctx) {
         })
       );
     }
-    return sec;
+    const risen = combined.items.filter((item) => item.risen).length;
+    return collapsibleCard(el, {
+      title: 'Fixed expenses',
+      icon: icon(iconRepeat()),
+      summary: `${prose(combined.total)} a month` + (risen ? ` \u00b7 ${risen} went up` : ''),
+      body: sec,
+      name: 'activity-commitments',
+    });
   }
 
   /* ---- spent abroad (foreign summary for the selected period) ---- */
@@ -885,16 +1057,18 @@ export function createCardsRenderer(ctx) {
     const fx = foreignSummary(periodRows().filter((r) => r.kind === 'spend'));
     if (!fx.count) return null;
     const drill = () => drillToTransactions({ foreignOnly: true });
-    const sec = el('section', { class: 'card' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconGlobe()), 'Spent abroad'),
-        el('button', { class: 'btn sm ghost', onclick: drill }, 'See all')
-      )
-    );
+    const sec = el('div', {});
     const ccyText = fx.byCurrency.map((c) => c.ccy).join(', ');
+    // Round 3 (Right Now, 4.4): the effective rate actually paid on foreign
+    // spending, worked out by comparing the foreign amount to the local
+    // amount charged - described plainly as "rate including fees" so it is
+    // never mistaken for the clean, quoted bank rate. One line per currency.
+    const avgRates = averageForeignRates(fx.items);
+    // ONE (i) beside the figure, not a grey sub-line AND a second disclosure
+    // underneath it. How many purchases, in which currencies, at what real
+    // rate - three facts about the same number, so they belong in one place a
+    // person opens once, rather than two permanent rows of small grey type
+    // stacked between the figure and the list it summarises.
     sec.append(
       el(
         'div',
@@ -908,27 +1082,23 @@ export function createCardsRenderer(ctx) {
           },
           money0(fx.totalJmd)
         ),
-        el(
-          'div',
-          { class: 'muted small' },
-          `${fx.count} purchase${fx.count === 1 ? '' : 's'} in ${ccyText}`
-        )
+        chartInfo(el, '', [
+          el(
+            'p',
+            {},
+            `${fx.count} purchase${fx.count === 1 ? '' : 's'} in ${ccyText}, converted to your currency.`
+          ),
+          avgRates.length
+            ? el(
+                'p',
+                {},
+                `Rate including fees: ${avgRates.map((r) => `${r.rate.toFixed(2)} per ${r.ccy}`).join(', ')}.`
+              )
+            : null,
+        ]),
+        el('button', { class: 'btn sm ghost', onclick: drill }, 'See all')
       )
     );
-    // Round 3 (Right Now, 4.4): the effective rate actually paid on foreign
-    // spending, worked out by comparing the foreign amount to the local
-    // amount charged - described plainly as "rate including fees" so it is
-    // never mistaken for the clean, quoted bank rate. One line per currency.
-    const avgRates = averageForeignRates(fx.items);
-    if (avgRates.length) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small' },
-          `Rate including fees: ${avgRates.map((r) => `${r.rate.toFixed(2)} per ${r.ccy}`).join(', ')}.`
-        )
-      );
-    }
     const groups = new Map();
     for (const r of fx.items) {
       const label = r.displayName || r.description.split(',')[0].trim();
@@ -957,26 +1127,19 @@ export function createCardsRenderer(ctx) {
     });
     if (bar) sec.append(bar);
     const list = el('div', { class: 'foreign-list' });
+    /* One row shape for every place, whatever it holds.
+     *
+     * The middle column used to carry a DIFFERENT kind of fact depending on
+     * how many purchases a place had: "5 purchases" on a grouped row and
+     * "738.67 USD - 165.10 incl. fees" on a single one. Three rows of the
+     * same list therefore read as three different layouts, and the grey text
+     * took enough width to truncate the place's own name ("Enterpri...") - the
+     * one thing on the row a person is actually scanning for.
+     *
+     * Now every place is a disclosure: swatch, name, chevron, amount. The
+     * original-currency amount and the rate paid live inside, one line per
+     * purchase, for the person who opens it. */
     const renderForeignGroup = (g) => {
-      if (g.count === 1) {
-        const r = g.items[0];
-        const eff = effectiveForeignRate(r);
-        return el(
-          'div',
-          { class: 'foreign-row' },
-          el('span', {
-            class: 'swatch sm',
-            style: `background:${catColour(g.category)}`,
-          }),
-          el('span', { class: 'foreign-place' }, g.label),
-          el(
-            'span',
-            { class: 'foreign-fx muted small' },
-            r.foreign + (eff ? ` \u00b7 ${eff.rate.toFixed(2)} incl. fees` : '')
-          ),
-          el('span', { class: 'foreign-jmd num strong' }, money0(g.total))
-        );
-      }
       const d = el('details', { class: 'foreign-group' });
       d.append(
         el(
@@ -992,7 +1155,6 @@ export function createCardsRenderer(ctx) {
             el('span', { class: 'foreign-place-name' }, g.label),
             el('span', { class: 'foreign-caret' }, icon(iconChevron()))
           ),
-          el('span', { class: 'foreign-fx muted small' }, `${g.count} purchases`),
           el('span', { class: 'foreign-jmd num strong' }, money0(g.total))
         )
       );
@@ -1010,7 +1172,7 @@ export function createCardsRenderer(ctx) {
               el(
                 'span',
                 { class: 'foreign-fx muted small' },
-                r.foreign + (eff ? ` \u00b7 ${eff.rate.toFixed(2)} incl. fees` : '')
+                foreignMoney(r.foreign) + (eff ? ` \u00b7 ${eff.rate.toFixed(2)} incl. fees` : '')
               ),
               el('span', { class: 'num' }, money0(r.amount))
             )
@@ -1022,7 +1184,13 @@ export function createCardsRenderer(ctx) {
     };
     appendExpandable(el, list, groupList, renderForeignGroup, { initial: 3 });
     sec.append(list);
-    return sec;
+    return collapsibleCard(el, {
+      title: 'Spent abroad',
+      icon: icon(iconGlobe()),
+      summary: `${prose(fx.totalJmd)} in ${ccyText}`,
+      body: sec,
+      name: 'activity-spent-abroad',
+    });
   }
 
   // One shared category tag used everywhere a category is shown (the category
@@ -1102,23 +1270,24 @@ export function createCardsRenderer(ctx) {
    * so no chart appears exactly where the "no payoff estimate" explainer does.
    * ------------------------------------------------------------------------- */
   function renderPayoffCone(owed, eairFrac, typicalPayment) {
+    if (chartIsHidden()) return renderHiddenChart(el, 'Card payoff', { height: '220px' });
     const TOL = 0.15;
     const centre = cardPayoffSeries(owed, eairFrac, typicalPayment);
     if (!centre) return null;
-    const upper = cardPayoffSeries(owed, eairFrac, typicalPayment * (1 - TOL)) || centre; // pays less -> later
-    const lower = cardPayoffSeries(owed, eairFrac, typicalPayment * (1 + TOL)) || centre; // pays more -> sooner
+    const upper = cardPayoffSeries(owed, eairFrac, typicalPayment * (1 - TOL)) || centre;
+    const lower = cardPayoffSeries(owed, eairFrac, typicalPayment * (1 + TOL)) || centre;
     const clears = centre.clearedMonth;
     const WIN = Math.max(2, Math.min(60, clears != null ? clears : 60));
 
     const W = 600,
       H = 150,
-      padL = 10,
+      padL = 60,
       padR = 10,
       padT = 12,
       padB = 16;
     const plotW = W - padL - padR,
       plotH = H - padT - padB;
-    const maxBal = owed || 1;
+    const maxBal = Math.max(1, ...centre.series.slice(0, WIN + 1), ...upper.series.slice(0, WIN + 1), ...lower.series.slice(0, WIN + 1));
     const x = (i) => padL + (i / WIN) * plotW;
     const y = (b) => padT + (1 - Math.max(0, Math.min(1, b / maxBal))) * plotH;
     const balAt = (s, i) => {
@@ -1169,21 +1338,13 @@ export function createCardsRenderer(ctx) {
         class: 'fc-divider',
       })
     );
-    root.appendChild(
-      svgEl('polyline', {
-        points: ptStr(solidPts),
-        class: 'fc-line',
-        fill: 'none',
-      })
-    );
-    root.appendChild(
-      svgEl('polyline', {
-        points: ptStr(dashPts),
-        class: 'fc-line',
-        fill: 'none',
-        'stroke-dasharray': '5 4',
-      })
-    );
+    const solid = svgEl('polyline', { points: ptStr(solidPts), class: 'fc-line', fill: 'none', 'vector-effect': 'non-scaling-stroke' });
+    const dashed = svgEl('polyline', { points: ptStr(dashPts), class: 'fc-line', fill: 'none', 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke' });
+    root.appendChild(solid);
+    root.appendChild(dashed);
+    const length = solidPts.reduce((sum, point, i) => i ? sum + Math.hypot(point[0] - solidPts[i - 1][0], point[1] - solidPts[i - 1][1]) : sum, 0);
+    drawPath(solid, length, { duration: 650 });
+    growIn(dashed, { opacity: 0 }, { opacity: 1 }, { delay: 350, duration: 300 });
     if (clears != null && clears <= WIN) {
       root.appendChild(
         svgEl('circle', {
@@ -1195,56 +1356,75 @@ export function createCardsRenderer(ctx) {
       );
     }
 
-    const caption = el(
-      'p',
-      { class: 'muted small', style: 'margin:6px 0 0' },
-      clears != null
-        ? 'Your balance falling to zero at your recent payment. The band is paying about 15% more or less; the dashed part is further out and less certain.'
-        : 'At your recent payment the balance barely moves. The band shows how paying a little more or less would change that.'
-    );
-    return el('div', {}, el('div', { class: 'fc-chart-wrap' }, root), caption);
+    const wrap = markProportional(el('div', { class: 'fc-chart-wrap payoff-chart' }, root));
+    const overlay = el('div', { class: 'fc-overlay', 'aria-hidden': 'true' });
+    for (const amount of [0, maxBal / 2, maxBal]) {
+      root.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y(amount), y2: y(amount), class: 'fc-grid' }));
+      overlay.append(el('span', { class: 'fc-label fc-axis-money anchor-start', style: `left:0;top:${y(amount) / H * 100}%` }, moneyShort(amount)));
+    }
+    for (const month of [0, Math.round(WIN / 2), WIN]) overlay.append(el('span', { class: 'fc-label fc-axis-date anchor-end', style: `left:${x(month) / W * 100}%;top:99%` }, month === 0 ? 'Now' : `${month} mo`));
+    const targets = el('div', { class: 'fc-targets', role: 'group', 'aria-label': 'Monthly payoff projection' });
+    const tips = chartTooltip(el, wrap);
+    for (let month = 0; month <= WIN; month++) {
+      const detail = [`Month ${month}`, `Balance: ${money0(balAt(centre, month))}`, `Payment -15%: ${money0(balAt(upper, month))}`, `Payment +15%: ${money0(balAt(lower, month))}`];
+      const button = el('button', { type: 'button', class: 'fc-day-target', style: `left:${x(Math.max(0, month - 0.5)) / W * 100}%;width:${plotW / W * 100 / WIN * (month === 0 || month === WIN ? 0.5 : 1)}%`, 'aria-label': detail.join('. ') });
+      tips.bind(button, detail);
+      targets.append(button);
+    }
+    wrap.append(overlay, targets);
+    growIn(wrap, { opacity: 0 }, { opacity: 1 }, { duration: 220 });
+    return el('div', {}, wrap, el('div', { class: 'chart-legend' },
+      el('span', {}, clears != null ? `Clears: ${clears} months` : 'Balance remains'),
+      chartInfo(el, 'Payment ±15%', 'The band compares payments 15% above and below your recent payment. Dashes mark the more distant projection. No new purchases are assumed.')));
   }
 
   function renderCardFitness() {
-    const stmts = (state._cardStatements || [])
-      .slice()
-      .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)));
+    const stmts = sortedCardStatements(state._cardStatements);
     if (!stmts.length) return null;
     const latest = stmts[stmts.length - 1];
-    const sec = el('section', { class: 'card card-fitness' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconReceipt()), 'How your card is doing')
-      )
-    );
+    const sec = el('div', {});
+    const card = (summary) => {
+      const shell = collapsibleCard(el, {
+        title: 'How your card is doing',
+        icon: icon(iconReceipt()),
+        summary,
+        body: sec,
+        name: 'activity-card-health',
+      });
+      if (shell) shell.classList.add('card-fitness');
+      return shell;
+    };
 
     const eairFrac = normaliseEair(latest.eair);
     const behaviour = cardBehaviourState(state._cardStatements);
 
-    // Utilisation framed as a credit-score input on the statement-closing
-    // balance, so it is never mistaken for spending or debt. Shown in every
-    // branch that has a utilisation figure.
+    // The figure stays on the page; the disambiguation moves behind the ⓘ.
+    // "Credit used is a credit-score input, not your spending or debt" defines
+    // a term - it is the same sentence for everyone, every month, and it does
+    // not describe this person's money at all.
     const utilisationNote = () =>
       latest.utilisation == null
         ? null
         : el(
             'p',
             { class: 'muted small' },
-            `Credit used, ${latest.utilisation}%, is a credit-score input - not your spending or debt.`
+            `Credit used, ${latest.utilisation}%. `,
+            chartInfo(
+              el,
+              'What this means',
+              'The share of your credit limit in use. It is an input to a credit score - not a measure of your spending, and not money you owe beyond the balance itself.'
+            )
           );
 
-    // 1) Pays in full: no interest recently. Calm confirmation, no payoff maths.
     if (behaviour === 'pays-in-full') {
       const n = Math.min(stmts.length, 3);
       const nText = n === 1 ? 'your latest statement' : `your last ${n} statements`;
       sec.append(
         el(
           'div',
-          { class: 'hero-figure' },
-          el('div', { class: 'fact-value', style: 'font-size:22px' }, 'Paid in full, no interest'),
-          el('div', { class: 'muted small' }, `No interest charged on ${nText}.`)
+          { class: 'hero-figure metric-with-info' },
+          el('div', { class: 'fact-value metric-value metric--minor' }, 'Paid in full, no interest'),
+          chartInfo(el, '', `No interest was charged on ${nText}.`)
         )
       );
       if (eairFrac != null) {
@@ -1253,36 +1433,41 @@ export function createCardsRenderer(ctx) {
           const disclosedPct = Math.round(latest.purchaseAnnualPct);
           const monthlyPct = latest.purchaseMonthlyPct;
           sec.append(
-            el(
-              'p',
-              { class: 'muted small' },
+            chartInfo(
+              el,
+              'Rate details',
               `Your statement shows a purchase rate of ${disclosedPct}% a year${monthlyPct != null ? ` (${monthlyPct}% a month)` : ''}. Carrying a balance would compound that monthly to a real yearly cost closer to ${eairPct}%, but clearing the statement each cycle means you pay none of it.`
             )
           );
         } else if (latest.eairEstimated) {
           sec.append(
-            el(
-              'p',
-              { class: 'muted small' },
+            chartInfo(
+              el,
+              'Rate details',
               `Clearing the statement each cycle avoids interest at an estimated ${eairPct}% a year, worked out from the monthly rate printed on your statement.`
             )
           );
         } else {
+          // Why clearing the statement is worth doing is advice, not a reading
+          // from the statements. Behind the ⓘ for whoever wants the reasoning.
           sec.append(
             el(
-              'p',
+              'div',
               { class: 'muted small' },
-              `Clearing the statement each cycle avoids interest at about ${eairPct}% a year.`
+              chartInfo(
+                el,
+                'Why this matters',
+                `Clearing the statement each cycle avoids interest at about ${eairPct}% a year.`
+              )
             )
           );
         }
       }
       const un = utilisationNote();
       if (un) sec.append(un);
-      return sec;
+      return card('Paid in full, no interest');
     }
 
-    // 2) Insufficient signal: too few cycles, or interest/rate not readable.
     if (behaviour === 'insufficient') {
       const owed = latest.newBalance != null ? latest.newBalance : latest.amountOwing;
       sec.append(
@@ -1291,7 +1476,7 @@ export function createCardsRenderer(ctx) {
           { class: 'hero-figure' },
           el(
             'div',
-            { class: 'fact-value', style: 'font-size:26px' },
+            { class: 'fact-value metric-value metric--major' },
             owed == null ? '-' : money0(owed)
           ),
           el('div', { class: 'muted small' }, 'balance on your latest statement')
@@ -1312,19 +1497,11 @@ export function createCardsRenderer(ctx) {
       const un = utilisationNote();
       if (un) sec.append(un);
       sec.append(
-        renderExplainer(
-          el,
-          'There is not enough statement history yet - or the interest and rate details could not be read from these statements - to characterise how the card is being used or to estimate a payoff. The figures shown are exact.',
-          { label: 'Why there\u2019s no payoff estimate yet' }
-        )
+        chartInfo(el, 'Payoff unavailable', 'Add more statement history with readable interest and rate details. Recorded figures remain exact.')
       );
-      return sec;
+      return card(owed == null ? 'Not enough history yet' : `Balance ${prose(owed)}`);
     }
 
-    // 3) Paying interest: a real cost is being carried. Lead with the balance,
-    // state the interest actually charged and how often it has appeared, then an
-    // "if this continues" projection (proper amortisation) - observation, not
-    // instruction, and never a claim about why the balance is being carried.
     const owed = latest.newBalance != null ? latest.newBalance : latest.amountOwing;
     sec.append(
       el(
@@ -1332,60 +1509,25 @@ export function createCardsRenderer(ctx) {
         { class: 'hero-figure' },
         el(
           'div',
-          { class: 'fact-value', style: 'font-size:26px' },
+          { class: 'fact-value metric-value metric--major' },
           owed == null ? '-' : money0(owed)
         ),
         el('div', { class: 'muted small' }, 'carried on your card')
       )
     );
 
-    const interest = Number(latest.interestCharges) || 0;
-    const recent = stmts.slice(-3).filter((s) => s.interestCharges != null);
-    const chargedCount = recent.filter((s) => Number(s.interestCharges) > 1).length;
-    if (interest > 0) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small' },
-          `You were charged ${money0(interest)} in interest on your latest statement` +
-            (chargedCount > 1
-              ? `, and interest has appeared on ${chargedCount} of your last ${recent.length} statements.`
-              : '.')
-        )
-      );
-    }
-
     const typicalPayment = medianRecentPayment(stmts);
     const projection = projectCardPayoff(owed, eairFrac, typicalPayment);
     if (projection && !projection.neverClears) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small' },
-          `If that continues, at about what you have been paying (${money0(typicalPayment)} a month), the balance would clear in about ${projection.months} month${projection.months === 1 ? '' : 's'} and cost roughly ${money0(projection.totalInterest)} more in interest.`
-        )
-      );
+      sec.append(el('div', { class: 'sec-grid', style: 'margin-top:12px' },
+        secItem('Monthly payment', money0(typicalPayment)),
+        secItem('Months to clear', String(projection.months)),
+        secItem('Projected interest', money0(projection.totalInterest))));
     } else if (projection && projection.neverClears) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small' },
-          `At about what you have been paying (${money0(typicalPayment)} a month), the balance is barely moving - almost all of that payment is going to interest.`
-        )
-      );
+      sec.append(chartInfo(el, 'Balance barely moves', `At ${money0(typicalPayment)} per month, almost all of the payment goes toward interest.`));
     }
     const payoffCone = renderPayoffCone(owed, eairFrac, typicalPayment);
     if (payoffCone) sec.append(payoffCone);
-    if (latest.minimumPayment != null && latest.minimumPayment > 0) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small' },
-          `The minimum payment this cycle is ${money0(latest.minimumPayment)}. On most cards the minimum falls as the balance does, so paying only the minimum stretches a balance out for a long time.`
-        )
-      );
-    }
-
     const grid = el(
       'div',
       { class: 'sec-grid', style: 'margin-top:12px' },
@@ -1410,7 +1552,7 @@ export function createCardsRenderer(ctx) {
         )
       );
     }
-    return sec;
+    return card(owed == null ? 'Paying interest' : `${prose(owed)} carried, paying interest`);
   }
 
   /* The data-quality plumbing that stays in Data & settings: how many
@@ -1420,9 +1562,7 @@ export function createCardsRenderer(ctx) {
    * and the fitness answer above sits at the top of the tab. Byte-identical to
    * the reconciliation + cross-ledger lines of the former renderCardStatementHealth. */
   function renderCardStatementTrust() {
-    const stmts = (state._cardStatements || [])
-      .slice()
-      .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)));
+    const stmts = sortedCardStatements(state._cardStatements);
     if (!stmts.length) return null;
     const wrap = el('div', { class: 'sec-section' });
     wrap.append(el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' Card statements'));

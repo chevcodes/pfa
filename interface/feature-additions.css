@@ -40,7 +40,7 @@
 /* Passphrase mismatch note (export dialog only). */
 .pass-note {
   margin: -4px 0 12px;
-  color: var(--warn);
+  color: var(--warn-ink);
   font-size: 12.5px;
 }
 
@@ -68,7 +68,7 @@
 
 /* Danger button variant, reusing the base .btn shape. */
 .btn.danger {
-  color: var(--warn);
+  color: var(--warn-ink);
   border-color: color-mix(in srgb, var(--warn) 45%, var(--edge));
 }
 .btn.danger:hover {
@@ -80,9 +80,17 @@
 /* Manage data - its own card on the dashboard (always visible). */
 /* Manage-data action buttons, now inside the "Data & settings" details
    section (see .secondary .sec-section above). */
+/* A row of controls with a line of text among them.
+
+   With no alignment declared the row defaulted to `stretch`, so a bare <span>
+   grew to the height of the tallest control beside it and its words sat at the
+   TOP of that stretched box - "4 transactions are still unrecognised." riding
+   several pixels above the middle of the "Review them" button it belongs to.
+   Centring is what "these things are on one line" actually means. */
 .manage-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 .name-field {
@@ -122,7 +130,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 4px 0 14px;
+  margin: 2px 0 10px;
 }
 
 @media (max-width: 460px) {
@@ -152,12 +160,27 @@
 }
 
 /* "Show more" / "Show all" control under the capped explorer table. */
+/* One left edge for the whole bottom of the list.
+
+   "See 3 more" started at x=45, "42 transactions - card and bank" at x=31, and
+   the table's own column edge at x=31 - three different left edges stacked
+   within 60px of each other, because the show-more row sits inside a <td>
+   whose 12px cell padding the footer beneath it does not have.
+
+   The cell holding this row gives its padding back, so the buttons line up with
+   the footer, the column headers and the card's content edge. */
 .show-more {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 12px 2px 2px;
+  padding: 12px 0 2px;
+}
+/* table.grid td sets 11px 12px and is more specific than a bare `td:has(...)`,
+   so the override has to match it. */
+table.grid td:has(> .show-more) {
+  padding-left: 0;
+  padding-right: 0;
 }
 .show-more .muted {
   margin-right: auto;
@@ -171,42 +194,22 @@
   margin: -6px 0 12px;
 }
 
-/* One-handed back-to-filters control for a long, expanded list. Hidden on
-   desktop / fine pointers; shown only on coarse pointers, safe-area aware. */
-.to-filters {
-  display: none;
-}
-@media (pointer: coarse) {
-  .to-filters {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    position: sticky;
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    margin: 10px 0 2px auto;
-    padding: 9px 14px;
-    min-height: var(--tap-lg);
-    border: 1px solid var(--edge);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
-    color: var(--fg);
-    font-weight: 650;
-    font-size: 13px;
-    cursor: pointer;
-    box-shadow: var(--shadow-lg);
-  }
-}
+/* .to-filters and button.cat-tag-btn used to be styled here, both behind
+   @media (pointer: coarse), and neither element is ever built:
 
-/* Larger touch target for the tap-to-change category tag on coarse pointers,
-   without inflating the desktop row. */
-@media (pointer: coarse) {
-  button.cat-tag-btn {
-    min-height: var(--tap-lg);
-    padding: 6px 2px;
-  }
-}
+   - .to-filters appears in no JS file and no HTML in the repository. Twenty-five
+     lines of styling for a control that does not exist - and worse, it was
+     display:none by default and revealed ONLY by the coarse-pointer query, so
+     had it existed, a phone whose query failed would not have had the control
+     at all. A feature gated on the one media axis this thread has already shown
+     cannot be verified reliably.
+   - button.cat-tag-btn is produced by catTag() only when it is passed an
+     onclick, and every one of its five call sites passes none. The category tag
+     on a transaction row is a plain span; the row's merchant name is what opens
+     the picker.
+
+   Both removed rather than converted. The remaining coarse-pointer rules are
+   dealt with below and in responsive.css. */
 
 /* ---- Bottom-sheet overlays on phones (desktop stays a centred modal) ---- */
 @media (max-width: 639px) {
@@ -282,10 +285,6 @@
   }
   table.grid {
     font-size: 15px;
-  }
-  .hero-amount {
-    font-size: 46px;
-    font-weight: 800;
   }
 }
 
@@ -417,7 +416,35 @@
        baseline cap; this block does not run below 1000px. */
     max-height: min(55vh, 720px);
   }
-  .accounts-wrap.accounts-grid > .card.half-fill .pair-scroll {
+  /* The card's height cap only bites if something between it and the content
+     actually clips. A COLLAPSIBLE half-fill card puts a <details> in between,
+     and a details does not hand its cap down: its non-summary content sits in
+     an anonymous box that is not a flex item, so neither `flex: 1 1 0` nor
+     `max-height: 100%` on the body has any effect (both measured: the body
+     stayed 464px inside a 408px details). The result was rows and the summary
+     sentence drawn OUTSIDE the card's border, over whatever came next.
+
+     The details itself IS a proper flex item of the card and is capped
+     correctly, so that is where the scroll belongs. One scroller per card: the
+     inner list stops being a second one, and the summary stays put at the top
+     so the card never loses its own title while its content moves. */
+  .accounts-wrap.accounts-grid > .card.half-fill > .card-disclosure {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .accounts-wrap.accounts-grid > .card.half-fill > .card-disclosure > summary {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface-card, var(--panel));
+  }
+  .accounts-wrap.accounts-grid > .card.half-fill > .card-disclosure .pair-scroll {
+    max-height: none;
+    overflow: visible;
+  }
+  .accounts-wrap.accounts-grid > .card.half-fill > :not(.card-disclosure) .pair-scroll,
+  .accounts-wrap.accounts-grid > .card.half-fill > .pair-scroll {
     max-height: 100%;
   }
   .accounts-wrap.accounts-grid > .card.half {
@@ -432,6 +459,18 @@
        edge must meet the same baseline as its neighbour, never float above
        empty space. */
     align-self: stretch;
+  }
+
+  /* Except when it is CLOSED.
+
+     Stretching keeps two open cards' bottom edges on one baseline, which is
+     right. A closed card is one line of text, and stretching that to match an
+     open neighbour drew a 700px empty panel beside a full one - the emptiest
+     thing on the screen, given the most space on it. A closed card takes the
+     height of what it is showing, and the row's baseline is set by whatever is
+     actually open. */
+  .accounts-wrap.accounts-grid > .card.half.card-collapsible:has(> details:not([open])) {
+    align-self: start;
   }
 
   .accounts-wrap.accounts-grid > .hero {
@@ -534,9 +573,15 @@
     margin: 0;
     padding: 6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom))
       calc(8px + env(safe-area-inset-left));
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
-    -webkit-backdrop-filter: saturate(1.4) blur(10px);
-    backdrop-filter: saturate(1.4) blur(10px);
+    /* Fully opaque, for the same reason .period-bar below is: the blur that
+       would have frosted whatever scrolls under it is dropped on mobile (it
+       makes this bar's containing block the period bar, not the viewport), and
+       without it a 92% fill let transaction rows ghost through the bar. A bar
+       that half-shows the content behind it reads as an element sitting on top
+       of the page - which is exactly how it was reported. */
+    background: var(--panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     border-top: 1px solid var(--edge);
     border-bottom: 0;
   }
@@ -575,15 +620,24 @@
     background: var(--bg);
   }
 
+  /* Clearance for the docked bar, taken from the bar itself.
+     The 72px that was here was a guess at a bar that measures 69 - three
+     pixels of slack under a bar whose height is decided in another file
+     (.ledger-tab's min-height) and changes with the label. --dock-bottom is
+     measured after every render, so the two can never drift apart again. */
   body.has-bottom-nav {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--dock-bottom, 72px) + 12px + env(safe-area-inset-bottom));
   }
+  /* Both clear the docked bar by measurement, not by the --dock-nav constant.
+     The constant assumed an 80px bar; the bar measures 69 here and will be
+     taller again on a phone with a home indicator, where env(safe-area-inset-
+     bottom) is non-zero - the one case that cannot be checked in a desktop
+     emulator, and so the one that should not depend on a guess. The bar's own
+     padding already carries the inset, so --dock-bottom carries it too. */
   body.has-bottom-nav #toast.show {
-    bottom: calc(var(--dock-nav) + env(safe-area-inset-bottom));
+    bottom: calc(var(--dock-bottom, var(--dock-nav)) + 12px);
   }
-  body.has-bottom-nav .install-banner.show {
-    bottom: calc(var(--dock-nav) + env(safe-area-inset-bottom));
-  }
+
 }
 
 .accounts-wrap {
@@ -598,43 +652,16 @@
   background: color-mix(in srgb, var(--fg) 35%, transparent);
 }
 .recon-ok {
-  color: var(--good);
+  color: var(--good-ink);
   font-weight: 650;
   font-size: 12.5px;
   white-space: nowrap;
 }
 .recon-warn {
-  color: var(--warn);
+  color: var(--warn-ink);
   font-weight: 650;
   font-size: 12.5px;
   white-space: nowrap;
-}
-
-/* Directional flow arrow (renderFlowArrow): the one shared indicator for which
-   way money moved relative to an account - IN (up, calm green) or OUT (down,
-   warm). Reads the SAME --flow-in / --flow-out tokens as the .ktag.k-in /
-   .ktag.k-out dots, so the two never disagree. Colour is never the only signal:
-   the arrow SHAPE (up vs down) also carries the direction (legible for colour-
-   vision deficiencies), and it always sits beside a signed amount and a worded
-   aria-label. It marks DIRECTION, not a good/bad verdict. */
-.flow-arrow {
-  display: inline-flex;
-  vertical-align: middle;
-  margin-right: 4px;
-}
-.flow-arrow svg {
-  width: 13px;
-  height: 13px;
-}
-.flow-arrow.in {
-  color: var(--flow-in);
-} /* money in  - balance up   - calm green */
-.flow-arrow.out {
-  color: var(--flow-out);
-} /* Cash outflow - balance down - warm        */
-.fact-flow {
-  display: inline-flex;
-  align-items: center;
 }
 
 /* Per-account selector in the Accounts view. A selectable account row; the
@@ -678,6 +705,7 @@
 .tx-filters .f-search {
   width: 100%;
   min-width: 0;
+  min-height: var(--field-h);
   padding: 11px 14px;
   border: 1px solid var(--edge);
   border-radius: 10px;
@@ -963,7 +991,10 @@ details.tx-more[open] > summary::after {
 }
 /* Calm "all good" pill, the twin of the existing .pill.caution used for warnings. */
 .pill.ok {
-  color: var(--good);
+  /* The green ink on a 14% green tint measured 4.40 in light mode - a tenth
+     under AA, the kind of near-miss that only shows up when both themes are
+     measured. Deepening the ink rather than the tint keeps the pill quiet. */
+  color: color-mix(in srgb, var(--good-ink) 82%, var(--fg));
   background: color-mix(in srgb, var(--good) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--good) 35%, transparent);
 }
@@ -1004,6 +1035,9 @@ details.tx-more[open] > summary::after {
 }
 .stmt-dot.warn {
   background: var(--warn);
+}
+.stmt-dot.neutral {
+  background: var(--dim);
 }
 .stmt-note {
   margin: 0 0 12px;
@@ -1191,10 +1225,10 @@ body.has-bottom-nav .to-top {
   flex: none;
 }
 .acct-trend-swatch.in {
-  background: var(--flow-in);
+  background: var(--chart-in);
 }
 .acct-trend-swatch.out {
-  background: var(--flow-out);
+  background: var(--chart-out);
 }
 .acct-trend-bars {
   display: flex;
@@ -1233,17 +1267,19 @@ body.has-bottom-nav .to-top {
   border-radius: 4px 4px 0 0;
   transition: transform 0.1s;
 }
+/* Months outside the period in view sit back; the months being read are
+   full-strength shared chart ink. */
 .acct-trend-bar.in {
-  background: color-mix(in srgb, var(--flow-in) 55%, var(--panel-2));
+  background: color-mix(in srgb, var(--chart-in) 55%, var(--panel-2));
 }
 .acct-trend-bar.out {
-  background: color-mix(in srgb, var(--flow-out) 55%, var(--panel-2));
+  background: color-mix(in srgb, var(--chart-out) 55%, var(--panel-2));
 }
 .acct-trend-col.in-period .acct-trend-bar.in {
-  background: var(--flow-in);
+  background: var(--chart-in);
 }
 .acct-trend-col.in-period .acct-trend-bar.out {
-  background: var(--flow-out);
+  background: var(--chart-out);
 }
 .acct-trend-col:hover .acct-trend-bar {
   transform: translateY(-2px);
@@ -1263,13 +1299,21 @@ body.has-bottom-nav .to-top {
   }
 }
 
-/* Keep the floating up-arrow off the transaction data. It was overlapping the
-   date of the lowest visible row; this lifts it clear above the bottom tab bar
-   so it never sits on real content. */
+/* The floating up-arrow is gone on phones.
+
+   Raising it above the bottom bar was not enough: a 44px circle in the
+   bottom-right of a 375px screen sits on the transaction list whatever offset
+   it is given - it was measured clipping the date of the lowest visible row at
+   every position tried. There is no gutter to put it in; the card is 347px of
+   the 375.
+
+   The action has a better home. Tapping the tab you are already on scrolls that
+   view to the top - the idiom every native phone tab bar uses - so the control
+   lives on a fixed surface the thumb is already on, and nothing floats over the
+   rows. Desktop, which has gutters, keeps the button. */
 @media (max-width: 639px) {
-  body.has-bottom-nav .to-top {
-    bottom: calc(var(--dock-raised) + env(safe-area-inset-bottom));
-    right: calc(14px + env(safe-area-inset-right));
+  .to-top {
+    display: none;
   }
 }
 
@@ -1316,28 +1360,2985 @@ body.has-bottom-nav .to-top {
 }
 
 @media (max-width: 639px) {
+  /* Icon and message on the first row, the actions side by side on the second,
+     aligned to the message's left edge.
+
+     One full-width button per row is what made this notice 193px tall - nearly
+     a quarter of the phone - and an in-flow notice that tall pushes the tab's
+     headline figure most of the way off the screen. Two short labels share a
+     row comfortably at 375px; the height comes down with them. */
   .install-banner.show {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto 1fr 1fr;
     align-items: start;
-    column-gap: 12px;
+    column-gap: 10px;
     row-gap: 10px;
     text-align: left;
   }
+  .install-banner.show > .install-icon {
+    grid-column: 1;
+    grid-row: 1;
+  }
   .install-banner.show > span:not(.install-icon) {
+    grid-column: 2 / -1;
+    grid-row: 1;
     min-width: 0;
     overflow-wrap: anywhere;
   }
   .install-banner.show > button {
-    grid-column: 1 / -1;
+    grid-row: 2;
     width: 100%;
     justify-content: center;
   }
-  #toast.show ~ .install-banner.show {
-    bottom: calc(var(--dock-raised) + env(safe-area-inset-bottom));
+  .install-banner.show > button:nth-of-type(1) {
+    grid-column: 2;
   }
-  body.has-bottom-nav #toast.show ~ .install-banner.show {
-    bottom: calc(var(--dock-nav-toast) + env(safe-area-inset-bottom));
+  .install-banner.show > button:nth-of-type(2) {
+    grid-column: 3;
+  }
+  /* A notice with a single action gives it the whole row rather than half of
+     one, so it never reads as a button waiting for a missing partner. */
+  .install-banner.show > button:only-of-type {
+    grid-column: 2 / -1;
+  }
+
+}
+
+
+/* ---------------------------------------------------------------------
+   PLAN TAB - the three-band proportion picture and its controls.
+
+   One row of bars, largest first. Colour distinguishes the bands and says
+   nothing about whether a band is good or bad, so every segment takes the
+   same weight and the palette avoids the money-direction green and red
+   entirely (--band-*, premium.css).
+   ------------------------------------------------------------------ */
+.proportion {
+  margin: 14px 0 4px;
+  position: relative;
+}
+
+.proportion-track {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  gap: 2px;
+}
+
+/* A band at zero is listed in the legend but draws nothing in the bar: the
+   3px floor would paint a sliver that reads as a real, tiny slice. */
+.proportion-seg[data-zero='1'] {
+  min-width: 0;
+  display: none;
+}
+
+.proportion-seg {
+  flex-basis: 0;
+  min-width: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: left center;
+  background: var(--chart-neutral);
+  cursor: default;
+}
+
+.proportion-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.proportion-seg.is-committed {
+  background: var(--band-committed);
+}
+
+.proportion-seg.is-setAside {
+  background: var(--band-setaside);
+}
+
+.proportion-seg.is-free {
+  background: var(--band-free);
+}
+
+.proportion-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.proportion-legend-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.proportion-key {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--chart-neutral);
+  transform: translateY(1px);
+}
+
+.proportion-key.is-committed {
+  background: var(--band-committed);
+}
+
+.proportion-key.is-setAside {
+  background: var(--band-setaside);
+}
+
+.proportion-key.is-free {
+  background: var(--band-free);
+}
+
+
+.proportion-legend-label {
+  font-weight: 600;
+}
+
+
+.proportion-legend-amt {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.proportion-legend-share {
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+.plan-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+
+
+
+
+.plan-lever-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+
+.plan-note {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proportion-seg {
+    transform: none !important;
   }
 }
 
+/* ---- Plan groups: target share, what actually happens, how it tracks ---- */
+.plan-sheet-head-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.plan-sheet-head-row h3 {
+  margin: 0;
+}
+
+
+
+
+
+
+.plan-pct {
+  width: 58px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: 16px;
+  padding: 4px 6px;
+  border-radius: var(--r-2, 8px);
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--fg);
+}
+
+.plan-pct-sign {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+
+
+
+
+
+
+
+
+.plan-track {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.plan-track.is-on {
+  color: var(--flow-in);
+}
+
+
+/* An explicit background, because this pill is a <button>.
+
+   It declared a border and a colour but never a background, so it fell through
+   to the user agent's default button surface. Against the dark theme that
+   surface is near-invisible and the pill looked like every other quiet pill on
+   the card; in LIGHT mode the same default renders a muddy grey fill, and
+   "100% of take-home" sat there as a grey blob among white hairline pills -
+   reading as disabled or pressed when it is neither.
+
+   The bug was invisible for as long as only one theme was being looked at,
+   which is why the guard in tests/wiring_contracts_proof.mjs now refuses any
+   styled button that sets a border or colour without also setting a
+   background. */
+.plan-total {
+  display: inline-block;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--dim);
+}
+
+.plan-total.is-balanced {
+  color: var(--flow-in);
+  border-color: color-mix(in srgb, var(--flow-in) 40%, transparent);
+}
+
+.plan-assign {
+  margin-top: 14px;
+}
+
+.plan-assign-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.plan-assign-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.plan-assign-name {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+
+.proportion-key.is-fixed { background: var(--band-committed); }
+.proportion-key.is-setAside { background: var(--band-setaside); }
+.proportion-key.is-free { background: var(--band-free); }
+.proportion-seg.is-fixed { background: var(--band-committed); }
+.proportion-seg.is-free { background: var(--band-free); }
+
+
+.plan-assign-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.plan-dest-amt {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Setup wizard: one decision per screen ---- */
+.plan-wizard {
+  max-width: 560px;
+}
+
+.wiz-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wiz-head h3 {
+  margin: 0;
+}
+
+.wiz-dots {
+  display: flex;
+  gap: 5px;
+  margin: 14px 0 4px;
+}
+
+.wiz-dot {
+  width: 18px;
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.wiz-dot.is-done {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.wiz-dot.is-on {
+  background: var(--accent);
+}
+
+.wiz-body {
+  padding-top: 10px;
+}
+
+.wiz-step {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.wiz-q {
+  margin: 4px 0 2px;
+  font-size: 20px;
+}
+
+.wiz-evidence {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.wiz-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wiz-picker .btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.wiz-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+
+.wiz-target-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wiz-target-label {
+  flex: 1 1 auto;
+}
+
+.wiz-total-row,
+.wiz-actions,
+.wiz-foot {
+  margin-top: 14px;
+}
+
+.plan-workings {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0;
+}
+
+.plan-working {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Category taxonomy: grouped, one control per row ---- */
+.plan-assign-group {
+  margin-top: 12px;
+}
+
+.plan-assign-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.plan-assign-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* minmax(0, 1fr), not 1fr.
+   A `1fr` track's minimum is its own min-content, so a child that refuses to
+   wrap makes the track - and therefore the row, the panel and the card - as
+   wide as that child's longest line. With `white-space: nowrap` on the toggle
+   beside it, one long label ran 369px past the card's right edge and widened
+   the whole document from 438px to 837px. Zero as the floor lets the track
+   shrink, so the row can never be pushed wider than the card holding it. */
+.plan-assign-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.plan-assign-select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--r-2, 8px);
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.plan-assign-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 520px) {
+  .plan-assign-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+    padding: 5px 0;
+  }
+  .plan-assign-select {
+    max-width: none;
+  }
+}
+
+/* A quiet temporal anchor beside a chart title: the year the columns cover,
+   said once rather than repeated against every month label. */
+.card-head .card-period {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+/* The share total and the primary action belong to the same decision, so they
+   sit on one baseline instead of the total clipping above the button. */
+
+
+/* The narrow-width .plan-foot column rule that used to live here is GONE.
+   It predated the trigger+panel footer and turned five short controls into five
+   stacked full-width rows - a 223px footer for four labels and one button, with
+   each control floating centred in its own band. Its own `align-items: stretch`
+   never even took effect: the base .plan-foot rule further down this file has
+   equal specificity and comes later, so `align-items: center` won and the
+   stretch never applied. The controls fit one line at 438px (154+109+72+gaps =
+   366 of 376 available), so the footer now simply wraps when it must. The
+   mobile adjustments that ARE still needed live with the base rule below, after
+   it, where they can actually win. */
+
+/* ---- Statement coverage: one cell per month, gaps made obvious ---- */
+.cov-ledger + .cov-ledger {
+  margin-top: 14px;
+}
+
+.cov-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cov-name {
+  font-weight: 600;
+}
+
+.cov-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+
+.cov-count.is-complete {
+  color: var(--flow-in);
+}
+
+.cov-strip {
+  display: flex;
+  gap: 2px;
+  height: 20px;
+}
+
+.cov-cell {
+  flex: 1 1 0;
+  min-width: 4px;
+  border-radius: 2px;
+  background: var(--chart-neutral);
+}
+
+.cov-cell.is-loaded,
+.cov-cell.is-full {
+  background: color-mix(in srgb, var(--accent) 70%, var(--panel));
+}
+
+.cov-cell.is-partial {
+  background: color-mix(in srgb, var(--accent) 34%, var(--panel));
+}
+
+.cov-cell.is-missing {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--fg) 24%, transparent);
+}
+
+.cov-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.cov-note {
+  margin: 12px 0 0;
+}
+
+.secondary .cov-note {
+  padding: 0;
+}
+
+.scenario-more,
+.scenario-cost {
+  margin-top: 10px;
+}
+
+/* ---- Data & settings: what is here, then what you can do about it ---- */
+.sec-glance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-bottom: 14px;
+}
+
+.sec-fold {
+  border-top: 1px solid var(--hairline-soft, var(--hairline));
+  padding: 10px 0 2px;
+}
+
+.sec-fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  padding: 4px 0;
+}
+
+.sec-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* No marker of its own: .disclosure already supplies one, and two chevrons on
+   one summary was the visible cost of these being separate idioms. The width
+   is kept as the alignment gutter the Data & settings rule measures against. */
+.sec-fold > summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+}
+
+.sec-fold-body {
+  padding: 4px 0 10px 14px;
+}
+
+.sec-fold.is-danger > summary {
+  color: var(--flow-out);
+}
+
+/* Unsaved work, said quietly. Same pill idiom as the share total beside it, so
+   it reads as a state of the plan rather than an alarm. */
+.plan-unsaved {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  color: var(--warn-ink);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  white-space: nowrap;
+}
+
+/* A primary action with nothing to do says so rather than inviting a press. */
+.plan-lever-actions .btn.primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---- Plan tab design pass ---- */
+
+/* D1: a header for the three columns, so the bare % box explains itself. */
+
+
+/* D2: each row carries its group's colour, so a row and the band it belongs to
+   in the picture above are visibly the same thing. */
+
+.plan-group.is-setAside { border-left-color: var(--band-setaside); }
+
+/* D3: the meter is read against where the plan says the group should reach. */
+
+
+/* D5: the editable box is the one control on the row, so it reads as one. */
+.plan-pct:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.plan-pct:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline));
+}
+
+/* D6: figures line up down the card instead of drifting with label length. */
+
+
+/* D7: rows are separated, so three dense rows read as three things. */
+
+/* D8: a tiny band stays visible and reachable rather than collapsing to a
+   sliver that cannot be hovered or focused. */
+.proportion-seg {
+  min-width: 10px;
+}
+
+/* D9: the picture gets breathing room from the reasoning below it. */
+.plan-primary .proportion {
+  margin-bottom: 18px;
+}
+
+@media (max-width: 639px) {
+  /* D10: on a phone the header would only repeat what each row already says. */
+  .plan-group {
+    padding-left: 8px;
+  }
+}
+
+/* ============================================================
+   Plan tab: quieter surface, same figures.
+   The card carried four peer buttons, a legend with a second line of prose
+   under every band, and three borders competing for the same edge. Nothing
+   below changes a number - only how hard the card is to read.
+   ============================================================ */
+
+/* One line per band. The meaning lives in the row's tooltip and its accessible
+   label, so nothing is lost to anyone who wants it. */
+.proportion-legend-row {
+  align-items: baseline;
+  gap: 10px;
+}
+
+.proportion-legend-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.proportion-legend-amt {
+  font-weight: 600;
+}
+
+.proportion-legend-share {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* Balance state reads as a property of the plan, beside its name. */
+.plan-sheet-head-row .plan-total {
+  margin-left: auto;
+}
+
+/* Secondary actions live behind the More drawer; see .plan-drawer-summary. */
+
+.plan-lever-actions.is-secondary {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The footer holds one action; the rest sit behind More. */
+
+/* --- Density and contrast -------------------------------------------------
+   ACTUAL leads, PLAN supports, tracking is the quietest of the three. They
+   were three figures at nearly equal weight competing on one line. */
+
+
+.plan-track {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--dim) 85%, transparent);
+}
+
+/* --- Lighter edges --------------------------------------------------------
+   A left accent AND a full separator AND the card border met at every row. */
+
+
+
+/* --- Inputs ---------------------------------------------------------------
+   Compact and the same height as the pills beside them, so a row does not
+   shift as values change. */
+.plan-pct {
+  width: 54px;
+  padding: 5px 7px;
+  font-size: 15px;
+}
+
+
+/* --- Feedback -------------------------------------------------------------
+   A dot rather than a bordered pill: present enough to notice, quiet enough
+   not to read as an error. */
+.plan-unsaved {
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+}
+
+.plan-unsaved::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+/* A saved plan settles rather than announcing itself. */
+@keyframes plan-settle {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+
+.plan-lever-actions .btn.primary:disabled {
+  animation: plan-settle 0.4s var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-lever-actions .btn.primary:disabled {
+    animation: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .plan-foot {
+    align-items: stretch;
+  }
+}
+
+/* ============================================================
+   My plan: one aligned row per group.
+   Each group was three stacked blocks - name+input, a meter bar, then a
+   figures line carrying ACTUAL, PLAN and the difference with their own
+   micro-labels. Three rows of that is nine blocks and six repeated labels.
+   The same data now sits on one line per group, on shared columns.
+   ============================================================ */
+
+
+
+
+/* U6: the left accent and the colour chip encoded the same thing twice at the
+   same edge. The chip stays - it matches the legend in the picture above. */
+
+
+
+/* Share sits centred under its header, with the sign tucked against it. */
+
+/* U7: number spinners are three extra affordances per row for a value people
+   type, not step. */
+.plan-pct {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  text-align: center;
+  width: 100%;
+  max-width: 62px;
+}
+
+.plan-pct::-webkit-outer-spin-button,
+.plan-pct::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* U8: Actual leads, Plan supports, difference is quietest - a clear order
+   instead of three figures at one weight. */
+
+
+
+/* The meter is a hairline on the row's own base line. */
+
+
+
+/* U2: a group with nothing in it reads as nothing. */
+
+/* U4: an optional task, styled as one. */
+.plan-sort {
+  font-weight: 500;
+}
+
+/* U5: one shelf of settings under the plan. */
+
+
+/* U9: the card's own sections breathe apart instead of stacking flush. */
+
+/* U10: on a phone the five columns become two readable lines instead of five
+   squeezed ones - name and share, then the figures beneath. */
+
+
+/* ============================================================
+   My plan: alignment, weight, and one line per boundary.
+   Each row drew TWO horizontal lines - a separator and a meter directly
+   beneath it - so a three-row table showed six rules. The separator now IS
+   the meter: one line per boundary, part of it in the group's colour.
+   ============================================================ */
+
+
+/* The single rule under each row: a full-width track with the group's own
+   progress laid over its left-hand end. */
+
+
+
+
+/* --- Columns --------------------------------------------------------------
+   On a wide card the five columns drifted into large empty gutters, so a row
+   had to be read across half a metre of screen. The table takes a comfortable
+   measure and sits left, where the eye already is. */
+
+
+/* Figures may shrink within their column rather than push past the card's
+   edge - the difference was clipping to "$18,378.60 unde". */
+
+/* Share reads as one control: the box and its sign are a single object. */
+
+
+
+
+.plan-pct-sign {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* --- Figures --------------------------------------------------------------
+   Actual is the fact, Plan is the intention, the difference is the gap
+   between them. Three clearly different jobs, three clearly different weights,
+   all on one tabular baseline. */
+
+
+
+
+/* A group with nothing in it keeps its target legible - the target is still a
+   real intention even when nothing has happened against it. */
+
+
+/* --- Header ---------------------------------------------------------------
+   Title, its explainer, an optional task and the balance were four elements at
+   four weights on one line. */
+.plan-sheet-head-row {
+  gap: 8px 12px;
+  padding-bottom: 4px;
+}
+
+.plan-sheet-head-row h3 {
+  margin-right: 2px;
+}
+
+
+/* --- Footer ---------------------------------------------------------------
+   Status, action, escape hatch - in that order, on one baseline. */
+
+
+
+
+
+/* --- Drawers --------------------------------------------------------------
+   Their chevrons sat at the far edge of a very wide card, a long way from the
+   label they belong to. */
+
+@media (max-width: 639px) {
+  .plan-foot {
+    max-width: none;
+  }
+  .plan-foot .plan-lever-actions {
+    margin-left: 0;
+  }
+}
+
+/* ============================================================
+   My plan - three blocks, not a spreadsheet.
+
+   The table shape was wrong for this. Five columns forced the eye across a
+   wide gutter from a group's name to its numbers, needed a header row to
+   explain what each column held, and left the one actionable figure - how far
+   off plan you are - as small grey text at the far right edge. Each group is
+   now a self-contained block read top to bottom: what it is and what share you
+   want, a bar showing where you actually are against that, and the two figures
+   behind it.
+   ============================================================ */
+.plan-groups {
+  /* The three groups sit ACROSS the card's lane, not down one edge of it.
+     A full-width card holding a narrow stack leaves most of its width empty;
+     three columns use it, and mirror the three bands of the picture directly
+     above. auto-fit means the same rule gives two columns on a tablet and one
+     on a phone with nothing further to maintain. */
+  display: grid;
+  /* 300, not 250. A band carries three labelled figures on one line; at 250 the
+     third had nowhere to go but a line of its own, which is what made the
+     variance read as detached from the pair above it. Below three columns'
+     worth the grid drops to two and each band gets the room it needs. */
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 8px 28px;
+  margin-top: 16px;
+}
+
+/* The foot used to be two rows (figures, then the variance beneath), so it
+   reserved 48px. It is one line now, and 48px of reserved height under a 20px
+   line reads as a gap someone forgot to fill. */
+.plan-row {
+  display: grid;
+  grid-template-rows: minmax(40px, auto) 6px minmax(24px, auto);
+  row-gap: 10px;
+  align-content: start;
+  padding: 14px 0 16px;
+}
+
+/* Columns divide vertically; the stacked fallback divides horizontally. The
+   grid decides which by container width, so both are declared and only one
+   can apply. */
+@supports (grid-template-columns: subgrid) or (display: grid) {
+  .plan-groups .plan-row + .plan-row {
+    border-top: 0;
+  }
+}
+
+.plan-row-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.plan-row-name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* One label size, the app's own.
+
+   This card carried twelve distinct size/weight pairs, three of which existed
+   NOWHERE else in the app: a 15px group label, a 13px drawer trigger and a
+   10px amount label. Each was picked in isolation and each read as a different
+   typographic system inside one card - the group name larger than the card's
+   own heading, the drawer triggers a size apart from the buttons beside them.
+   These three now use sizes the app already has: 14/650 is .field-label, 12.5
+   is the small-control size the track and the buttons in the same row use, and
+   11 is the micro-label size. Every size left in the card is one it shares
+   with the rest of the app. */
+.plan-row-label {
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+/* The share control: box and sign are one object, sized to the number it
+   holds rather than to a column. */
+.plan-row-share {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  min-width: 72px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-2, 8px);
+  background: var(--panel);
+  padding-right: 9px;
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
+}
+
+.plan-row-share:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.plan-row-share .plan-pct {
+  width: 46px;
+  border: 0;
+  background: transparent;
+  padding: 7px 3px 7px 10px;
+  font-size: 15px;
+  font-weight: 650;
+  text-align: right;
+  color: var(--fg);
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.plan-row-share .plan-pct:focus-visible {
+  outline: none;
+}
+
+.plan-row-share .plan-pct::-webkit-outer-spin-button,
+.plan-row-share .plan-pct::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.plan-pct-sign {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* The bar is the block's centre of gravity: the track is the plan, the fill is
+   what actually happened against it. */
+/* ---------------------------------------------------------------------------
+   THE TARGET-BAR CONTRACT
+
+   A bar that shows progress against a target keeps ONE height, always. Going
+   over a target is allowed to change colour and pattern; it is never allowed to
+   change geometry. A bar that grows when it is exceeded pushes whatever sits
+   under it - on a phone that is the whole control row, with its labels showing
+   through the stripes.
+
+   The height is pinned three ways on purpose. height alone is a suggestion in a
+   flex or grid parent that decides to stretch its children, and the bar sits in
+   both kinds of parent depending on viewport. min/max close that off, flex:none
+   stops a flex parent shrinking or growing it, and align-self:start stops a
+   grid or stretch-aligned parent overriding the height outright.
+
+   New target bars join this selector list; they do not restate the rule.
+   wiring_contracts_proof.mjs fails the build if any is-over rule touches a
+   geometry property. --------------------------------------------------------- */
+:where(.plan-bar) {
+  height: 6px;
+  min-height: 6px;
+  max-height: 6px;
+  flex: none;
+  align-self: start;
+  box-sizing: border-box;
+}
+
+.plan-bar {
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  overflow: hidden;
+}
+
+.plan-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--chart-neutral);
+  transition: width 0.28s var(--ease);
+}
+
+.plan-bar-fill.is-fixed { background: var(--band-committed); }
+.plan-bar-fill.is-setAside { background: var(--band-setaside); }
+.plan-bar-fill.is-free { background: var(--band-free); }
+
+/* Past the end of the plan the bar is striped, so exceeding a target looks
+   different from meeting it rather than just being full. */
+.plan-bar.is-over .plan-bar-fill {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, #000 26%, transparent) 0 5px,
+    transparent 5px 10px
+  );
+}
+
+/* ACTUAL, PLAN and the variance: one line, one geometry, every band.
+
+   This was two rows - the pair on the first, the conclusion right-aligned
+   beneath it - because as a wrapping flex row the conclusion's position
+   depended on how long that band's PLAN figure happened to be, and two bands
+   with identical markup read as two different layouts a column apart. Two
+   fixed rows made the position deliberate, but it also stranded the variance
+   on a line by itself, reading as a leftover rather than as the third figure
+   in a comparison.
+
+   A three-cell grid gets both: the variance sits WITH the pair it belongs to,
+   and its position is still a decision rather than an accident, because the
+   columns are fractions of the band rather than the width of whatever text
+   landed in them. */
+.plan-row-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 4px;
+  width: 100%;
+  margin: 0;
+  min-height: 24px;
+}
+.plan-row-foot > .plan-track {
+  justify-self: end;
+  text-align: right;
+}
+
+/* ACTUAL and PLAN sit in two equal columns, not in a flex row.
+
+   As a flex row the PLAN block began wherever the ACTUAL figure happened to
+   end, so its left edge moved 35px between the three bands of the same card -
+   three columns built from identical markup reading as three different
+   layouts. Equal columns make the second figure start in the same place in
+   every band, whatever the numbers are. */
+/* The pair divides its own share of the band in half, so PLAN starts in the
+   same place in all three bands whatever the figures are. Equal halves,
+   because both figures are now written the same way. */
+.plan-row-amounts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: baseline;
+  column-gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+}
+
+.plan-row-actual {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-amount-label {
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.plan-target-amt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 450;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The gap to plan is the point of the card, so it is a legible figure rather
+   than the faintest thing on the row. */
+.plan-track {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  white-space: nowrap;
+}
+
+.plan-track.is-on {
+  color: var(--flow-in);
+}
+
+.plan-row.is-empty .plan-row-actual {
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+  font-weight: 550;
+}
+
+@media (max-width: 639px) {
+  .plan-groups {
+    max-width: none;
+  }
+  /* The label-above-value stack here existed because ACTUAL and PLAN each
+     carried an eight-digit figure and could not share a phone's line with
+     their own labels. Both are short now, and the whole trio measures about
+     255px in a 376px row - so the phone gets the same single line the desktop
+     does, rather than a second layout for the same three figures. */
+  .plan-row-amounts {
+    column-gap: 12px;
+  }
+}
+
+/* ---- The shelf of settings under the plan --------------------------------
+   The shared explainer drawer pushes its chevron with margin-left:auto, which
+   is right in a narrow column and wrong in a full-width card: the label sat at
+   the far left and its chevron at the far right, a hand-span apart, so the two
+   did not read as one control. Here each summary is only as wide as it needs
+   to be, and the two sit side by side as a row of settings. */
+
+
+
+
+
+
+/* An opened drawer takes the whole shelf, so its list is not squeezed into a
+   half-width column beside a closed pill. */
+
+/* ============================================================
+   Plan toolbar - status, settings, action, on one line.
+
+   This was two bands: an action row whose left half was empty whenever a plan
+   was saved (buttons pinned to the far edge across a metre of nothing), and
+   below it a second rule and a shelf whose two drawers stretched to fill and
+   so came to rest at arbitrary points. One rule, one row, nothing floating.
+   ============================================================ */
+.plan-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.plan-drawer-triggers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  order: 1;
+}
+
+/* Narrow widths: the row still WRAPS, it never becomes a column. Declared after
+   the base rule on purpose - this file has been bitten before by a media query
+   sitting earlier than the rule it means to override and losing on source
+   order. */
+@media (max-width: 520px) {
+  .plan-foot {
+    flex-direction: row;
+    align-items: center;
+    row-gap: 8px;
+  }
+  /* The primary action keeps the end of the row; it no longer needs a line of
+     its own, because nothing else is claiming one. */
+  .plan-foot > .plan-lever-actions {
+    margin-left: auto;
+  }
+}
+
+/* The save state belongs BESIDE the thing it describes.
+
+   It used to open the row (order 1, margin-right:auto), which put "not saved
+   yet" at the far left and "Save my plan" at the far right - the two halves of
+   one sentence a full card-width apart, with three settings drawers between
+   them. The settings open the row now; the state and its button close it
+   together. */
+.plan-foot-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  order: 3;
+  margin-left: auto;
+}
+.plan-foot-status > .chart-info > summary {
+  line-height: 0;
+}
+
+.plan-saved-note {
+  font-size: 12.5px;
+  /* 52% of the foreground scored 3.86 against the card - under AA for a line
+     that tells you when your plan was last saved. 68% clears it and still
+     reads as secondary beside the button. */
+  color: color-mix(in srgb, var(--fg) 68%, transparent);
+  white-space: nowrap;
+}
+
+/* Settings sit between the status and the action, sized to their own labels. */
+
+.plan-drawer-summary {
+  /* The settings open the row; the save state and its button close it. All
+     three triggers share one slot and fall in DOM order within it, so opening
+     one never reorders the row. */
+  order: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--fg) 62%, transparent);
+  padding: 6px 11px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition:
+    color 0.15s var(--ease),
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+
+
+/* The shared drawer paints an info glyph before its label. These two are
+   editors, not explanations - the glyph promised a tooltip and opened a
+   settings list - so it is removed here rather than app-wide. */
+
+/* One affordance, not two. These drawers previously carried an info glyph AND
+   a chevron - the glyph promised an explanation and opened a settings list. */
+.plan-drawer-summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  /* Points DOWN, because that is where the panel opens. The shared drawer's
+     right-pointing chevron promised navigation. */
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 0.16s var(--ease);
+  opacity: 0.75;
+}
+
+
+.plan-drawer-summary:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+.plan-drawer-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
+/* An opened drawer drops to its own full-width line under the toolbar, so its
+   list is never squeezed into a fraction of a row. */
+
+
+.plan-foot > .plan-lever-actions {
+  /* Last in the row, immediately after the save state it acts on. The auto
+     margin now lives on .plan-foot-status, which is the pair's left edge; a
+     second auto margin here would split the two apart again. */
+  order: 4;
+  margin: 0;
+}
+
+
+@media (max-width: 639px) {
+  /* Narrow: the settings wrap onto their own line first, then the state and
+     its button share the last one - still adjacent, still reading as a pair. */
+  .plan-foot-status {
+    margin-left: auto;
+  }
+  .plan-drawer-summary {
+    order: 1;
+  }
+}
+
+/* ---- Drawer status, so opening is a choice not a check ---- */
+
+
+
+/* The destination toggle. Its label used to BE its state, so "Not saving" read
+   as an instruction rather than a status - and the label changed under the
+   cursor on every press. The label is now constant and the checkbox carries
+   the state. */
+/* The label WRAPS.
+
+   `white-space: nowrap` on a checkbox label is a promise that the text will
+   always be short. It was not: the row's label ran outside its card and off
+   the screen, taking the page's horizontal scroll with it. A checkbox and its
+   words are a paragraph with a control in front, so the words wrap and the
+   control stays put beside the first line. */
+.plan-dest-toggle {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plan-dest-toggle > .plan-dest-check {
+  flex: none;
+  /* Keeps the box on the first line of a label that wrapped, rather than
+     floating against the middle of a two-line paragraph. */
+  margin-top: 2px;
+}
+
+.plan-dest-toggle:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+
+.plan-dest-toggle.is-card {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+}
+
+.plan-dest-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  justify-self: start;
+  gap: 0;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.plan-dest-action > .chart-info {
+  flex: none;
+}
+
+.plan-dest-action > .plan-dest-toggle {
+  padding-right: 2px;
+}
+
+.plan-dest-check {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--band-setaside);
+  cursor: pointer;
+}
+
+.plan-dest-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.plan-assign-filter {
+  width: 100%;
+  max-width: 280px;
+  margin: 10px 0 4px;
+  padding: 7px 10px;
+  border-radius: var(--r-2, 8px);
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.plan-assign-filter:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* The total is the thing that reports an unbalanced split, so it is also the
+   thing that fixes it - the remedy was two clicks away behind More. */
+button.plan-total {
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+}
+
+/* The off-balance pill is the one state that NEEDS to be read, and it was the
+   one that could not be: raw --warn is a deep burnt orange that measures 2.93:1
+   on the dark card - under even the 3:1 floor for UI text, while the balanced
+   green beside it sits at 7.76:1. The state asking to be noticed was the
+   faintest thing on the card.
+
+   It is lifted toward the foreground until it clears 4.5:1, and given the
+   filled treatment a pressable pill should have had anyway - it IS a button
+   that fixes the split in one tap. */
+button.plan-total.is-fixable {
+  cursor: pointer;
+  color: color-mix(in srgb, var(--warn) 55%, var(--fg));
+  border-color: color-mix(in srgb, var(--warn) 70%, var(--fg));
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  font-weight: 650;
+}
+
+button.plan-total.is-fixable:hover {
+  background: color-mix(in srgb, var(--warn) 30%, transparent);
+  color: var(--fg);
+}
+
+button.plan-total:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Drawers: the trigger stays put, the panel opens below ---------------
+   As a <details> in the toolbar these reordered to a full-width row on open,
+   so the control jumped out from under the cursor at the moment it was
+   pressed. Trigger and panel are now separate: the button never moves. */
+/* A SECOND rule for this selector, 180 lines after the first, quietly undoing
+   two of its declarations: `font: inherit` reset the 12.5px/500 set above back
+   to the card's own 13px/400 - which is why these triggers were the only 13px
+   text in the card - and `order: 2` re-fought the ordering decided above.
+   The font reset is also redundant now that the base button reset carries it.
+   What is left here is the part that is genuinely additional. */
+.plan-drawer-summary {
+  flex: none;
+  background: transparent;
+}
+
+.plan-drawer-summary.is-open {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.plan-drawer-summary.is-open::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+
+.plan-panels {
+  flex: 1 0 100%;
+  order: 5;
+  margin-top: 2px;
+}
+
+.plan-panel {
+  padding-top: 12px;
+  animation: plan-panel-in 0.18s var(--ease) both;
+}
+
+@keyframes plan-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-panel {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   THE "DATA & SETTINGS" ALIGNMENT RULE
+
+   One left edge for every row in this section, wherever it is opened from.
+
+   Before this, a fold title ("Your name", "Privacy", "Statements") was pushed
+   right by its own 14px chevron, while the blocks that are not folds - the
+   counts strip and the statement-coverage strip - started hard against the
+   edge. Two left edges in one section, and which row got which depended only on
+   whether it happened to be built as a <details>.
+
+   The chevron now sits in a gutter OUTSIDE the text column rather than
+   occupying the first 14px of it, so every row - fold summary, fold body, or
+   plain block - begins at the same x. New rows inherit it by being inside
+   .sec-manage-wrap; nothing needs to opt in.
+   --------------------------------------------------------------------------- */
+/* ONE left edge for the whole "Data & settings" card.
+
+   The edge is the section's own heading. Everything below it - the trust
+   blocks, the counts strip, every fold summary and every fold body - starts at
+   the same x, so a vertical line drawn down "Data & settings" touches all of
+   them.
+
+   Measured before this there were three edges: 49px for the heading, 73px for
+   "Card statements"/"Account statements" (a separate .sec-section container the
+   wrap-only rule never reached) and 87px for folds nested inside another fold's
+   body, which took the indent twice.
+
+   The disclosure chevron is the reason a gutter existed at all. It now sits in
+   NEGATIVE space, inside the card's own padding, so it still marks its row
+   without pushing that row's text out of the column. */
+.card.secondary:has(.sec-manage-wrap) {
+  --manage-gutter: 14px;
+}
+
+.card.secondary:has(.sec-manage-wrap) > .sec-section,
+.card.secondary:has(.sec-manage-wrap) > .sec-section > *,
+.sec-manage-wrap > *,
+.sec-manage-wrap > .sec-fold,
+.sec-manage-wrap > .sec-fold > summary,
+.sec-manage-wrap > .sec-fold > .sec-fold-body,
+.sec-fold-body .sec-fold > summary,
+.sec-fold-body .sec-fold > .sec-fold-body {
+  padding-left: 0;
+}
+
+/* The chevron stays IN FLOW at the row's own left edge, so a fold row begins at
+   the same x as a heading's icon or a section's icon. Pulling it into negative
+   space aligned the text but pushed the marker out past the section heading -
+   the line a person actually sees is the first glyph in the row, not its first
+   letter. */
+.card.secondary:has(.sec-manage-wrap) .sec-fold > summary {
+  position: relative;
+  padding-left: 0;
+}
+
+/* The card's own heading is the line everything else is measured against, so it
+   cannot carry an indent the rows beneath it do not. Its 24px summary padding
+   put its icon at 73 while every row below sat at 49. */
+.card.secondary:has(.sec-manage-wrap) > summary {
+  padding-left: 0;
+}
+
+.card.secondary:has(.sec-manage-wrap) .sec-fold > summary::before {
+  position: static;
+  display: inline-block;
+  width: var(--manage-gutter);
+}
+
+/* ---------------------------------------------------------------------------
+   "+ Custom label" reads as a control, not as a caption.
+
+   The attached state was a solid pill; the not-yet-attached state was plain
+   underlined text with no border, no background and 70% opacity - so the one
+   that invites a click looked less interactive than the one that does not.
+   Discovering it took trial and error.
+
+   It now carries the pill's geometry with a dashed edge: same shape and weight
+   as the attached label, visibly the "add one" variant of it rather than a
+   different species of thing.
+   --------------------------------------------------------------------------- */
+.row-tag-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  margin-left: 8px;
+  border: 1px dashed color-mix(in srgb, var(--fg) 34%, transparent);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--dim);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  opacity: 1;
+  transition:
+    color 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    background 0.15s var(--ease);
+}
+
+.row-tag-action:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* The label count is a way in to the transactions behind it. */
+.vm-tag.is-drill {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.vm-tag.is-drill:hover {
+  color: var(--accent-text);
+}
+
+/* One explanatory line under the transaction search: what the label control is
+   for, and which categories actually exist to search by. */
+.tx-hint {
+  margin: 0 0 10px;
+  line-height: 1.7;
+}
+
+.tx-hint-cats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  vertical-align: middle;
+}
+
+.tx-hint-cat {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  border-radius: var(--r-pill);
+  padding: 1px 8px;
+  font-size: 11.5px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.tx-hint-cat:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* A chosen chip. These are toggles, not shortcuts - any number can be on at
+   once - so each has to say plainly whether it is one of the ones currently
+   narrowing the list. Filled, not merely outlined: an outline-only "selected"
+   state is indistinguishable from hover at a glance. */
+.tx-hint-cat.is-on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent-text);
+  font-weight: 650;
+}
+.tx-hint-cat.is-on:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.tx-hint-cat:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A card that opens closed. Deliberately the SAME .disclosure mechanism used
+   everywhere else - the summary just carries a card's title and its one calm
+   line, so a closed card still tells you something. */
+/* The card's own padding is handed to the summary and body instead, so a
+   collapsible card is exactly as tall and as wide as the plain card it
+   replaced. With both in place the content was inset TWICE - the card's 16px
+   plus the body's 16px - which cost 32px of a 347px card on a phone, roughly a
+   tenth of the usable width, and left drawer panels visibly narrower than the
+   card holding them.
+
+   section.card is two classes, so the bare .card-collapsible was losing to it
+   on specificity and the padding never actually came off. */
+section.card.card-collapsible {
+  padding: 0;
+}
+
+.card-collapsible > .card-disclosure > summary > .card-title {
+  margin: 0;
+}
+
+/* Title left, summary right, one row - always.
+
+   As a wrapping flex row, whether the summary sat beside its title or dropped
+   to a second line depended on how long that card's TITLE happened to be:
+   "Your goal - None set yet" stayed inline while "What this plan does to my
+   cash" pushed its summary onto a line of its own. Four collapsed cards in a
+   column, laid out two different ways, for no reason a reader could see.
+
+   A three-column grid decides it instead: the title takes what it needs, the
+   summary takes the rest and right-aligns in it, the chevron sits at the end.
+   A long summary now shortens rather than reflowing the card. */
+.disclosure.card-disclosure > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  cursor: pointer;
+  padding: var(--s4, 14px);
+  list-style: none;
+}
+
+.card-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.card-disclosure > .disclosure-body {
+  padding: 0 var(--s4, 14px) var(--s4, 14px);
+  margin: 0;
+}
+
+/* An open card should not also pay for the summary's bottom padding. */
+.card-disclosure[open] > summary {
+  padding-bottom: 6px;
+}
+
+.card-disclosure-note {
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   STAGED DISCLOSURE inside a drawer.
+
+   Opening the Categories drawer used to hand over twenty rows and twenty-one
+   controls at once - 835px of editable detail for someone who had asked one
+   question. Stage one answers the question and shows only what still needs a
+   decision; stage two is the full editable list, behind a second deliberate
+   tap that closes the same way it opened.
+   --------------------------------------------------------------------------- */
+.plan-assign-summary {
+  margin: 0 0 8px;
+}
+
+.plan-assign-more {
+  margin-bottom: 8px;
+}
+
+/* The rows that still need a decision sit above the fold, marked so they read
+   as the reason the drawer was worth opening. */
+.plan-assign-urgent {
+  border-left: 2px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  padding-left: 10px;
+  margin-bottom: 10px;
+}
+
+/* A pre-ticked suggestion says so, and says why on hover, so a default is
+   never mistaken for something the person chose themselves. */
+.plan-dest-suggested {
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+/* The coverage strip when it is hosted inside another card (Data & settings).
+   Without this it drew a second bordered, padded card inside the first. */
+.cov-card.is-nested {
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0 0 4px;
+}
+
+/* The balance pill is a real control when the split is off - "tap to make it
+   100%". At 27px it was below a comfortable touch target, and it is the one
+   control on the card a person is most likely to reach for on a phone. */
+button.plan-total {
+  min-height: 32px;
+}
+
+@media (max-width: 639px) {
+  button.plan-total.is-fixable {
+    min-height: 44px;
+    padding-inline: 14px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   TOUCH TARGETS
+
+   These controls are all 32-34px tall - comfortable for a mouse cursor, small
+   for a thumb, and they are the ones a person actually operates on a phone:
+   the share fields they type into, the drawer triggers, the Keep/Cut choices,
+   and the balance pill. Measured at 375px: plan-pct 32, drawer 34, seg-btn 32,
+   plan-total 32.
+
+   min-height rather than padding so the text stays centred and nothing shifts
+   position.
+
+   Keyed to WIDTH, not (pointer: coarse). The app's whole responsive system is
+   width-based, and a pointer-media rule is a second axis that cannot be
+   verified the same way - it depends on device emulation that does not survive
+   a reload. A phone is narrow; that is the signal already used everywhere else.
+   --------------------------------------------------------------------------- */
+@media (max-width: 639px) {
+  .plan-pct,
+  .plan-drawer-summary,
+  button.seg-btn,
+  button.plan-total,
+  .plan-total,
+  .plan-assign-select,
+  .plan-dest-toggle,
+  .tx-hint-cat {
+    min-height: 44px;
+  }
+
+  /* An input's own box, so the caret and the tap area agree. */
+  .plan-pct {
+    padding-block: 0;
+  }
+
+  /* The three-way segmented control needs its buttons to stay on one line while
+     each gets a real target. */
+  .seg-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+
+/* The plan card's header row, on a phone.
+
+   Three short items wrapped onto three lines - 100px of header before any
+   content - and the balance pill, carrying `margin-left: auto`, ended up
+   stranded at an arbitrary x on its own row: an auto margin in a wrapping flex
+   container claims the free space of whatever line it lands on, which is the
+   same trap that put the plan footer's Save button on a line of its own.
+
+   Left-packed at narrow widths so the items read as one group. */
+@media (max-width: 639px) {
+  .plan-sheet-head-row .plan-total {
+    margin-left: 0;
+  }
+
+  .plan-sheet-head-row {
+    row-gap: 6px;
+  }
+}
+
+/* Category chips: one scrollable row on a phone, not a wall.
+
+   Eleven chips wrapped onto five rows at 375px - about 250px of filter UI above
+   the transaction list, pushing "All transactions" (the reason for the tab)
+   entirely below the fold. Raising the chips to a 44px touch target made it
+   worse, not better.
+
+   A single horizontally scrolling row is the standard phone pattern for filter
+   chips: everything stays reachable, nothing is hidden, and the list beneath
+   starts on screen. Desktop keeps the wrapped layout, where it costs nothing. */
+@media (max-width: 639px) {
+  /* Scrolling behaviour and the snap live on .hscroll now, applied by
+     markScrollAffordance to every strip; only what is specific to this row
+     stays here. */
+  .tx-hint-cats {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    /* No edge bleed: the inline padding it needed left the row scrolled 16px in
+       on load, so the first chip was clipped at -2px before anyone touched it.
+       The row sits inside the card's own padding and starts at its first chip,
+       aligned with the sentence above it. */
+    scroll-padding-inline-start: 0;
+  }
+
+  .tx-hint-cat {
+    flex: 0 0 auto;
+  }
+
+  /* The explanatory line reads as a sentence; the chips are the control. */
+  .tx-hint {
+    display: block;
+  }
+}
+
+/* The collapsible card's padding, at the specificity that actually wins.
+
+   `#app .card { padding: var(--s4) }` inside the mobile breakpoint is an
+   ID-level selector; `section.card.card-collapsible` could not beat it, so the
+   card kept its own 16px on top of the disclosure body's 16px. Content was
+   inset 33px inside a 347px card - drawer panels rendered 281px wide, visibly
+   narrower than the card around them, on the screen that can least afford it. */
+#app .card.card-collapsible,
+.accounts-wrap .card.card-collapsible {
+  padding: 0;
+}
+
+@media (min-width: 640px) {
+  #app .card.card-collapsible:not(.card-compact) > .card-disclosure > summary {
+    padding: var(--s5) var(--s6);
+  }
+  #app .card.card-collapsible:not(.card-compact) > .card-disclosure[open] > summary {
+    padding-bottom: 6px;
+  }
+  #app .card.card-collapsible:not(.card-compact) > .card-disclosure > .disclosure-body {
+    padding: 0 var(--s6) var(--s5);
+  }
+}
+
+@media (max-width: 639px) {
+  /* Taking the padding off the card moves it onto the summary and body, which
+     must then reproduce the SAME edge a plain card gives its content - one
+     vertical line down the tab, whether a card collapses or not. Measured: a
+     plain card puts content at 31px, so these do too. */
+  #app .card.card-collapsible > .card-disclosure > summary,
+  #app .card.card-collapsible > .card-disclosure > .disclosure-body {
+    padding-inline: var(--s4, 16px);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Scroll anchoring that clears the app's own chrome.
+ *
+ * Two bars are pinned over the page, and neither existed as far as the
+ * browser's scrolling was concerned. Measured, before this rule:
+ *   scrollIntoView({block:'start'}) -> 175px of the target behind the header
+ *   scrollIntoView({block:'end'})   ->  69px of the target behind the bottom bar
+ * A 97px transaction row aligned to the top was therefore entirely invisible.
+ * focusTransactionRow worked around it by centring instead, and said so in a
+ * comment; scroll-padding is the actual mechanism, and unlike the workaround it
+ * applies to every scroll the app never wrote - anchor jumps, tab focus, the
+ * browser restoring position on reload.
+ *
+ * The numbers come from syncLayoutInsets(), which measures the bars after each
+ * render; the fallbacks keep the rule sane before the first measurement.
+ * ------------------------------------------------------------------------- */
+:root {
+  --sticky-top: var(--stack-h, 0px);
+}
+html {
+  scroll-padding-top: calc(var(--sticky-top) + 10px);
+  scroll-padding-bottom: calc(var(--dock-bottom, 0px) + 10px);
+}
+
+@media (max-width: 639px) {
+  /* The pinned header was 172px of a 812px screen; with the bottom bar, 241px -
+     30% of the phone permanently spent on chrome, most of it a title and four
+     buttons that say nothing about the rows being read.
+
+     A sticky box offset by the height of its own first row lets that row scroll
+     away and pins the rest: the period selector (the one piece of context worth
+     keeping - WHICH period these figures are) stays, the title and actions
+     leave, and they come back the moment you scroll up. Chrome drops to ~123px.
+     The offset is measured, not guessed, so a wrapped header still lands the
+     period bar exactly at the top. */
+  .topbar-stack {
+    top: calc(-1 * var(--topbar-detach, 0px));
+  }
+  :root {
+    --sticky-top: calc(var(--stack-h, 0px) - var(--topbar-detach, 0px));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Horizontal strips: showing that they scroll.
+ *
+ * The category chips and the account slicer both became one scrolling row on
+ * phones, which fixed the five-row wall of filters. What neither gained was any
+ * sign that scrolling is possible. Measured on the transaction filters: the row
+ * is 347px wide holding 1124px of chips, and the tenth chip begins at exactly
+ * 361px - the row's own right edge - so at rest the strip ends in a hard
+ * vertical cut with a whole category invisible behind it. Nothing distinguishes
+ * that from a rendering fault, which is precisely how it was reported.
+ *
+ * The fade is driven by data-overflow, set by the strip's own scroll position,
+ * so it appears only on a side that actually has more - never a decorative
+ * gradient over a row that is already complete. mask-image, so the fade works
+ * over any background and costs no extra element.
+ * ------------------------------------------------------------------------- */
+.hscroll {
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.hscroll > * {
+  scroll-snap-align: start;
+}
+.hscroll[data-overflow='end'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent 100%);
+}
+.hscroll[data-overflow='start'] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 34px);
+  mask-image: linear-gradient(to right, transparent 0, #000 34px);
+}
+.hscroll[data-overflow='both'] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(to right, transparent 0, #000 34px, #000 calc(100% - 34px), transparent 100%);
+}
+/* A masked row cannot show a focus ring that leaves its box, so the ring is
+   brought inside rather than lost. */
+.hscroll > *:focus-visible {
+  outline-offset: -2px;
+}
+@media (max-width: 639px) {
+  .hscroll {
+    scrollbar-width: none;
+  }
+  .hscroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Touch targets in the transaction list, without inflating the list.
+ *
+ * The two most-tapped controls in the app measured 20px (the merchant name,
+ * which drills into the transaction) and 26px (+ Custom label). Both sit in a
+ * row that is already 115px tall on a phone, so growing them visually would
+ * cost rows on screen - and the tag was designed deliberately quiet, "a small
+ * dim word", on a 42-row list.
+ *
+ * So the hit area grows and the ink does not: a transparent pseudo-element
+ * centred on each control carries the 44px. Measured first - the two controls'
+ * centres sit 45px apart, so two 44px boxes abut with a pixel to spare and
+ * neither can steal the other's tap.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 639px) {
+  .linkbtn,
+  button.row-tag-action,
+  .fold-all-btn {
+    position: relative;
+  }
+  .linkbtn::before,
+  button.row-tag-action::before,
+  .fold-all-btn::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: var(--tap-lg);
+    transform: translateY(-50%);
+  }
+  /* The pay-day rows landed 1px short of the target; the plan's name field was
+     37px and, at under 16px, made iOS zoom the page on focus. */
+  .up-pay {
+    min-height: var(--tap-lg);
+  }
+  .name-field {
+    min-height: var(--tap-lg);
+    font-size: 16px;
+  }
+}
+
+/* Two controls that only a first-time visitor meets, both a couple of pixels
+   short of a real target: the skip link (the very first thing a keyboard user
+   reaches, on every page load) and the file trigger on the empty screen, whose
+   whole purpose is to be tapped. Measured at 42px each. */
+.skip-link:focus,
+.file-trigger-input,
+.file-trigger-input + .btn {
+  min-height: var(--tap-lg);
+}
+
+#app .card.card-compact,
+.card.card-compact {
+  padding: 0 14px;
+}
+.card.card-compact > .card-disclosure > summary {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* The label control as an ICON.
+
+   The dashed pill was right for a chip reading "+ Custom label" - it said
+   "there is nothing here yet, add one". Wrapped around a bare icon the same
+   dashes read as an empty placeholder box rather than a button, and repeated
+   down forty-two rows they made the list look like a form waiting to be filled.
+
+   A quiet round icon button instead: no resting border, the glyph carrying the
+   meaning, and a real surface on hover and focus so it is unmistakably
+   pressable. The 44px tap area (the ::before further up) is untouched. */
+.row-tag-action.is-icon {
+  gap: 0;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--dim);
+  opacity: 0.72;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.row-tag-action.is-icon .row-tag-ic {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+.row-tag-action.is-icon:hover,
+.row-tag-action.is-icon:focus-visible {
+  opacity: 1;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* The bank row's "category is automatic" mark needs air.
+
+   Butted straight against the category it annotates, "Government & Tax" + the
+   glyph read as one run of text ("Taxⓘ"). A small gap makes it a mark ON the
+   category rather than part of its name. */
+.banktx .cat-tag + .chart-info > summary,
+tr .cat-tag + .chart-info > summary {
+  margin-left: 5px;
+}
+
+.tx-categories-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.tx-hint.tx-cats-label {
+  margin: 0;
+  color: var(--dim);
+  font-size: 14px;
+  font-weight: 650;
+}
+.tx-hint.tx-cats-label > details.chart-info,
+.tx-hint.tx-cats-label > details.chart-info > summary {
+  font-size: 14px;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.card.secondary:has(.sec-manage-wrap) {
+  background: var(--surface-quiet, var(--panel));
+  box-shadow: none;
+}
+
+.card.secondary:has(.sec-manage-wrap) > summary {
+  min-height: 44px;
+  padding: 0 var(--card-pad-x);
+}
+
+/* Closed, this drawer is one line of text. It was spending 94px on it: 40px of
+   card padding wrapped around a 52px summary, to say "Data & settings" and
+   nothing else. The row a person taps is the summary, so that keeps a 44px
+   target and the card's own block padding shrinks to the hairline that holds
+   it. Opened, the full card padding returns, because then it has content to
+   space. Carries #app so it outranks premium.css's card padding, which is the
+   rule that actually sets it. */
+#app details.card.secondary:not([open]),
+.accounts-wrap details.card.secondary:not([open]) {
+  padding-block: 4px;
+}
+
+.sec-manage-wrap {
+  display: block;
+  padding: 0 var(--card-pad-x) var(--s3);
+}
+
+.settings-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  margin-bottom: 2px;
+  color: var(--good-ink);
+}
+
+.settings-status.needs-attention {
+  color: var(--warn-ink);
+}
+
+.settings-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.sec-manage-wrap > .sec-fold {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--hairline-soft, var(--hairline));
+}
+
+.sec-manage-wrap > .sec-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0;
+  color: var(--fg);
+}
+
+.sec-fold-title {
+  min-width: 0;
+}
+
+.sec-fold-meta {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sec-manage-wrap > .sec-fold > .sec-fold-body {
+  padding: 2px 0 18px 24px;
+}
+
+.sec-fold-body > .sec-section,
+.sec-fold-body > .cov-card {
+  padding: 12px 0 0;
+  border: 0;
+}
+
+.sec-fold-body .sec-subhead {
+  margin: 4px 0 8px;
+}
+
+.settings-actions {
+  margin-top: 12px;
+}
+
+.settings-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-rule-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-rule-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline-soft, var(--hairline));
+  border-radius: var(--r-inner);
+  background: var(--panel);
+}
+
+.settings-rule-panel.is-attention {
+  border-color: color-mix(in srgb, var(--warn) 24%, var(--hairline));
+}
+
+.settings-rule-copy {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-rule-panel > .settings-actions {
+  flex: none;
+  margin: 0;
+}
+
+.sec-custom-categories {
+  align-items: stretch;
+  align-self: start;
+  flex-direction: column;
+}
+
+.sec-custom-categories > .settings-rule-copy {
+  flex: none;
+}
+
+.settings-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+}
+
+.settings-category-form {
+  margin-top: 2px;
+}
+
+.sec-manage-wrap > .sec-fold > summary:focus-visible {
+  outline: 0;
+  border-radius: 0;
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.sec-manage-wrap > .sec-fold.is-danger > summary {
+  color: var(--dim);
+}
+
+.sec-manage-wrap > .sec-fold.is-danger[open] > summary {
+  color: var(--flow-out);
+}
+
+.scenario-row .recurring-name {
+  overflow: visible;
+  line-height: 1.3;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+@media (max-width: 639px) {
+  .card-disclosure > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 10px;
+  }
+
+  .card-disclosure > summary > .card-title {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .card-disclosure-note {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding-left: calc(var(--icon-inline) + 8px);
+    text-align: left;
+    white-space: normal;
+  }
+
+  .sec-manage-wrap {
+    padding-inline: var(--s4);
+  }
+
+  .card.secondary:has(.sec-manage-wrap) > summary {
+    padding-inline: var(--s4);
+  }
+
+  .sec-manage-wrap > .sec-fold > .sec-fold-body {
+    padding-left: 18px;
+  }
+
+  .settings-rules-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-rule-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-rule-copy {
+    flex: 0 1 auto;
+  }
+
+  .settings-rule-panel > .settings-actions {
+    align-self: flex-start;
+  }
+
+  .plan-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .plan-drawer-triggers,
+  .plan-panels {
+    grid-column: 1 / -1;
+  }
+
+  .plan-drawer-triggers {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.75fr);
+    width: 100%;
+  }
+
+  .plan-drawer-summary {
+    justify-content: center;
+    min-width: 0;
+    gap: 4px;
+    padding-inline: 2px;
+    font-size: 13px;
+  }
+
+  .plan-panels {
+    order: 2;
+    margin-top: 0;
+  }
+
+  .plan-foot-status {
+    grid-column: 1;
+    order: 3;
+    margin-left: 0;
+    justify-self: start;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .plan-foot > .plan-lever-actions {
+    grid-column: 2;
+    order: 4;
+  }
+
+  .statement-nudge .attn-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .statement-nudge .attn-actions {
+    grid-column: 2;
+    width: auto;
+    margin-top: 4px;
+  }
+}
+
+/* The second line of the statement nudge's (i) - how the cycle it is compared
+   against was arrived at - sits under the file and date line rather than
+   running on from it. */
+.nudge-working {
+  margin-top: 6px;
+}
+
+/* An (i) that sits INSIDE a sentence that wraps, rather than beside a heading
+   or in a status row. The statement nudge was the first; the emergency fund's
+   thin-data caveat is the second, and both want exactly this, so the rule is
+   written for the SHAPE (an inline bubble in an attn-body sentence) rather than
+   named after whichever card reached it first. Two consequences, both handled
+   here rather than by changing the shared bubble every other screen uses.
+
+   It aligns to the middle of the text it interrupts, so it reads as part of the
+   sentence instead of hanging off the baseline.
+
+   And on a narrow screen the shared (i) takes a 44px touch target (--tap-lg).
+   That floor is right and it stays exactly 44px to a finger - but as an
+   inline-block on the text baseline it also set the HEIGHT of the line box, so
+   a sentence that wrapped got 44px of leading between its two lines. The
+   trigger now keeps the text's own height in the flow and grows its tap area
+   outward through a pseudo-element, which is what the touch pass intended in
+   the first place: the row grows, the text does not move. */
+.attn-body > .chart-info,
+.review-note > .chart-info {
+  vertical-align: middle;
+}
+
+@media (max-width: 639px) {
+  .attn-body > .chart-info > summary,
+  .review-note > .chart-info > summary {
+    position: relative;
+    min-height: 0;
+  }
+
+  /* Both dimensions belong on THIS selector, not on the bare summary above.
+     flow-chart.css sizes the icon-only trigger 22x22 through
+     `.chart-info > summary.is-icon-only` and loads after this file, so a rule
+     written one class lighter ties with it and loses on order - which left the
+     trigger 16 wide and 22 tall, square in neither sense, and put 22px back
+     into a 20px line. Matching its `.is-icon-only` reach settles it here
+     whatever the load order. */
+  .attn-body > .chart-info > summary.is-icon-only,
+  .review-note > .chart-info > summary.is-icon-only {
+    min-width: 0;
+    width: var(--icon-inline);
+    height: var(--icon-inline);
+  }
+
+  .attn-body > .chart-info > summary::after,
+  .review-note > .chart-info > summary::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--tap-lg);
+    height: var(--tap-lg);
+    transform: translate(-50%, -50%);
+  }
+}
+
+.inv-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 2px 0 6px;
+}
+
+.inv-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 0 14px;
+}
+
+.inv-filter > select {
+  min-width: min(220px, 70%);
+}
+
+.inv-segments {
+  max-width: 100%;
+}
+
+.inv-performance {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  margin-bottom: 10px;
+}
+
+.inv-performance > .chart-info {
+  margin-left: 2px;
+}
+
+.inv-detail {
+  border-top: 1px solid var(--hairline-soft);
+  margin-top: 4px;
+}
+
+.inv-detail > summary {
+  width: 100%;
+  padding: 10px 2px 4px 0;
+  color: var(--dim);
+}
+
+.inv-detail > .disclosure-body {
+  padding-top: 8px;
+}
+
+.inv-history > h4,
+.inv-movement-head > h4,
+.inv-group-head > h4 {
+  margin: 0;
+  font-size: var(--t-body);
+  color: var(--fg);
+}
+
+.inv-breakdown {
+  margin-top: 18px;
+}
+
+.inv-group-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+
+.inv-added {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.inv-holdings {
+  display: grid;
+}
+
+.inv-holding,
+.inv-group {
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.inv-group:last-of-type {
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.disclosure.inv-holding > summary,
+.disclosure.inv-group > summary {
+  display: flex;
+  width: 100%;
+  padding: 9px 2px 9px 0;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.disclosure.inv-group > .disclosure-body {
+  padding: 0 0 6px 12px;
+}
+
+.inv-holding-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(7.5em, auto);
+  align-items: center;
+  gap: 2px 14px;
+}
+
+.inv-holding-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inv-holding-value {
+  text-align: right;
+}
+
+.inv-signal,
+.inv-role {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-label);
+  white-space: nowrap;
+}
+
+.inv-signal {
+  font-weight: 600;
+}
+
+.inv-role {
+  color: var(--dim);
+}
+
+.inv-role.is-new {
+  color: var(--fg);
+}
+
+.inv-signal.tone-watch,
+.inv-signal.tone-alert {
+  color: var(--warn-ink);
+}
+
+.inv-signal.is-level {
+  color: var(--dim);
+}
+
+.inv-arrow {
+  font-size: 0.8em;
+}
+
+.disclosure-body.inv-holding-body {
+  padding: 0 0 10px;
+}
+
+.inv-note {
+  margin: 8px 0 0;
+}
+
+.inv-movement-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.inv-coverage-cue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  margin: 6px 0 0;
+}
+
+.inv-mix {
+  margin-bottom: 8px;
+}
+
+.inv-mix .proportion {
+  margin-top: 0;
+}
+
+.proportion-seg.is-fund,
+.proportion-key.is-fund {
+  background: var(--chart-in);
+}
+
+.proportion-seg.is-equity,
+.proportion-key.is-equity {
+  background: var(--accent);
+}
+
+.inv-holding-figures {
+  margin: 8px 0 0;
+  font-weight: 600;
+}
+
+.inv-holding-about {
+  margin-top: 6px;
+}
+
+@media (max-width: 520px) {
+  .inv-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .inv-segments {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .inv-filter > select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inv-holding-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .inv-holding-line > .inv-signal,
+  .inv-holding-line > .inv-role {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+.account-name-line {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-name-text {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.account-rename {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.account-rename:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.account-rename:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.account-rename-field {
+  width: min(100%, 16em);
+  min-width: 0;
+}
+
+.position-account-card:has(.chart-info[open]) {
+  transform: none;
+}
+
+.position-named-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 16px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline-soft);
+}
+
+.position-named-accounts > .muted {
+  flex: 1 0 100%;
+}
+
+.balance-update {
+  display: grid;
+  gap: 12px;
+}
+
+.balance-update-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.balance-update-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+
+.balance-update-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.balance-update-last {
+  flex: 1 0 100%;
+  text-align: start;
+}
+
+.balance-update-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.balance-update-input {
+  width: 11em;
+  min-width: 0;
+}
+
+.balance-update-error {
+  margin: 0;
+  color: var(--warn);
+}
+
+.balance-update-error:empty {
+  display: none;
+}
+
+.balance-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.asof-trace {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.asof-trace:hover {
+  border-color: var(--accent);
+}
+
+.asof-trace:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.position-account-entered {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .balance-update-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .balance-update-input {
+    flex: 1 1 8em;
+    width: auto;
+  }
+}
+
+.fold-all {
+  display: flex;
+  justify-content: flex-end;
+}
+.fold-all-btn {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+}
+@media (min-width: 640px) {
+  .fold-all {
+    margin-block: -6px;
+  }
+}

@@ -21,12 +21,14 @@ import {
   merchantRuleKeyFromDescription,
   upsertCategoryRule,
 } from '../../settings/category-rules.js';
-import { requireCtx } from '../core/shared-helpers.js';
+import { requireCtx, selectOnFocus, transactionName } from '../core/shared-helpers.js';
 import { transactionIdentity } from '../statements/read-statements.js';
 import { Store } from '../core/storage.js';
 import { makeSplit, validateSplit, balanceParts } from '../analysis/transaction-splits.js';
 import { spendableCategoryNames } from '../analysis/spendable-categories.js';
 import { tagAdd, tagRemove } from '../analysis/tag-totals.js';
+import { makeMoney } from '../core/money-format.js';
+import { commitAndRender } from './reversible.js';
 
 export function createCategoryPicker(ctx) {
   requireCtx(
@@ -167,8 +169,7 @@ export function createCategoryPicker(ctx) {
     const target = Math.round(Math.abs(Number(row.amount) || 0) * 100) / 100;
     const place = row.displayName || row.description.split(',')[0].replace(/\s+/g, ' ').trim();
     const spendable = spendableCategoryNames(state.cfg);
-    const sym = (state.cfg.currency && state.cfg.currency.symbol) || '$';
-    const money = (n) => sym + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+    const money = makeMoney(state.cfg);
     const existing = (state.transactionSplits || [])
       .filter((s) => s.txnId === row.id)
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
@@ -224,6 +225,7 @@ export function createCategoryPicker(ctx) {
             syncRemainder();
           },
         });
+        selectOnFocus(amt);
         const rm =
           parts.length > 2
             ? el(
@@ -261,25 +263,30 @@ export function createCategoryPicker(ctx) {
       }
       const previous = (state.transactionSplits || []).filter((s) => s.txnId === row.id);
 
-      // Write the replacement first. If this write fails, the existing split
-      // remains intact. Once the new record exists, remove only older records.
-      await Store.transactionSplits.put(split);
-      for (const old of previous) {
-        if (old.id !== split.id) await Store.transactionSplits.delete(old.id);
-      }
-
-      state.transactionSplits = await Store.transactionSplits.all();
-      closePicker();
-      render();
-      toast(`Split “${place}” across ${clean.length} categories.`);
+      await commitAndRender({
+        commit: async () => {
+          await Store.transactionSplits.put(split);
+          for (const old of previous) {
+            if (old.id !== split.id) await Store.transactionSplits.delete(old.id);
+          }
+          state.transactionSplits = await Store.transactionSplits.all();
+          closePicker();
+        },
+        render,
+        notify: () => toast(`Split “${place}” across ${clean.length} categories.`),
+      });
     }
     async function clearSplit() {
-      for (const s of (state.transactionSplits || []).filter((s) => s.txnId === row.id))
-        await Store.transactionSplits.delete(s.id);
-      state.transactionSplits = await Store.transactionSplits.all();
-      closePicker();
-      render();
-      toast('Split cleared.');
+      await commitAndRender({
+        commit: async () => {
+          for (const splitRecord of (state.transactionSplits || []).filter((item) => item.txnId === row.id))
+            await Store.transactionSplits.delete(splitRecord.id);
+          state.transactionSplits = await Store.transactionSplits.all();
+          closePicker();
+        },
+        render,
+        notify: () => toast('Split cleared.'),
+      });
     }
 
     const box = el(
@@ -337,15 +344,18 @@ export function createCategoryPicker(ctx) {
    * ======================================================================== */
   function openTagPicker(row) {
     closePicker();
-    const place =
-      row.displayName || (row.description || '').split(',')[0].replace(/\s+/g, ' ').trim();
+    // One reader for both ledgers (see transactionName). A bank row has no
+    // displayName and no description, so the old expression produced an empty
+    // string and the dialog was headed Custom label “” on every bank
+    // transaction in the app. The fallback means the quotes never wrap nothing.
+    const place = transactionName(row);
     const tags = state.tags || [];
 
     if (!tags.length) {
       const box = el(
         'div',
         { class: 'picker', role: 'dialog', 'aria-label': 'Custom label transaction' },
-        el('div', { class: 'picker-head' }, `Custom label “${place}”`),
+        el('div', { class: 'picker-head' }, place ? `Custom label “${place}”` : 'Custom label'),
         el(
           'p',
           { class: 'muted small', style: 'padding:4px 0' },
@@ -381,7 +391,7 @@ export function createCategoryPicker(ctx) {
     const box = el(
       'div',
       { class: 'picker', role: 'dialog', 'aria-label': 'Custom label transaction' },
-      el('div', { class: 'picker-head' }, `Custom label “${place}”`),
+      el('div', { class: 'picker-head' }, place ? `Custom label “${place}”` : 'Custom label'),
       el(
         'p',
         { class: 'muted small', style: 'padding:2px 0 6px' },
@@ -401,11 +411,15 @@ export function createCategoryPicker(ctx) {
     const tag = (state.tags || []).find((t) => t.id === tagId);
     if (!tag) return;
     const next = on ? tagAdd(tag, txnId) : tagRemove(tag, txnId);
-    await Store.tags.put(next);
-    state.tags = await Store.tags.all();
-    trackUsage('activity-tag-toggle');
-    render();
-    toast(on ? `Added to “${tag.name}”.` : `Removed from “${tag.name}”.`);
+    await commitAndRender({
+      commit: async () => {
+        await Store.tags.put(next);
+        state.tags = await Store.tags.all();
+        trackUsage('activity-tag-toggle');
+      },
+      render,
+      notify: () => toast(on ? `Added to “${tag.name}”.` : `Removed from “${tag.name}”.`),
+    });
   }
 
   async function setCategory(row, category) {

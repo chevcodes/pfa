@@ -22,29 +22,18 @@
  *  person as "you". Structural labels use "my" but those live in the render,
  *  not here.
  * ======================================================================== */
+import { makeMoney, makeProseMoney } from '../core/money-format.js';
+import { MONTHS_SHORT } from '../core/shared-helpers.js';
+import { allocateSurplus, allocationView } from './spend-allocation.js';
 
-// Money formatter from config (JMD / $ / en-JM by default). Intl is available
-// in the browser and in Node, so the same formatting is exercised by the proof.
-export function makeMoney(cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  const code = c.code || 'JMD';
-  const locale = c.locale || 'en-JM';
-  const decimals = c.decimals == null ? 2 : c.decimals;
-  let fmt;
-  try {
-    fmt = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: code,
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    });
-  } catch (_) {
-    fmt = {
-      format: (n) => (c.symbol || '$') + Number(n || 0).toFixed(decimals),
-    };
-  }
-  return (n) => fmt.format(Number(n || 0));
-}
+// Money formatter from config (JMD / $ / en-JM by default). Delegates to THE
+// formatter (core/money-format.js) so this module's amountText and its "why"
+// sentences pass the same privacy gate as every other figure in the app.
+// Re-exported under its original name; existing call sites and the proof are
+// unchanged.
+// Imported AND re-exported: `export ... from` alone creates no local binding,
+// and this module calls makeMoney itself further down.
+export { makeMoney };
 
 function dayOrdinal(iso) {
   const d = +String(iso || '').slice(8, 10) || 0;
@@ -54,17 +43,14 @@ function dayOrdinal(iso) {
 }
 function monthShort(iso) {
   const m = +String(iso || '').slice(5, 7);
-  return (
-    ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m] ||
-    ''
-  );
+  return m >= 1 && m <= 12 ? MONTHS_SHORT[m - 1] : '';
 }
 function dateText(iso) {
   return iso ? `${dayOrdinal(iso)} ${monthShort(iso)}` : '';
 }
 
 /* ---- card leg -> tag + detail (honest about the transactor / window) ------ */
-function cardView(card, money) {
+function cardView(card, money, prose = money) {
   const basis = card.basis || '';
   const amt = Number(card.amountExpectedBeforeNextIncome || 0);
   if (basis === 'due-after-income') {
@@ -83,7 +69,16 @@ function cardView(card, money) {
       amountText: money(amt),
       tag: 'due before payday',
       tone: 'neutral',
-      detail: `About ${money(amt)} is due on the card before your next pay, on ${dateText(card.dueDate)}, so it is set aside from what you have to move.`,
+      detail: `About ${prose(amt)} is due on the card before your next pay, on ${dateText(card.dueDate)}, so it is set aside from what you have to move.`,
+    };
+  }
+  if (basis === 'nothing-due') {
+    return {
+      amount: 0,
+      amountText: money(0),
+      tag: 'nothing due before payday',
+      tone: 'good',
+      detail: 'The card statement shows no payment due, so nothing is set aside for the card.',
     };
   }
   if (basis === 'no-card-statement') {
@@ -96,7 +91,25 @@ function cardView(card, money) {
         'No card statement has been read yet, so any amount due on the card is not included. This figure is incomplete until a statement is imported.',
     };
   }
-  // no-amount-due / amount-known-date-unknown / no-income-date
+  if (basis === 'no-amount-due') {
+    return {
+      amount: 0,
+      amountText: money(0),
+      tag: 'card amount unknown',
+      tone: 'watch',
+      detail:
+        'The amount due on the card could not be read, so no card payment is included in this figure. Add a readable statement to firm it up.',
+    };
+  }
+  if (basis === 'no-income-date') {
+    return {
+      amount: 0,
+      amountText: money(0),
+      tag: 'pay date unknown',
+      tone: 'watch',
+      detail: `The card payment is due${card.dueDate ? ` on ${dateText(card.dueDate)}` : ''}, but the next pay date could not be established, so the payment cannot yet be placed before or after payday.`,
+    };
+  }
   return {
     amount: 0,
     amountText: money(0),
@@ -108,7 +121,7 @@ function cardView(card, money) {
 }
 
 /* ---- income -> tag + detail ----------------------------------------------- */
-function incomeView(income, money) {
+function incomeView(income, money, prose = money) {
   if (!income) {
     return {
       present: false,
@@ -118,33 +131,38 @@ function incomeView(income, money) {
         'No repeating income has been detected yet, so the date of your next pay is unknown and the figures below are marked incomplete.',
     };
   }
-  const conf = income.confidence === 'High' ? 'Steady' : 'Likely';
+  const steady = String(income.confidence || '').toLowerCase() === 'high';
+  const conf = steady ? 'Steady' : 'Likely';
   return {
     present: true,
+    steady,
     amount: income.amount,
     amountText: money(income.amount),
     dateText: dateText(income.date),
     tag: `${conf} · ~${dayOrdinal(income.date)}`,
     tone: 'good',
-    detail: `Your pay of about ${money(income.amount)} is expected around ${dateText(income.date)}, based on a ${income.confidence === 'high' ? 'well-established' : 'developing'} monthly pattern.`,
+    detail: `Your pay of about ${prose(income.amount)} is expected around ${dateText(income.date)}, based on a ${steady ? 'well-established' : 'developing'} monthly pattern.`,
   };
 }
 
 /* ---- one plain verdict, honestly hedged when data is incomplete ----------- */
-function buildVerdict(p, cardV, incomeV, money) {
+function buildVerdict(p, cardV, incomeV) {
   const est = p.layers.estimatedAvailableAfterCommitments;
   const incomplete = p.confidence === 'incomplete';
   const parts = [];
-  // income clause
-  if (incomeV.present) parts.push(incomeV.tone === 'Good' ? 'Steady income' : 'Income detected');
+  if (incomeV.present) parts.push(incomeV.steady ? 'Steady income' : 'Income detected');
   // card clause
   if (cardV.tag === 'nothing due before payday')
     parts.push('nothing due on the card before payday');
   else if (cardV.tag === 'due before payday') parts.push('a card payment due before payday');
   // coverage clause
-  const covered = est > 0;
+  const covered = est >= 0;
   if (!incomplete) {
-    parts.push(covered ? 'comfortably covered before your next pay' : 'tight before your next pay');
+    parts.push(
+      covered
+        ? 'fixed expenses are covered before your next pay'
+        : 'fixed expenses exceed the amount available before your next pay'
+    );
   }
   let text = parts.length ? parts.join(', ') : 'position calculated';
   text = text.charAt(0).toUpperCase() + text.slice(1) + '.';
@@ -160,33 +178,75 @@ function buildVerdict(p, cardV, incomeV, money) {
  *  Lead figure = estimated available AFTER commitments, framed as a boundary
  *  ("left after what's already committed"), with the working beneath it.
  * ======================================================================== */
-export function buildAvailableNowModel(primitiveResult, cfg = {}) {
+export function buildAvailableNowModel(primitiveResult, cfg = {}, planTargets = null) {
   const money = makeMoney(cfg);
+  // Figures inside a sentence are context, not the answer - shortened so a
+  // proportion reads at a glance instead of as eighteen digits. Headline
+  // amountText keeps full precision. See makeProseMoney.
+  const prose = makeProseMoney(cfg);
   const p = primitiveResult;
   const incomplete = p.confidence === 'incomplete';
 
-  const cardV = cardView(p.card, money);
-  const incomeV = incomeView(p.income, money);
+  const cardV = cardView(p.card, money, prose);
+  const incomeV = incomeView(p.income, money, prose);
 
   const nCommit = (p.commitments && p.commitments.length) || 0;
   const hasCardCommit = (p.commitments || []).some((c) => c.basis === 'card');
 
+  // The lead is no longer the whole post-commitment surplus. The surplus is
+  // divided by the person's own plan: their guilt-free share is what is free
+  // to spend, and the rest is held for saving. Showing the undivided surplus
+  // as the answer to "what can I spend" told them the saving was spendable.
+  const allocation = allocateSurplus({
+    surplus: p.layers.estimatedAvailableAfterCommitments,
+    targets: planTargets,
+    cfg,
+  });
+  const allocated = allocationView(allocation, money, prose);
+
   const lead = {
-    id: 'estimatedAvailable',
-    label: 'Left after what is already committed',
-    amount: p.layers.estimatedAvailableAfterCommitments,
-    amountText: money(p.layers.estimatedAvailableAfterCommitments),
-    // boundary framing, pronoun-free
-    tag: incomplete
-      ? 'estimate'
-      : p.layers.estimatedAvailableAfterCommitments > 0
-        ? 'free to move until payday'
-        : 'nothing spare until payday',
-    tone: incomplete ? 'watch' : p.layers.estimatedAvailableAfterCommitments > 0 ? 'good' : 'watch',
-    detail: `This is your cash on hand of ${money(p.layers.availableBalance)} minus ${money(p.layers.commitmentsBeforeIncome)} of payments due before your next pay${hasCardCommit ? ', including your card payment' : ''}. It is what is genuinely free to move, not your full balance.`,
+    id: 'guiltFreeNow',
+    label: 'Free to spend before payday',
+    amount: allocated.amount,
+    amountText: allocated.amountText,
+    tag: incomplete ? 'estimate' : allocated.tag,
+    tone: incomplete ? 'watch' : allocated.tone,
+    detail: allocated.detail,
   };
 
+  // The permissive figure is never shown alone. This line is what the surface
+  // must print beside it: where the figure came from, and what the rest of the
+  // surplus is for. Same rule the Plan tab's free band already follows.
+  const leadNote = allocation.nothingSpare
+    ? {
+        text: `Fixed expenses due before payday account for the ${prose(p.layers.availableBalance)} on hand.`,
+        tone: 'watch',
+      }
+    : {
+        text: `${allocated.earmarkProse} of the ${prose(allocation.surplus)} left after fixed expenses is held for saving.`,
+        tone: 'neutral',
+      };
+
   const working = [
+    {
+      id: 'surplusAfterCommitments',
+      label: 'Left after fixed expenses',
+      amount: p.layers.estimatedAvailableAfterCommitments,
+      amountText: money(p.layers.estimatedAvailableAfterCommitments),
+      tag: 'the whole surplus',
+      tone: 'neutral',
+      detail: `Cash on hand of ${prose(p.layers.availableBalance)} minus ${prose(p.layers.commitmentsBeforeIncome)} of payments due before your next pay${hasCardCommit ? ', including your card payment' : ''}. Your plan divides this figure; it is not itself what is free to spend.`,
+    },
+    {
+      id: 'earmarkedSaving',
+      label: 'Held for saving',
+      amount: allocation.earmarkedSaving,
+      amountText: money(allocation.earmarkedSaving),
+      tag: 'not yet moved',
+      tone: 'neutral',
+      detail:
+        'The part of the surplus your plan does not allocate to free spending. It is earmarked, not saved: it counts toward savings only once it actually moves.',
+    },
     {
       id: 'availableBalance',
       label: 'Cash on hand',
@@ -199,7 +259,7 @@ export function buildAvailableNowModel(primitiveResult, cfg = {}) {
     },
     {
       id: 'commitments',
-      label: 'Committed before payday',
+      label: 'Fixed expenses before payday',
       amount: p.layers.commitmentsBeforeIncome,
       amountText: money(p.layers.commitmentsBeforeIncome),
       tag: nCommit
@@ -212,13 +272,15 @@ export function buildAvailableNowModel(primitiveResult, cfg = {}) {
     },
   ];
 
-  const verdict = buildVerdict(p, cardV, incomeV, money);
+  const verdict = buildVerdict(p, cardV, incomeV);
 
   return {
     asOf: p.asOf,
     confidence: p.confidence, // 'complete' | 'incomplete'
     verdict, // { text, tone } - one plain conclusion
     lead, // the boundary figure (number/tag/detail)
+    leadNote, // MANDATORY line beside the figure - never render one without it
+    allocation, // how the surplus divides under the person's own plan
     working, // [cash on hand, committed] beneath it
     income: incomeV, // number/tag/detail
     card: cardV, // number/tag/detail, reassurance beside owed

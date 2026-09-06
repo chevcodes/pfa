@@ -78,15 +78,16 @@ const complete = {
     text: 'You have room to move before your next pay.',
     tone: 'good',
   },
+  leadNote: { text: '$156,000.00 of the $195,000.00 left after commitments is held for saving.', tone: 'neutral' },
   lead: {
-    id: 'estimatedAvailable',
-    label: 'Left after what is already committed',
+    id: 'guiltFreeNow',
+    label: 'Free to spend before payday',
     amount: 195000,
     amountText: '$195,000.00',
-    tag: 'free to move until payday',
+    tag: '20% of what is left',
     tone: 'good',
     detail:
-      'This is your cash on hand of $300,000.00 minus $105,000.00 of payments due before your next pay, including your card payment.',
+      'Your plan allocates 20% of a normal month to free spending, applied to what is left after commitments.',
   },
   working: [
     {
@@ -191,18 +192,27 @@ console.log('='.repeat(72));
 console.log(' E AVAILABLE-NOW PREVIEW - real shape, honesty structure intact');
 console.log('='.repeat(72));
 
+// Overview's headline is now built by the shared decision header
+// (decision-header.js), so the classes this proof reads changed with it:
+// .dh-figure for the ONE primary figure, .metric-value for each supporting
+// metric, .tag for status. The ASSERTIONS are unchanged in intent - the
+// figure is shown, the working is present, the framing is honest, and the
+// incomplete case is labelled - only the selectors follow the component.
 {
   const card = render(complete);
   note(!!card, 'preview renders');
   const t = allText(card);
-  note(/Left after what is already committed/.test(t), 'lead label present');
+  note(/What can I spend right now/.test(t), 'states the decision the screen answers');
+  note(/Free to spend before payday/.test(t), 'lead label present');
   note(/Cash on hand/.test(t), 'working item 1 label present');
   note(/Committed before payday/.test(t), 'working item 2 label present');
-  const nums = findAll(card, (n) => hasClass(n, 'vm-number')).map(allText);
+  const leadFigure = findAll(card, (n) => hasClass(n, 'dh-figure')).map(allText);
+  note(leadFigure.length === 1, 'exactly ONE primary figure on the header');
   note(
-    nums.some((x) => /195,000/.test(x)),
+    leadFigure.some((x) => /195,000/.test(x)),
     'lead shows 195,000'
   );
+  const nums = findAll(card, (n) => hasClass(n, 'metric-value')).map(allText);
   note(
     nums.some((x) => /300,000/.test(x)),
     'cash on hand shows 300,000'
@@ -211,12 +221,25 @@ console.log('='.repeat(72));
     nums.some((x) => /105,000/.test(x)),
     'committed shows 105,000'
   );
-  const tags = findAll(card, (n) => hasClass(n, 'vm-tag')).map(allText);
+  const tags = findAll(card, (n) => hasClass(n, 'tag')).map(allText);
   note(
-    tags.some((x) => /free to move/.test(x)),
-    'lead tagged with the free-to-move framing (complete case)'
+    tags.some((x) => /% of what is left/.test(x)),
+    'lead tagged with the share of the surplus it represents (complete case)'
   );
-  note(!/\bfree to spend\b/i.test(t), 'never says plainly "free to spend"');
+  // The old rule banned the phrase "free to spend" outright, because the
+  // figure beside it was the WHOLE post-commitment surplus and calling that
+  // spendable was false headroom. The figure is now only the person's own
+  // guilt-free share of that surplus, so the phrase is honest - but only while
+  // it is paired with the line saying what is held back. The rule is therefore
+  // no longer a ban on the words; it is a requirement that they never stand
+  // alone.
+  const noteText = findAll(card, (n) => hasClass(n, 'dh-note')).map(allText).join(' ');
+  note(noteText.length > 0, 'the lead figure is accompanied by a reconciling line');
+  note(/held for saving/.test(noteText), 'and that line says what the rest of the surplus is for');
+  note(
+    !/\bfree to spend\b/i.test(t) || noteText.length > 0,
+    'the permissive phrasing never appears without its reconciling line'
+  );
   note(
     /60,000|Rent|Payments already due/i.test(t) || /45,000/.test(t),
     'commitment detail discloses itemised amounts'
@@ -227,13 +250,20 @@ console.log('='.repeat(72));
 {
   const card = render(incomplete);
   const t = allText(card);
-  note(/incomplete/i.test(t), 'says the estimate is incomplete');
+  // The gap TOKENS are deliberately never printed verbatim - the renderer
+  // maps each to plain language first (GAP_PLAIN). This asserts the plain
+  // wording that replaced them, which is the same honesty guarantee stated
+  // in the language a person actually reads.
   note(
-    /no recurring income detected/.test(t) && /card leg incomplete/.test(t),
-    'NAMES the specific gaps'
+    /no regular income pattern has been detected yet/.test(t),
+    'NAMES the missing income, in plain language'
+  );
+  note(
+    /a card payment is known but its due date could not be read/.test(t),
+    'NAMES the incomplete card leg, in plain language'
   );
   note(/rough figure|not a precise boundary/i.test(t), 'framed as rough, NOT a precise boundary');
-  const leadTag = findAll(card, (n) => hasClass(n, 'vm-tag'))[0];
+  const leadTag = findAll(card, (n) => hasClass(n, 'tag'))[0];
   note(
     leadTag && /estimate/.test(allText(leadTag)),
     'lead tag says "estimate" in the incomplete case'

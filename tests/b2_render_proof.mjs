@@ -74,7 +74,7 @@ function allText(n) {
   for (const k of n.kids) t += ' ' + allText(k);
   return t.replace(/\s+/g, ' ').trim();
 }
-function hasClass(n, c) {
+function _hasClass(n, c) {
   return String(n.attrs.class || '')
     .split(/\s+/)
     .includes(c);
@@ -122,6 +122,7 @@ const provenModels = {
   },
 };
 let renderCalls = 0;
+let authoredAt = Date.UTC(2026, 6, 1);
 const deps = {
   state,
   el,
@@ -133,11 +134,29 @@ const deps = {
   render: () => {
     renderCalls++;
   },
-  makeIntention,
+  makeIntention: (spec) => makeIntention({ ...spec, now: new Date(authoredAt++).toISOString() }),
   categorySpend: () => 30000,
   iconRepeat: () => '',
+  iconFlag: () => '',
   iconInfo: () => '',
   toast: () => {},
+  // The real reversible (ui/reversible.js) wraps every store write so it can be
+  // undone. This stub performs the SAME writes and reloads, so the proof still
+  // exercises the real save/remove paths - it just does not render a toast.
+  reversible: {
+    async addRecord({ store: st, record, reload, track }) {
+      await st.put(record);
+      if (reload) await reload();
+      deps.render();
+      if (track) track();
+    },
+    async removeRecords({ store: st, records, reload, track }) {
+      for (const r of records || []) await st.delete(r.id);
+      if (reload) await reload();
+      deps.render();
+      if (track) track();
+    },
+  },
 };
 const renderIntentions = makeRenderIntentions(deps);
 
@@ -145,14 +164,16 @@ console.log('='.repeat(72));
 console.log(' B2 RENDER PROOF - card always renders, row carries id, save/remove wire');
 console.log('='.repeat(72));
 
-(async () => {
+await (async () => {
   // 1) with NO intentions, the card STILL renders with an add form (the way in)
   let card = renderIntentions();
   note(!!card, 'card renders even with zero intentions');
   note(
-    /Set a category ceiling/.test(allText(card)),
-    'shows the "Set a category ceiling" form when none exist'
+    findAll(card, (n) => n.tag === 'button' && allText(n) === 'Set limit').length === 1 &&
+      findAll(card, (n) => n.tag === 'input' && n.attrs.placeholder === 'Monthly limit').length === 1,
+    'shows the monthly-limit controls when none exist'
   );
+  note(!/Set a monthly limit for a category/.test(allText(card)), 'does not narrate the visible form');
   const catSel = findAll(card, (n) => n.tag === 'select')[0];
   note(
     catSel && catSel.kids.filter((k) => k.tag === 'option').length === 3,
@@ -160,7 +181,7 @@ console.log('='.repeat(72));
   );
 
   // 2) author a ceiling via the form's save handler, wired through the store
-  const addBtn = findAll(card, (n) => n.tag === 'button' && /Set ceiling/.test(allText(n)))[0];
+  const addBtn = findAll(card, (n) => n.tag === 'button' && /Set limit/.test(allText(n)))[0];
   // set the select value + amount input, then invoke onclick
   const amtInput = findAll(card, (n) => n.tag === 'input')[0];
   catSel.value = 'Groceries';
@@ -187,14 +208,13 @@ console.log('='.repeat(72));
     'Remove row carries the governing record id (NOT undefined) - the B1 seam pre-empted'
   );
   note(
-    /on track/.test(allText(card)),
-    'pace shows a no-guilt phrase (on track: full-month 30k spend == 30k ceiling)'
+    /within your limit/.test(allText(card)),
+    'pace names the relationship to the limit (30k spend == 30k ceiling: at it, not over it)'
   );
 
   // 4) EDIT via the form (same category, new amount) -> new record, resolver picks new
   //    (simulate a later authoring time so the tiebreak is monotonic)
   const before = (await store.all()).length;
-  // patch makeIntention call path by advancing time: set amount 50000
   amtInput.value = '50000';
   await addBtn.attrs.onclick();
   note(
@@ -215,8 +235,8 @@ console.log('='.repeat(72));
   );
   card = renderIntentions();
   note(
-    /Set a category ceiling/.test(allText(card)),
-    'card falls back to the empty "set a ceiling" state'
+    findAll(card, (n) => n.tag === 'button' && allText(n) === 'Set limit').length === 1,
+    'card falls back to the empty limit form'
   );
 
   console.log(`\n checks: ${pass} passed, ${fail} failed`);

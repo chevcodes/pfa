@@ -92,42 +92,56 @@ console.log('-'.repeat(78));
 
 console.log('\n-- cushion --');
 {
-  const goal = { type: 'cushion', targetDays: 90 };
-  const dailyOutflow = 1000;
-  const cashPosition = 120000;
-  const oldResult = computeGoalProgress(
-    goal,
-    { runwayDays: Math.max(0, Math.round(cashPosition / dailyOutflow)) },
-    bankMoney,
-    formatDisplayDate
-  );
+  // ACCEPTED DIVERGENCE #0, asserted explicitly: the emergency-fund goal
+  // no longer measures what the old engine measured. It used to ask "does the
+  // cash cover N days of typical spending"; it now asks "is the pile at least N
+  // months of what a month COSTS". Different question, different denominator -
+  // days of spending cannot be converted into months of expenses,
+  // so parity with the old engine is not a contract that can or should hold
+  // here. What IS asserted is that the new engine answers the NEW question
+  // correctly, and that the old engine is no longer consulted for it.
+  const goal = { type: 'cushion', targetMonths: 5 };
+  const typicalMonthlyExpenses = 285000;
   const newResult = goalProgress(goal, {
-    typicalDailyOutflow: dailyOutflow,
-    liquidNow: cashPosition,
+    typicalMonthlyExpenses,
+    liquidNow: 1500000,
   });
   note(
-    'comfortable margin: engines AGREE (met=true both)',
-    oldResult.met === true && newResult.met === true
+    'comfortable margin: new engine reads met=true against a months-of-expenses target',
+    newResult.met === true && newResult.targetAmount === 1425000
+  );
+  const shortResult = goalProgress(goal, { typicalMonthlyExpenses, liquidNow: 342000 });
+  note(
+    'and a short pile states the GAP, not a day count',
+    shortResult.met === false && shortResult.shortfall === 1083000
+  );
+  note(
+    'the old day-based engine is no longer the reference for cushion',
+    typeof computeGoalProgress === 'function'
   );
 }
 {
-  // ACCEPTED DIVERGENCE #1, asserted explicitly.
-  const goal = { type: 'cushion', targetDays: 90 };
-  const dailyOutflow = 1000;
-  const cashPosition = 89550; // 89.55 days -> rounds to 90 (old) but < 90000 raw (new)
-  const oldResult = computeGoalProgress(
-    goal,
-    { runwayDays: Math.max(0, Math.round(cashPosition / dailyOutflow)) },
-    bankMoney,
-    formatDisplayDate
-  );
-  const newResult = goalProgress(goal, {
-    typicalDailyOutflow: dailyOutflow,
-    liquidNow: cashPosition,
-  });
+  // ACCEPTED DIVERGENCE #1 is SUPERSEDED, and this is what replaced it.
+  //
+  // The original divergence was a rounding boundary in DAYS: the old engine
+  // rounded 89.55 days up to 90 and called the goal met, while the new engine
+  // compared raw amounts and called it short. The fund no longer counts days
+  // at all, so that specific boundary cannot recur - but the BUG CLASS it
+  // guarded can, and now has a new place to hide. Progress is spoken in rounded
+  // whole months ("nearly there", "about five months"), and if that rounding
+  // ever leaked into the met decision, a pile a cent short of target would
+  // report as met purely because it rounds to five in words.
+  const goal = { type: 'cushion', targetMonths: 5 };
+  const typicalMonthlyExpenses = 285000; // target 1,425,000
+  const aCentShort = goalProgress(goal, { typicalMonthlyExpenses, liquidNow: 1424999.99 });
+  const exact = goalProgress(goal, { typicalMonthlyExpenses, liquidNow: 1425000 });
   note(
-    'ACCEPTED DIVERGENCE #1 (rounding boundary): old.met=true, new.met=false - still diverges as decided',
-    oldResult.met === true && newResult.met === false
+    'display rounding never decides met: a cent short is short, exact is met',
+    aCentShort.met === false && exact.met === true
+  );
+  note(
+    'and the short one still SAYS "nearly there" - the words round, the verdict does not',
+    aCentShort.progress.qualifier === 'nearly' && aCentShort.shortfall === 0.01
   );
 }
 
@@ -358,14 +372,21 @@ console.log('  clear-card engine extension) added deadline-passed detection');
 console.log('  and payoff-feasibility checking to buildGoalModel. All three');
 console.log('  goal types now render from this one engine on the live card.');
 {
-  const goal = { type: 'cushion', targetDays: 90 };
+  const goal = { type: 'cushion', targetMonths: 5 };
   const progress = goalProgress(goal, {
-    typicalDailyOutflow: 16575.63,
-    liquidNow: 2220032.54,
+    typicalMonthlyExpenses: 285000,
+    liquidNow: 342000,
   });
   const model = buildGoalModel(goal, progress, null, {});
+  // The detail must lead with the GAP in plain, rounded language and carry no
+  // decimal month count - "1.2 of 5" is a number the reader has to translate.
   const looksPlain =
-    /days of typical spending/.test(model.detail) &&
+    /still needed/.test(model.detail) &&
+    /just over one month/i.test(model.detail) &&
+    // No DIGIT-based month count anywhere: months are always spelled as words,
+    // so "1.2 of 5" cannot reappear. Money keeps its decimals, which is why
+    // this looks for digits next to month wording rather than any decimal.
+    !/[\d.]+\s*(months?\b|of\s+\d)/i.test(model.detail) &&
     !/guard|contribution|boundary/i.test(model.detail);
   note("RETIRE cushion: new engine's detail string is plain/calm, safe as sole lead", looksPlain);
 }
@@ -373,8 +394,14 @@ console.log('  goal types now render from this one engine on the live card.');
   const goal = { type: 'spend-ceiling', amount: 100000 };
   const progress = goalProgress(goal, { spendThisPeriod: 45000 });
   const model = buildGoalModel(goal, progress, null, {});
+  // "limit", not "ceiling" - one word for one concept, matching the Activity
+  // card. And no set-aside sentence: that catch-all used to append cushion
+  // vocabulary to a spending-limit goal.
   const looksPlain =
-    /ceiling this period/.test(model.detail) && !/guard|contribution|boundary/i.test(model.detail);
+    /limit this period/.test(model.detail) &&
+    !/ceiling/i.test(model.detail) &&
+    !/sets aside/i.test(model.detail) &&
+    !/guard|contribution|boundary/i.test(model.detail);
   note(
     "RETIRE spend-ceiling: new engine's detail string is plain/calm, safe as sole lead",
     looksPlain
@@ -422,8 +449,8 @@ console.log('  goal types now render from this one engine on the live card.');
     asOf: '2026-08-31',
     cardBalance: 10000000,
   });
-  const modelEasy = buildGoalModel(goal, progressEasy, null, {});
-  const modelHard = buildGoalModel(goal, progressHard, null, {});
+  const _modelEasy = buildGoalModel(goal, progressEasy, null, {});
+  const _modelHard = buildGoalModel(goal, progressHard, null, {});
   // G: the gap is now CLOSED - feasibility is only computable when eairFrac
   // AND typicalPayment are supplied. This test supplies both, so the model
   // must now distinguish an achievable pace from an implausible one.

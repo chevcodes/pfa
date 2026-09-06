@@ -36,12 +36,17 @@ import {
   addDaysIso,
   isoDay,
   detectSustainedRise,
+  withExactFigures,
 } from '../core/shared-helpers.js';
-import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
+import { renderReport, renderBankReport, renderOverviewReport,
+  renderPlanSection,
+} from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
 
 import { capForPrint } from './reporting-core.js';
 import { detectIncompleteMonth, periodCoverageNote } from './reporting-periods.js';
+import { makeForeignMoney } from '../core/money-format.js';
+import { buildPlanPrintModel } from './plan-print.js';
 /* ===========================================================================
  *  Print-model orchestration + report driver  (Stage 5 of the split)
  *  --------------------------------------------------------------------------- 
@@ -110,11 +115,31 @@ export function createPrintReports(ctx) {
     cleanCounterparty,
     overviewModel,
   } = ctx;
+  const foreignMoney = makeForeignMoney();
 
   // Build the report for whichever ledger is on screen and return true if it was
   // populated. Shared by the Export menu AND the browser's own Ctrl+P (via the
   // beforeprint listener in wireChrome), so both build the correct report - the
   // fix for a raw Ctrl+P producing a blank page because nothing built the report.
+  function buildPlanReportSection() {
+    if (typeof ctx.planModel !== 'function') return null;
+    try {
+      const built = ctx.planModel();
+      if (!built) return null;
+      const model = buildPlanPrintModel({
+        plan: built.raw,
+        model: built.model,
+        cfg: state.cfg,
+        meta: { period: resolved() ? resolved().label : '' },
+      });
+      return renderPlanSection(document, model);
+    } catch (err) {
+      // A report must still print if the plan cannot be built.
+      console.warn('Plan section skipped in report:', err);
+      return null;
+    }
+  }
+
   function buildReportForCurrentView() {
     // Round 3: Right Now shows both ledgers together, exactly like Overview,
     // so printing from it produces the SAME combined report Overview already
@@ -148,11 +173,25 @@ export function createPrintReports(ctx) {
       )
     );
     try {
-      const node = overviewView
-        ? renderOverviewReport(document, buildOverviewPrintModel())
-        : accountsView
-          ? renderBankReport(document, buildBankPrintModel())
-          : renderReport(document, buildPrintModel());
+      // A printed report is a deliberate act of sharing REAL figures, so the
+      // whole model build runs with the privacy gate suspended (privacy.js).
+      // Private view is a screen state, never a data redaction - this is the
+      // one place that exemption is declared, rather than each formatter
+      // re-asserting it for itself.
+      const node = withExactFigures(() => {
+        const report = overviewView
+          ? renderOverviewReport(document, buildOverviewPrintModel())
+          : accountsView
+            ? renderBankReport(document, buildBankPrintModel())
+            : renderReport(document, buildPrintModel());
+        // The plan belongs on every printed report, not only the one printed
+        // from the Plan tab: it is the intention the rest of the figures are
+        // being measured against. Appended, never substituted, and silently
+        // skipped when there is not enough data to build one.
+        const planSection = buildPlanReportSection();
+        if (planSection) report.appendChild(planSection);
+        return report;
+      });
       host.appendChild(node);
     } catch (err) {
       console.error(err);
@@ -373,7 +412,7 @@ export function createPrintReports(ctx) {
         net: (tr.net >= 0 ? '+' : '') + bankMoney(tr.net),
       })),
       trendNote: roll.hasCard
-        ? 'Spending each month is money leaving your accounts plus card purchases. Own-account transfers and card payments are excluded, so nothing is counted twice.'
+        ? 'Spending each month is money leaving your accounts plus card purchases and fees. Own-account transfers and card payments are excluded, so nothing is counted twice.'
         : 'Cash outflow each month, with transfers between your own accounts excluded.',
       outflows: (ov.topOutflows || []).map((g) => ({
         label: cleanCounterparty(g.label),
@@ -505,7 +544,7 @@ export function createPrintReports(ctx) {
     const txns = rows.map((r) => ({
       date: formatDisplayDate(r.date),
       description: r.displayName || r.description,
-      foreign: r.foreign || '',
+      foreign: foreignMoney(r.foreign),
       category: isReview(r.category) ? 'To review' : r.category,
       colour: catColour(r.category),
       kind: kindLabel[r.kind] || r.kind,

@@ -27,7 +27,7 @@ export const DB_NAME = 'pfa';
 // The upgrade ONLY creates the new stores; nothing existing is read, rewritten
 // or dropped in onupgradeneeded, so the operation commits atomically or not at
 // all and can never leave the database half-migrated.
-export const DB_VERSION = 4;
+export const DB_VERSION = 6;
 
 // Record-level schema version, stored in meta under SCHEMA_VERSION_KEY. This is
 // deliberately SEPARATE from DB_VERSION: DB_VERSION governs which object stores
@@ -53,9 +53,29 @@ const V4_STORES = [
   { name: 'manualAssets', keyPath: 'id' },
 ];
 
+const V5_STORES = [{ name: 'investmentStatements', keyPath: 'hash' }];
+
+const V6_STORES = [{ name: 'balanceUpdates', keyPath: 'id' }];
+
+export const RESTORABLE_STORES = [
+  'transactions',
+  'statements',
+  'rules',
+  'bankTransactions',
+  'bankStatements',
+  'cardStatements',
+  ...V4_STORES.map((store) => store.name),
+  ...V5_STORES.map((store) => store.name),
+  ...V6_STORES.map((store) => store.name),
+];
+
+let openPromise = null;
+
 export function openDB() {
-  return new Promise((resolve, reject) => {
+  if (openPromise) return openPromise;
+  openPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let blocked = false;
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       // --- v1..v3 (unchanged) ---
@@ -76,10 +96,38 @@ export function openDB() {
         if (!db.objectStoreNames.contains(s.name))
           db.createObjectStore(s.name, { keyPath: s.keyPath });
       }
+      for (const s of V5_STORES) {
+        if (!db.objectStoreNames.contains(s.name))
+          db.createObjectStore(s.name, { keyPath: s.keyPath });
+      }
+      for (const s of V6_STORES) {
+        if (!db.objectStoreNames.contains(s.name))
+          db.createObjectStore(s.name, { keyPath: s.keyPath });
+      }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (blocked) {
+        db.close();
+        return;
+      }
+      db.onversionchange = () => {
+        db.close();
+        openPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      openPromise = null;
+      reject(req.error);
+    };
+    req.onblocked = () => {
+      blocked = true;
+      openPromise = null;
+      reject(new Error('Storage upgrade is blocked by another open app window.'));
+    };
   });
+  return openPromise;
 }
 
 export function tx(db, store, mode) {
@@ -90,6 +138,35 @@ export function reqP(r) {
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
+}
+
+function transactionP(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error || new Error('Storage write aborted.'));
+    transaction.onerror = () => {};
+  });
+}
+
+async function write(db, stores, queue) {
+  const transaction = db.transaction(stores, 'readwrite');
+  const done = transactionP(transaction);
+  let result;
+  try {
+    result = await queue(transaction);
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // Already aborted or already committed - either way the transaction is
+      // no longer ours to cancel, and the original error below is the one
+      // worth reporting.
+    }
+    await done.catch(() => {});
+    throw error;
+  }
+  await done;
+  return result;
 }
 
 // One shared factory for the "list of {id}-keyed records" stores the v4
@@ -110,30 +187,34 @@ function idStore(name) {
     },
     async put(rec) {
       const db = await openDB();
-      return reqP(tx(db, name, 'readwrite').put(rec));
+      return write(db, name, (transaction) => reqP(transaction.objectStore(name).put(rec)));
     },
     async putMany(recs) {
       const db = await openDB();
-      const s = tx(db, name, 'readwrite');
-      await Promise.all((recs || []).map((r) => reqP(s.put(r))));
+      return write(db, name, (transaction) => {
+        const s = transaction.objectStore(name);
+        return Promise.all((recs || []).map((r) => reqP(s.put(r))));
+      });
     },
     async delete(id) {
       const db = await openDB();
-      return reqP(tx(db, name, 'readwrite').delete(id));
+      return write(db, name, (transaction) => reqP(transaction.objectStore(name).delete(id)));
     },
     async clear() {
       const db = await openDB();
-      return reqP(tx(db, name, 'readwrite').clear());
+      return write(db, name, (transaction) => reqP(transaction.objectStore(name).clear()));
     },
     // Atomic replace: clear + put-all in ONE transaction, so the store is never
     // left empty if the app is interrupted mid-write (same rationale as
     // replaceTransactions below).
     async replace(recs) {
       const db = await openDB();
-      const s = tx(db, name, 'readwrite');
-      const clearReq = reqP(s.clear());
-      const putReqs = (recs || []).map((r) => reqP(s.put(r)));
-      await Promise.all([clearReq, ...putReqs]);
+      return write(db, name, (transaction) => {
+        const s = transaction.objectStore(name);
+        const clearReq = reqP(s.clear());
+        const putReqs = (recs || []).map((r) => reqP(s.put(r)));
+        return Promise.all([clearReq, ...putReqs]);
+      });
     },
   };
 }
@@ -145,19 +226,25 @@ export const Store = {
   },
   async putTransactions(recs) {
     const db = await openDB();
-    const s = tx(db, 'transactions', 'readwrite');
-    await Promise.all(recs.map((r) => reqP(s.put(r))));
+    return write(db, 'transactions', (transaction) => {
+      const s = transaction.objectStore('transactions');
+      return Promise.all(recs.map((r) => reqP(s.put(r))));
+    });
   },
   async clearTransactions() {
     const db = await openDB();
-    return reqP(tx(db, 'transactions', 'readwrite').clear());
+    return write(db, 'transactions', (transaction) =>
+      reqP(transaction.objectStore('transactions').clear())
+    );
   },
   async replaceTransactions(records) {
     const db = await openDB();
-    const s = tx(db, 'transactions', 'readwrite');
-    const clearReq = reqP(s.clear());
-    const putReqs = records.map((r) => reqP(s.put(r)));
-    await Promise.all([clearReq, ...putReqs]);
+    return write(db, 'transactions', (transaction) => {
+      const s = transaction.objectStore('transactions');
+      const clearReq = reqP(s.clear());
+      const putReqs = records.map((r) => reqP(s.put(r)));
+      return Promise.all([clearReq, ...putReqs]);
+    });
   },
   async hasStatement(hash) {
     const db = await openDB();
@@ -165,7 +252,9 @@ export const Store = {
   },
   async putStatement(rec) {
     const db = await openDB();
-    return reqP(tx(db, 'statements', 'readwrite').put(rec));
+    return write(db, 'statements', (transaction) =>
+      reqP(transaction.objectStore('statements').put(rec))
+    );
   },
   async allStatements() {
     const db = await openDB();
@@ -173,11 +262,15 @@ export const Store = {
   },
   async deleteStatement(hash) {
     const db = await openDB();
-    return reqP(tx(db, 'statements', 'readwrite').delete(hash));
+    return write(db, 'statements', (transaction) =>
+      reqP(transaction.objectStore('statements').delete(hash))
+    );
   },
   async clearStatements() {
     const db = await openDB();
-    return reqP(tx(db, 'statements', 'readwrite').clear());
+    return write(db, 'statements', (transaction) =>
+      reqP(transaction.objectStore('statements').clear())
+    );
   },
   async allRules() {
     const db = await openDB();
@@ -187,25 +280,29 @@ export const Store = {
   },
   async putRules(recs) {
     const db = await openDB();
-    const s = tx(db, 'rules', 'readwrite');
-    await Promise.all(
-      recs
-        .map((r) => categoryRuleStoreRecord(r))
-        .filter(Boolean)
-        .map((r) => reqP(s.put(r)))
-    );
+    return write(db, 'rules', (transaction) => {
+      const s = transaction.objectStore('rules');
+      return Promise.all(
+        recs
+          .map((r) => categoryRuleStoreRecord(r))
+          .filter(Boolean)
+          .map((r) => reqP(s.put(r)))
+      );
+    });
   },
   async clearRules() {
     const db = await openDB();
-    return reqP(tx(db, 'rules', 'readwrite').clear());
+    return write(db, 'rules', (transaction) => reqP(transaction.objectStore('rules').clear()));
   },
   async replaceRules(recs) {
     const db = await openDB();
-    const s = tx(db, 'rules', 'readwrite');
-    const clearReq = reqP(s.clear());
-    const cleaned = recs.map((r) => categoryRuleStoreRecord(r)).filter(Boolean);
-    const putReqs = cleaned.map((r) => reqP(s.put(r)));
-    await Promise.all([clearReq, ...putReqs]);
+    return write(db, 'rules', (transaction) => {
+      const s = transaction.objectStore('rules');
+      const clearReq = reqP(s.clear());
+      const cleaned = recs.map((r) => categoryRuleStoreRecord(r)).filter(Boolean);
+      const putReqs = cleaned.map((r) => reqP(s.put(r)));
+      return Promise.all([clearReq, ...putReqs]);
+    });
   },
   async getMeta(key, dflt) {
     const db = await openDB();
@@ -214,7 +311,18 @@ export const Store = {
   },
   async setMeta(key, value) {
     const db = await openDB();
-    return reqP(tx(db, 'meta', 'readwrite').put({ key, value }));
+    return write(db, 'meta', (transaction) =>
+      reqP(transaction.objectStore('meta').put({ key, value }))
+    );
+  },
+  async setMetaMany(entries) {
+    const db = await openDB();
+    return write(db, 'meta', (transaction) => {
+      const s = transaction.objectStore('meta');
+      return Promise.all(
+        (entries || []).map(({ key, value }) => reqP(s.put({ key, value })))
+      );
+    });
   },
   // Bank ledger (Phase 1).
   async allBankTransactions() {
@@ -223,19 +331,25 @@ export const Store = {
   },
   async putBankTransactions(recs) {
     const db = await openDB();
-    const s = tx(db, 'bankTransactions', 'readwrite');
-    await Promise.all(recs.map((r) => reqP(s.put(r))));
+    return write(db, 'bankTransactions', (transaction) => {
+      const s = transaction.objectStore('bankTransactions');
+      return Promise.all(recs.map((r) => reqP(s.put(r))));
+    });
   },
   async clearBankTransactions() {
     const db = await openDB();
-    return reqP(tx(db, 'bankTransactions', 'readwrite').clear());
+    return write(db, 'bankTransactions', (transaction) =>
+      reqP(transaction.objectStore('bankTransactions').clear())
+    );
   },
   async replaceBankTransactions(records) {
     const db = await openDB();
-    const s = tx(db, 'bankTransactions', 'readwrite');
-    const clearReq = reqP(s.clear());
-    const putReqs = records.map((r) => reqP(s.put(r)));
-    await Promise.all([clearReq, ...putReqs]);
+    return write(db, 'bankTransactions', (transaction) => {
+      const s = transaction.objectStore('bankTransactions');
+      const clearReq = reqP(s.clear());
+      const putReqs = records.map((r) => reqP(s.put(r)));
+      return Promise.all([clearReq, ...putReqs]);
+    });
   },
   async hasBankStatement(hash) {
     const db = await openDB();
@@ -243,7 +357,9 @@ export const Store = {
   },
   async putBankStatement(rec) {
     const db = await openDB();
-    return reqP(tx(db, 'bankStatements', 'readwrite').put(rec));
+    return write(db, 'bankStatements', (transaction) =>
+      reqP(transaction.objectStore('bankStatements').put(rec))
+    );
   },
   async allBankStatements() {
     const db = await openDB();
@@ -251,11 +367,15 @@ export const Store = {
   },
   async deleteBankStatement(hash) {
     const db = await openDB();
-    return reqP(tx(db, 'bankStatements', 'readwrite').delete(hash));
+    return write(db, 'bankStatements', (transaction) =>
+      reqP(transaction.objectStore('bankStatements').delete(hash))
+    );
   },
   async clearBankStatements() {
     const db = await openDB();
-    return reqP(tx(db, 'bankStatements', 'readwrite').clear());
+    return write(db, 'bankStatements', (transaction) =>
+      reqP(transaction.objectStore('bankStatements').clear())
+    );
   },
   // Card statement records (Recommendations 1-4).
   async hasCardStatement(hash) {
@@ -264,7 +384,9 @@ export const Store = {
   },
   async putCardStatement(rec) {
     const db = await openDB();
-    return reqP(tx(db, 'cardStatements', 'readwrite').put(rec));
+    return write(db, 'cardStatements', (transaction) =>
+      reqP(transaction.objectStore('cardStatements').put(rec))
+    );
   },
   async allCardStatements() {
     const db = await openDB();
@@ -272,11 +394,40 @@ export const Store = {
   },
   async deleteCardStatement(hash) {
     const db = await openDB();
-    return reqP(tx(db, 'cardStatements', 'readwrite').delete(hash));
+    return write(db, 'cardStatements', (transaction) =>
+      reqP(transaction.objectStore('cardStatements').delete(hash))
+    );
   },
   async clearCardStatements() {
     const db = await openDB();
-    return reqP(tx(db, 'cardStatements', 'readwrite').clear());
+    return write(db, 'cardStatements', (transaction) =>
+      reqP(transaction.objectStore('cardStatements').clear())
+    );
+  },
+
+  async restoreSnapshot(snapshot) {
+    const db = await openDB();
+    const records = snapshot && snapshot.stores ? snapshot.stores : {};
+    const missing = RESTORABLE_STORES.filter((name) => !Array.isArray(records[name]));
+    if (missing.length) throw new Error(`Restore snapshot is missing: ${missing.join(', ')}.`);
+    return write(db, [...RESTORABLE_STORES, 'meta'], (transaction) => {
+      const requests = [];
+      for (const name of RESTORABLE_STORES) {
+        const s = transaction.objectStore(name);
+        requests.push(reqP(s.clear()));
+        const values = records[name];
+        const cleaned =
+          name === 'rules'
+            ? values.map((value) => categoryRuleStoreRecord(value)).filter(Boolean)
+            : values;
+        for (const value of cleaned) requests.push(reqP(s.put(value)));
+      }
+      const meta = transaction.objectStore('meta');
+      for (const [key, value] of Object.entries((snapshot && snapshot.meta) || {})) {
+        requests.push(reqP(meta.put({ key, value })));
+      }
+      return Promise.all(requests);
+    });
   },
 
   // --- v4 stores (Stage 1+). Each is the shared idStore surface, so a caller
@@ -288,6 +439,8 @@ export const Store = {
   goals: idStore('goals'),
   forecastSnapshots: idStore('forecastSnapshots'),
   manualAssets: idStore('manualAssets'),
+  investmentStatements: idStore('investmentStatements'),
+  balanceUpdates: idStore('balanceUpdates'),
 
   // Read the stored record-level schema version, run any forward migrations,
   // then stamp the current SCHEMA_VERSION. Called ONCE at boot, after openDB has

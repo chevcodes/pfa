@@ -5,11 +5,38 @@ import {
   medianDayOfMonth,
   isoDay,
   detectSustainedRise,
+  typicalMonthlyValue,
+  rowBalance,
+  bankAccountIdentity,
+  parseTransferNarrative,
+  transferSentence,
 } from '../core/shared-helpers.js';
 import { smartTitle } from '../statements/categorise.js';
 import { bankTransactionIdentity, cleanBankCounterparty } from '../statements/read-statements.js';
+import { isSetAside } from './set-aside.js';
 
-const CP_LABEL_SET = new Set();
+/* The casing the app already declares for merchant names (config.keepUpper:
+ * GCT, NCB, FCIB, NWC, ATM...) was never handed to the bank side, so every bank
+ * counterparty was title-cased against an EMPTY set and read "Gct On Pos Tx
+ * Fee" while the card row beside it read correctly. Populated at boot from the
+ * same config the card side uses, exactly as setBankDescriptorCleanupRules
+ * already pushes the cleanup rules in.
+ *
+ * Only keepUpper is taken. The small-word list is deliberately NOT applied here:
+ * a bank narrative carries middle initials, and lower-casing a standalone "A"
+ * turns "Chevaughn A Johnson" into "Chevaughn a Johnson".
+ */
+let CP_LABEL_SET = new Set();
+export function setCounterpartyCasing(keepUpper) {
+  if (keepUpper && typeof keepUpper[Symbol.iterator] === 'function')
+    CP_LABEL_SET = new Set([...keepUpper, 'POS', 'ACH', 'LLC', 'LTD']);
+}
+const CP_SMALL_SET = new Set();
+// THE casing for a bank counterparty, exported so the Accounts list reads the
+// same set rather than keeping its own (it kept a second empty one, which is
+// why the same row could read "GCT" in one place and "Gct" in another).
+export const counterpartyTitle = (s) => smartTitle(s, CP_LABEL_SET, CP_SMALL_SET);
+const cpTitle = counterpartyTitle;
 
 export function counterpartyAccountTokens(desc) {
   const groups = String(desc || '').match(/\d{3,}/g) || [];
@@ -27,7 +54,7 @@ export function buildOwnAccountIndex(accounts = []) {
   for (const a of accounts) {
     const digits = String(a == null ? '' : a).replace(/\D/g, '');
     if (!digits) continue;
-    const canonical = digits.slice(-4);
+    const canonical = bankAccountIdentity(digits);
     idx.set(digits, canonical);
     if (digits.length >= 4) idx.set(digits.slice(-4), canonical);
     if (digits.length >= 5) idx.set(digits.slice(-5), canonical);
@@ -54,7 +81,7 @@ export function normaliseCounterparty(description, ownIndex = new Map(), resolve
     if (r.merchant && r.incidentalInstitution) {
       return {
         key: r.groupKey ? 'ext:' + r.groupKey : 'ext:unknown',
-        label: r.payee ? smartTitle(r.payee, CP_LABEL_SET, CP_LABEL_SET) : 'Unknown',
+        label: r.payee ? cpTitle(r.payee) : 'Unknown',
         internal: false,
         account: null,
       };
@@ -62,26 +89,20 @@ export function normaliseCounterparty(description, ownIndex = new Map(), resolve
     if (r.merchant) {
       return {
         key: r.groupKey ? 'ext:' + r.groupKey : 'ext:unknown',
-        label: r.displayLabel || smartTitle(r.cleaned, CP_LABEL_SET, CP_LABEL_SET),
+        label: r.displayLabel || cpTitle(r.cleaned),
         internal: false,
         account: null,
       };
     }
   }
 
-  const cleaned = cleanBankCounterparty(description)
-    .replace(/^(?:[A-Z]{2,5}\s+)?transfer\s+(to|from)\s+/i, '')
-    .replace(/^trf\s+(to|from):?\s+/i, '')
-    .replace(/^\d{2,}[,\s-]+/, '')
-    .replace(/^\d{4,}-/, '')
-    .replace(/[\s,-]+\d{3,}\s*$/, '')
-    .replace(/[\s,-]+$/, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  // The same shared parser the resolver and the Accounts list read, so a
+  // channel code learned once is understood on every surface at once.
+  const cleaned = parseTransferNarrative(cleanBankCounterparty(description)).party;
   const key = cleaned.toUpperCase();
   return {
     key: key ? 'ext:' + key : 'ext:unknown',
-    label: cleaned ? smartTitle(cleaned, CP_LABEL_SET, CP_LABEL_SET) : 'Unknown',
+    label: cleaned ? cpTitle(cleaned) : 'Unknown',
     internal: false,
     account: null,
   };
@@ -99,14 +120,34 @@ export function classifyInternalTransfers(
   for (const a of cardAccounts) ownNumbers.push(String(a));
   const ownIndex = buildOwnAccountIndex(ownNumbers);
   return records.map((r) => {
-    const cpText = r.description && r.description.trim() ? r.description : r.type || r.description;
+    const own = r.description && r.description.trim() ? r.description : r.type || r.description;
+    const cpText = r.attachedTo || own;
     const n = normaliseCounterparty(cpText, ownIndex, resolver);
-    return {
+    const out = {
       ...r,
       internalTransfer: n.internal,
       counterpartyKey: n.key,
       counterpartyLabel: n.label,
+      // What the transaction ROW says, which is a fuller thing than what the
+      // grouped lists say. counterpartyLabel stays the bare party name because
+      // a dozen surfaces group and total by it - a recurring-commitment list
+      // reading "Transfer to Senior (via ACH)" five times would be nonsense.
+      // The row can afford the whole sentence, and only the row uses this.
+      //
+      // Set ONLY for a row whose OWN narrative describes a transfer. Three
+      // reasons, each a rule that already existed: an own-account move already
+      // reads "Account 1234", which is clearer than any sentence; a fee or
+      // reversal attached to a purchase must keep reading as the statement
+      // printed it rather than being renamed to the merchant it hangs off
+      // (hence `own`, never `cpText`, which is the ATTACHED purchase); and a
+      // plain shop or employer is not a transfer, so transferSentence returns
+      // '' and the row keeps the name it already had.
+      narrative:
+        n.internal || r.attachedTo ? '' : transferSentence(own, r.direction, cpTitle),
     };
+    if (r.attachedTo && !out.displayName)
+      out.displayName = normaliseCounterparty(own, ownIndex, resolver).label;
+    return out;
   });
 }
 
@@ -124,7 +165,7 @@ export function isBankRefund(r) {
   if (!r || r.direction !== 'in') return false;
   const t = String(r.type || '').toUpperCase();
   const d = String(r.description || '').toUpperCase();
-  const re = /\b(REFUND|REVERSAL|CHARGE ?BACK|CREDIT NOTE)\b/;
+  const re = /\b(REFUND|REVERSAL|POSREV|CHARGE ?BACK|CREDIT NOTE)\b/;
   return re.test(t) || re.test(d);
 }
 
@@ -174,10 +215,60 @@ export function applyLedgerRules(records, opts = {}) {
   });
 }
 
-export function accountClosingBalance(rows) {
+/* An account's latest recorded balance.
+ *
+ * Ordered by DATE THEN seq, the same key liquidBalance (commitment-income.js)
+ * uses for the identical question on the Position tab. It previously sorted on
+ * date alone; Array.prototype.sort is stable, so among several movements on the
+ * closing day it kept the order they happened to arrive in from the statement
+ * file, and read the balance off whichever of them landed last there. That is
+ * not necessarily the last movement of the day.
+ *
+ * The effect was a per-account balance on Activity's account filter that
+ * disagreed with the same account on Position - but only for accounts whose
+ * final day carried more than one transaction, which is why some accounts
+ * matched exactly and others were out by the size of one movement. Two
+ * functions answering "what is the latest balance" must not order the day
+ * differently.
+ *
+ * ORDERING WAS ONLY HALF OF IT. This also read the balance off `balanceAfter`
+ * alone, while liquidBalance also accepts a raw `Running Balance` column. An
+ * account whose most recent movement carried the column and not the field kept
+ * reporting an OLDER balance here while Position reported the current one -
+ * $944,106.45 against $1,052,352.71 on the same account. Both now read through
+ * rowBalance (shared-helpers), so there is one answer to "what balance does
+ * this row report".
+ *
+ * Rows in another currency are skipped rather than allowed to supply the
+ * closing figure: an account's balance must not be reported in a currency the
+ * caller never asked about. baseCurrency defaults to the account's own most
+ * common currency when not supplied.
+ */
+export function accountClosingBalance(rows, baseCurrency = null) {
   let closing = null;
-  const sorted = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  for (const r of sorted) if (r.balanceAfter != null) closing = r.balanceAfter;
+  const seqOf = (r) => (r && r.seq != null ? Number(r.seq) : 0);
+  const ccy = (r) => r.currency || r.Currency || baseCurrency || null;
+  const want =
+    baseCurrency ||
+    (() => {
+      const counts = new Map();
+      for (const r of rows) {
+        const c = ccy(r);
+        if (c) counts.set(c, (counts.get(c) || 0) + 1);
+      }
+      let best = null;
+      for (const [c, n] of counts) if (!best || n > best[1]) best = [c, n];
+      return best ? best[0] : null;
+    })();
+  const sorted = rows.slice().sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return seqOf(a) - seqOf(b);
+  });
+  for (const r of sorted) {
+    if (want && ccy(r) && ccy(r) !== want) continue;
+    const b = rowBalance(r);
+    if (b != null) closing = b;
+  }
   return closing;
 }
 
@@ -233,7 +324,7 @@ export function analyseBankActivity(records, baseCurrency = 'JMD') {
         aOut = roundMoney(aOut + r.amount);
       }
     }
-    const close = accountClosingBalance(rows);
+    const close = accountClosingBalance(rows, acctCur);
     const acct = {
       account,
       currency: acctCur,
@@ -323,6 +414,7 @@ export function bankCounterpartyGroups(records, baseCurrency = 'JMD') {
 
 export function bankMovementKind(r, resolver = null, cfg = {}) {
   if (!r) return 'other';
+  if (isSetAside(r, cfg)) return 'set-aside';
   if (r.internalTransfer) return 'internal';
   if (r.refund) return 'refund';
   if (r.excludedFromIncome) return 'cash-deposit';
@@ -339,22 +431,6 @@ export function bankMovementKind(r, resolver = null, cfg = {}) {
     if (token && type.includes(token)) return rule.kind;
   }
   return r.direction === 'in' ? 'income' : 'payment';
-}
-
-export function bankKindBreakdown(records, resolver = null, cfg = {}, baseCurrency = 'JMD') {
-  const byKind = new Map();
-  for (const r of records || []) {
-    if ((r.currency || baseCurrency) !== baseCurrency) continue;
-    const kind = bankMovementKind(r, resolver, cfg);
-    if (!byKind.has(kind)) byKind.set(kind, { kind, moneyIn: 0, moneyOut: 0, count: 0 });
-    const g = byKind.get(kind);
-    if (r.direction === 'in') g.moneyIn = roundMoney(g.moneyIn + r.amount);
-    else g.moneyOut = roundMoney(g.moneyOut + r.amount);
-    g.count++;
-  }
-  return [...byKind.values()]
-    .map((g) => ({ ...g, total: roundMoney(g.moneyIn + g.moneyOut) }))
-    .sort((a, b) => b.total - a.total);
 }
 
 export function externalOutflowShortlist(groups, limit = 10) {
@@ -458,11 +534,14 @@ export function detectBankStandingDebits(
     if (amounts.length < minMonths) continue;
 
     if (standingDebitMonthGap([...g.byMonth.keys()]) > maxGapMonths) continue;
-    const sorted = amounts.slice().sort((a, b) => a - b);
-    const typical =
-      sorted.length % 2
-        ? sorted[(sorted.length - 1) / 2]
-        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+    // THE shared recurring-amount rule (shared-helpers' typicalMonthlyValue),
+    // not a third hand-rolled median. Plan's "Expected payments" resolves the
+    // same merchant through commitment-income.js, which already uses it; these
+    // two inline medians were why one recurring payment could read $9,935.82 on
+    // the Plan tab and $8,935.82 on Activity - same merchant, same cadence,
+    // exactly $1,000 apart, because a median picks a middle month while the
+    // shared rule averages the months that agree.
+    const typical = typicalMonthlyValue(amounts).amount;
     if (typical <= 0) continue;
     const consistent = amounts.filter((a) => Math.abs(a - typical) <= typical * tolerance).length;
     if (consistent >= minMonths) {
@@ -534,11 +613,14 @@ export function analyseIncomePattern(records, cfg = {}, now = new Date(), baseCu
     const amounts = [...g.byMonth.values()];
     if (amounts.length < t.minMonths) continue;
     if (standingDebitMonthGap([...g.byMonth.keys()]) > t.maxGapMonths) continue;
-    const sorted = amounts.slice().sort((a, b) => a - b);
-    const typical =
-      sorted.length % 2
-        ? sorted[(sorted.length - 1) / 2]
-        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+    // THE shared recurring-amount rule (shared-helpers' typicalMonthlyValue),
+    // not a third hand-rolled median. Plan's "Expected payments" resolves the
+    // same merchant through commitment-income.js, which already uses it; these
+    // two inline medians were why one recurring payment could read $9,935.82 on
+    // the Plan tab and $8,935.82 on Activity - same merchant, same cadence,
+    // exactly $1,000 apart, because a median picks a middle month while the
+    // shared rule averages the months that agree.
+    const typical = typicalMonthlyValue(amounts).amount;
     if (typical <= 0) continue;
     const consistent = amounts.filter((a) => Math.abs(a - typical) <= typical * t.tolerance).length;
     if (consistent < t.minMonths) continue;

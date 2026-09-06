@@ -104,13 +104,13 @@
   flex: none;
   display: inline-flex;
   margin-top: 1px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .status-line.tone-good .status-line-ic {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .status-line.tone-watch .status-line-ic {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .status-line-body {
   flex: 1;
@@ -162,7 +162,7 @@
 .offer-ic {
   flex: none;
   display: inline-flex;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .offer-body {
   flex: 1;
@@ -270,11 +270,7 @@
 .accounts-wrap {
   gap: var(--section-gap);
 }
-.card > p.muted,
-.overview-story,
-.explainer-body,
-.vm-detail-body,
-.vm-reconcile {
+.overview-story {
   max-width: 76ch;
 }
 
@@ -283,10 +279,16 @@
    in-flow greeting inside .topbar-stack are left exactly as shipped, so the
    greeting keeps pushing the page down on show and never overlaps the tabs. --- */
 .topbar {
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-bottom: 0;
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
 }
 .period-bar {
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-bottom: 1px solid var(--hairline-soft);
 }
 .period-icon {
@@ -389,11 +391,6 @@
 body {
   letter-spacing: -0.005em;
 }
-.hero-title {
-  font-size: clamp(21px, 1.8vw, 25px);
-  letter-spacing: -0.025em;
-}
-.hero-amount,
 .vm-number,
 .fact-value,
 .sec-value,
@@ -408,7 +405,6 @@ body {
 .overview-beat-lead {
   font-variant-numeric: tabular-nums lining-nums;
 }
-.hero-amount,
 .vm-number {
   text-wrap: balance;
 }
@@ -494,7 +490,7 @@ button.commit-row:hover,
 }
 .insight:hover .insight-go {
   transform: translateX(2px);
-  color: var(--accent);
+  color: var(--accent-text);
   opacity: 1;
 }
 
@@ -540,9 +536,10 @@ table.grid td {
   box-shadow: none;
 }
 .card.secondary > summary {
-  min-height: 52px;
+  min-height: 44px;
   color: color-mix(in srgb, var(--dim) 92%, var(--fg));
 }
+
 .card.secondary:hover {
   border-color: var(--hairline);
 }
@@ -583,13 +580,6 @@ table.grid td {
     column-gap: 18px;
     row-gap: 18px;
   }
-  #app.wrap > .hero,
-  .accounts-wrap.accounts-grid > .hero {
-    min-height: 250px;
-  }
-  .hero-body {
-    gap: 20px clamp(44px, 6vw, 86px);
-  }
 }
 
 /* --- Plan 13/16: mobile - content first, stable reachable navigation --- */
@@ -605,9 +595,6 @@ table.grid td {
   }
   .period-showing {
     display: none;
-  }
-  .hero-title {
-    font-size: 20px;
   }
   .overview-beat {
     font-size: 14px;
@@ -627,15 +614,41 @@ table.grid td {
   }
 }
 
-/* --- Plan 15: touch comfort --- */
-@media (pointer: coarse) {
+/* --- Plan 15: touch comfort ---
+
+   Split off the pointer axis onto width, matching the decision recorded in
+   feature-additions.css: a pointer-media rule is a second axis for a job the
+   width axis already does, and it is the one axis this thread has shown cannot
+   be verified reliably (an earlier round shipped two "fixes" that were never
+   active, because pointer emulation does not survive a reload).
+
+   Phones get it from width, deterministically. Tablets - coarse AND wide, the
+   one case width alone genuinely cannot tell from a desktop - keep the pointer
+   query, alongside the identical block already in responsive.css.
+
+   .acct-row was dropped from both: it appears in no JS or HTML in the
+   repository. */
+@media (max-width: 639px) {
   .menu-item,
   .picker-item,
   .catrow,
   button.recurring-row,
-  button.commit-row,
-  .acct-row {
+  button.commit-row {
     min-height: 44px;
+  }
+}
+@media (pointer: coarse) and (min-width: 640px) {
+  .picker-item,
+  .catrow,
+  button.recurring-row,
+  button.commit-row {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 340px) {
+  #add-btn .btn-ic {
+    display: none;
   }
 }
 
@@ -650,18 +663,7 @@ table.grid td {
 /* --- Plan 14: light mode calibrated on its own, not dark values on white.
    Softer background pools, near-neutral hairlines, gentler control fills. --- */
 [data-theme='light'] body {
-  background:
-    radial-gradient(
-      1100px 720px at 74% -12%,
-      color-mix(in srgb, var(--accent) 8%, transparent),
-      transparent
-    ),
-    radial-gradient(
-      900px 640px at 8% 24%,
-      color-mix(in srgb, var(--accent-deep) 6%, transparent),
-      transparent
-    ),
-    var(--bg);
+  background: color-mix(in srgb, var(--panel-2) 42%, var(--bg));
   background-attachment: fixed;
 }
 [data-theme='light'] {
@@ -670,23 +672,24 @@ table.grid td {
 }
 @media (prefers-color-scheme: light) {
   [data-theme='auto'] body {
-    background:
-      radial-gradient(
-        1100px 720px at 74% -12%,
-        color-mix(in srgb, var(--accent) 8%, transparent),
-        transparent
-      ),
-      radial-gradient(
-        900px 640px at 8% 24%,
-        color-mix(in srgb, var(--accent-deep) 6%, transparent),
-        transparent
-      ),
-      var(--bg);
+    background: color-mix(in srgb, var(--panel-2) 42%, var(--bg));
     background-attachment: fixed;
   }
   [data-theme='auto'] {
     --hairline: color-mix(in srgb, var(--fg) 11%, transparent);
     --hairline-soft: color-mix(in srgb, var(--fg) 7%, transparent);
+  }
+}
+
+[data-theme='light'] .btn.primary,
+[data-theme='light'] .brand-mark {
+  background: var(--accent);
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme='auto'] .btn.primary,
+  [data-theme='auto'] .brand-mark {
+    background: var(--accent);
   }
 }
 
@@ -708,7 +711,7 @@ table.grid td {
   opacity: 1;
 }
 :root[data-privacy="on"] #privacy-btn {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: color-mix(in srgb, var(--accent) 48%, var(--edge));
   background: color-mix(in srgb, var(--accent) 10%, var(--panel));
 }
@@ -772,9 +775,17 @@ table.grid td {
     transform: translateY(0);
   }
 }
+/* No longer a card: a single quiet line under the headline, with its caveat
+   behind the (i) that follows it. */
 .coverage-note {
-  padding-block: 14px;
-  border-style: dashed;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 0;
+  padding-inline: 2px;
+}
+.coverage-note > .chart-info > summary {
+  line-height: 0;
 }
 .overview-actions,
 .overview-attention {
@@ -799,7 +810,7 @@ table.grid td {
   box-shadow: none;
 }
 .activity-tabs .ledger-tab.active {
-  color: var(--accent);
+  color: var(--accent-text);
   border-bottom-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   box-shadow: none;
@@ -816,13 +827,25 @@ table.grid td {
   gap: 8px;
   margin-bottom: 4px;
 }
+/* A label is never smaller than the field it labels.
+
+   Every input in the app is 16px - deliberately, because anything smaller makes
+   iOS zoom the page on focus. The labels were 12px, so "Search transactions"
+   rendered visibly smaller than its own placeholder "Name, category, amount, or
+   custom label" directly beneath it, and the same inversion applied to Type,
+   Name and Amount on Position. Thirteen label/field pairs app-wide read
+   backwards.
+
+   14px keeps the label quieter than the value a person types (weight and colour
+   still do that) without printing it smaller than the field's own placeholder.
+   Helper captions under a field are NOT labels and keep .muted.small. */
 .field-label {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
   color: var(--dim);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 650;
 }
 .tx-search-field {
@@ -878,7 +901,7 @@ table.grid td {
   .top-actions {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr) minmax(0, 0.88fr) minmax(0, 0.94fr);
     width: 100%;
     gap: 6px;
   }
@@ -901,6 +924,25 @@ table.grid td {
     padding-inline: 7px;
     justify-content: center;
   }
+  /* Make the labels FIT rather than clipping them. "Export" needed 86px of an
+     82px button (24px padding + 16px icon + 8px gap + 38px label) and came out
+     as "Exp…" - a header action a person cannot read. The padding-inline above
+     was being overridden to 12px on the two buttons that carry a solid style,
+     so the tightening never reached the widest label. */
+  .top-actions .btn,
+  .top-actions .btn.primary {
+    padding-inline: 6px;
+    gap: 5px;
+  }
+
+  /* At this width an icon AND a label do not both fit in an 82px button, and
+     the label is the half that carries the meaning: "Export" beside a glyph is
+     clearer than a glyph beside "Exp…". The icons return as soon as there is
+     room for both. Add keeps its "+" because that one glyph IS the label's
+     meaning and the word is short enough to sit beside it. */
+  .top-actions .btn:not(.primary) .btn-ic {
+    display: none;
+  }
   .top-actions .btn .btn-label,
   .top-actions .btn.primary .btn-label {
     display: inline;
@@ -914,8 +956,16 @@ table.grid td {
   .period-bar {
     min-height: 54px;
   }
+  /* The label naming what you are looking at was capped 3px below what it
+     needs: "Where things stand now" wants 153px and got 150, so every live view
+     title read as "Where things stand n…" - and "Plan for a normal month"
+     fared worse. The row is 375px wide and only uses 174 of it, so the cap was
+     buying nothing. Allowed to wrap instead of clip: two short lines say more
+     than one truncated one. */
   .period-live-title {
-    max-width: 150px;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .empty-drop-desktop {
     display: none;
@@ -938,7 +988,8 @@ table.grid td {
   .tx-filters {
     align-items: end;
   }
-  .tx-search-field .f-search {
+  .tx-search-field .f-search,
+  .tx-search-actions {
     min-height: 44px;
   }
   .position-add-fields {

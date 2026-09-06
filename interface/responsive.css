@@ -201,31 +201,12 @@
     min-width: 96px;
     justify-content: center;
   }
-  .mobile-context {
-    display: block;
-    margin: 4px 0 0;
-  }
   .wrap {
     padding-top: 14px;
     gap: 14px;
   }
-  .hero {
-    padding: var(--card-pad-y) var(--card-pad-x);
-  }
-  .hero-head {
-    flex-direction: column;
-  }
-  .hero-title {
-    font-size: 20px;
-  }
   .hero-figure {
     min-width: 0;
-  }
-  .hero-amount {
-    font-size: 30px;
-  }
-  .hero-body {
-    gap: 14px 24px;
   }
   .row2 {
     grid-template-columns: 1fr;
@@ -550,7 +531,7 @@
   }
 }
 
-@media (pointer: fine) {
+@media (pointer: fine) and (min-width: 640px) {
   .btn,
   .btn.sm,
   .menu-item,
@@ -591,11 +572,15 @@
   }
 }
 
+/* Tablets: coarse AND wide. This is the one case the width axis genuinely
+   cannot distinguish from a desktop, so the pointer query earns its place here
+   - unlike the phone-width rules, which were moved off it. .cat-tag-btn is gone
+   with the element: catTag() only produces a button when passed an onclick, and
+   no call site does. */
 @media (pointer: coarse) and (min-width: 640px) {
   .btn,
   .btn.sm,
   .menu-item,
-  .cat-tag-btn,
   .chip,
   .f-check,
   .period-select,
@@ -605,4 +590,3 @@
     min-height: var(--tap-lg);
   }
 }
-

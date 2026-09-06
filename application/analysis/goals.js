@@ -43,14 +43,27 @@
  * this session.
  *
  * ======================================================================== */
+import {
+  sortedCardStatements,
+  formatDisplayDate,
+  daysBetweenIso as daysBetween,
+} from '../core/shared-helpers.js';
 import { resolveOpts } from './commitment-income.js';
 import { buildForecast } from './forecast.js';
+import { makeMoney, makeMoneyCompact } from '../core/money-format.js';
+import {
+  DEFAULT_CUSHION_MONTHS,
+  cushionStanding,
+  monthsLabel,
+  monthsAdjective,
+} from './cushion.js';
+
+function capFirst(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
 
 function toDate(iso) {
   return new Date(iso + 'T00:00:00Z');
-}
-function daysBetween(a, b) {
-  return Math.round((toDate(b) - toDate(a)) / 86400000);
 }
 // Whole pay cycles from a to b, by CALENDAR month (what "clear it by December"
 // actually means), not a 30-day approximation that turns 6 months into 7.
@@ -73,21 +86,7 @@ function addMonthsISO(iso, n) {
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
-function median(a) {
-  if (!a.length) return 0;
-  const s = a.slice().sort((x, y) => x - y);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
 
-function formatGoalDate(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso == null ? '' : iso));
-  if (!m) return String(iso == null ? '' : iso);
-  const mi = +m[2] - 1;
-  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  if (mi < 0 || mi > 11) return String(iso);
-  return `${m[3]}-${MON[mi]}-${m[1].slice(2)}`;
-}
 
 /* Ported from reporting.js's projectCardPayoff so goals.js gains NO new import
  * (keeping the proven module's dependency footprint intact - the old engine
@@ -140,7 +139,7 @@ export function resolveSafetyBoundary(boundaryConfig, ctx = {}) {
       floor,
       asserts: true,
       cushionDays,
-      explain: `Your regular commitments plus ${cushionDays} day${cushionDays === 1 ? '' : 's'} of typical spending.`,
+      explain: `Your fixed expenses plus ${cushionDays} day${cushionDays === 1 ? '' : 's'} of typical spending.`,
     };
   }
   // 'none' - assert nothing; only report the projected low point.
@@ -170,24 +169,44 @@ export function resolveSafetyBoundary(boundaryConfig, ctx = {}) {
 export function goalProgress(goal, ctx = {}) {
   const now = ctx.asOf;
   if (goal.type === 'cushion') {
-    // target: keep >= targetDays of typical daily outflow as cash.
-    const dailyOutflow = Number(ctx.typicalDailyOutflow) || 0;
-    const targetAmount = r2(dailyOutflow * (Number(goal.targetDays) || 0));
+    // target: hold >= targetMonths of what a month actually COSTS as cash.
+    // Months of expenses, not of income: see cushion.js for why the thing being
+    // multiplied changed, and for what "current" is allowed to count.
+    const monthlyExpenses = Number(ctx.typicalMonthlyExpenses) || 0;
+    const targetMonths =
+      goal.targetMonths != null ? Number(goal.targetMonths) : DEFAULT_CUSHION_MONTHS;
     const current = Number(ctx.liquidNow) || 0;
+    const monthsOfData = Number(ctx.expensesMonthsOfData) || 0;
+    const standing = cushionStanding({
+      saved: current,
+      monthlyExpenses,
+      targetMonths,
+      monthsOfData,
+    });
+    // currentDays is kept because the safety-boundary card still speaks in days
+    // of runway - a genuinely different question ("how long could I last") from
+    // this goal's ("is the pile big enough"). It is derived, never the target.
+    const dailyOutflow = Number(ctx.typicalDailyOutflow) || 0;
     const currentDays = dailyOutflow > 0 ? Math.floor(current / dailyOutflow) : null;
     return {
       type: 'cushion',
-      targetDays: goal.targetDays,
-      targetAmount,
+      targetMonths,
+      monthlyExpenses: standing.monthlyExpenses,
+      targetAmount: standing.targetAmount,
       current: r2(current),
       currentDays,
-      met: current >= targetAmount,
-      shortfall: r2(Math.max(0, targetAmount - current)),
+      monthsCovered: standing.monthsCovered,
+      progress: standing.progress,
+      readable: standing.readable,
+      coverage: standing.coverage,
+      rebasedFromIncome: goal.rebasedFrom === 'income',
+      met: standing.met,
+      shortfall: standing.shortfall,
       threshold: true, // continuing threshold, not a one-off date
     };
   }
   if (goal.type === 'clear-card') {
-    const balance = Number(ctx.cardBalance) || 0;
+    const balance = Math.max(0, Number(ctx.cardBalance) || 0);
     const monthsLeft = goal.targetDate ? Math.max(1, monthsBetweenISO(now, goal.targetDate)) : null;
     const monthlyNeeded = monthsLeft ? r2(balance / monthsLeft) : null;
     // G (clear-card engine extension): two ADDITIVE fields. met stays EXACTLY
@@ -363,13 +382,11 @@ function monthlyContributionItems(asOf, horizonDays, day, monthly) {
   return out;
 }
 function ctxCardBalance(goal, cardStatements) {
-  const stmts = (cardStatements || [])
-    .slice()
-    .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)));
+  const stmts = sortedCardStatements(cardStatements);
   const latest = stmts[stmts.length - 1];
   return latest && latest.newBalance != null
-    ? Math.abs(Number(latest.newBalance))
-    : Number(goal.startingBalance) || 0;
+    ? Math.max(0, Number(latest.newBalance) || 0)
+    : Math.max(0, Number(goal.startingBalance) || 0);
 }
 
 /* ===========================================================================
@@ -377,29 +394,46 @@ function ctxCardBalance(goal, cardStatements) {
  *  address "you". A goal always shows its target, present value, and (when a
  *  contribution is in play) the guard's verdict.
  * ======================================================================== */
-export function buildGoalModel(goal, progress, guard, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
+export function buildGoalModel(goal, progress, guard, cfg = {}, opts = {}) {
+  // One formatter for the whole app (core/money-format.js), plus the privacy
+  // gate every figure must pass.
+  //
+  // opts.compact shortens large figures for READING ON SCREEN ($1.09M of a
+  // $1.54M target). It defaults to FALSE deliberately: this same detail string
+  // is persisted verbatim as the monthly check-in headline and can be exported,
+  // and a rounded figure written into stored history cannot be recovered. A
+  // caller that is painting pixels opts in; anything that stores or exports the
+  // sentence gets exact figures by doing nothing.
+  const money = opts.compact ? makeMoneyCompact(cfg) : makeMoney(cfg);
 
   let lead, tag, tone, detail;
   if (progress.type === 'cushion') {
-    lead = progress.currentDays == null ? '-' : `${progress.currentDays} days`;
-    tag = progress.met ? 'buffer met' : 'below buffer';
-    tone = progress.met ? 'good' : 'watch';
-    detail = progress.met
-      ? `Your cash covers about ${progress.currentDays} days of typical spending, at or above your ${goal.targetDays}-day target.`
-      : `Your cash covers about ${progress.currentDays} days of typical spending, short of your ${goal.targetDays}-day target by ${money(progress.shortfall)}.`;
+    // The GAP is the headline. Previously this card led with a days figure and
+    // said nothing about size, so a safety net far smaller than it should be
+    // sat on the screen looking unremarkable while a louder, less important
+    // number elsewhere took all the attention.
+    const targetLabel = monthsLabel(progress.targetMonths);
+    const targetAdj = monthsAdjective(progress.targetMonths);
+    // The target is a multiple of a month's COSTS now. "working toward five
+    // months" on its own would read as five months of income to anyone who set
+    // this goal under the old definition, so the sentence names the unit.
+    const targetUnit = `${targetLabel} of expenses`;
+    if (!progress.readable) {
+      lead = '-';
+      tag = 'not enough yet';
+      tone = 'watch';
+      detail = `There is not yet enough spending history to size a ${targetAdj} emergency fund.`;
+    } else if (progress.met) {
+      lead = money(progress.current);
+      tag = 'target met';
+      tone = 'good';
+      detail = `You have ${money(progress.current)} set against a ${targetAdj} target of ${money(progress.targetAmount)} - ${progress.progress.phrase}.`;
+    } else {
+      lead = money(progress.shortfall);
+      tag = 'still needed';
+      tone = 'watch';
+      detail = `${capFirst(progress.progress.phrase)}, working toward ${targetUnit}. You have ${money(progress.current)} of a ${money(progress.targetAmount)} target, so ${money(progress.shortfall)} is still needed.`;
+    }
   } else if (progress.type === 'clear-card') {
     lead = money(progress.current);
     if (progress.met) {
@@ -410,9 +444,9 @@ export function buildGoalModel(goal, progress, guard, cfg = {}) {
       // G: a passed deadline is stated plainly, not dressed as a forward plan.
       tag = 'deadline passed';
       tone = 'watch';
-      detail = `The ${formatGoalDate(goal.targetDate)} deadline has passed and ${money(progress.current)} is still owed.`;
+      detail = `The ${formatDisplayDate(goal.targetDate)} deadline has passed and ${money(progress.current)} is still owed.`;
     } else {
-      const base = `Clearing ${money(progress.current)} by ${formatGoalDate(goal.targetDate)} needs about ${money(progress.monthlyNeeded)} a month`;
+      const base = `Clearing ${money(progress.current)} by ${formatDisplayDate(goal.targetDate)} needs about ${money(progress.monthlyNeeded)} a month`;
       if (progress.feasible === true) {
         tag = 'on track';
         tone = 'good';
@@ -420,7 +454,7 @@ export function buildGoalModel(goal, progress, guard, cfg = {}) {
       } else if (progress.feasible === false) {
         tag = 'behind';
         tone = 'watch';
-        detail = `${base} - more than your recent payments, so it would clear after ${formatGoalDate(goal.targetDate)}, not by it.`;
+        detail = `${base} - more than your recent payments, so it would clear after ${formatDisplayDate(goal.targetDate)}, not by it.`;
       } else {
         // feasibility unknown (no rate/payment) -> the ORIGINAL calm wording, unchanged.
         tag = progress.monthlyNeeded != null ? 'on a plan' : 'no date set';
@@ -429,10 +463,17 @@ export function buildGoalModel(goal, progress, guard, cfg = {}) {
       }
     }
   } else if (progress.type === 'spend-ceiling') {
+    // "limit", not "ceiling". The Activity card was renamed when the pace bug
+    // was fixed; this surface kept the old word, so one concept had two names
+    // depending on which tab you read it on. spend-ceiling stays the internal
+    // type name - only the person-facing wording changes.
     lead = money(progress.spent);
-    tag = progress.met ? 'within ceiling' : 'over ceiling';
+    tag = progress.met ? 'within your limit' : 'over your limit';
     tone = progress.met ? 'good' : 'watch';
-    detail = `${money(progress.spent)} of your ${money(progress.ceiling)} ceiling this period, ${money(Math.abs(progress.remaining))} ${progress.remaining >= 0 ? 'remaining' : 'over'}.`;
+    detail =
+      progress.remaining >= 0
+        ? `${money(progress.spent)} of your ${money(progress.ceiling)} limit this period, ${money(progress.remaining)} left.`
+        : `${money(progress.spent)} against your ${money(progress.ceiling)} limit this period - ${money(Math.abs(progress.remaining))} over.`;
   } else {
     lead = '-';
     tag = '';
@@ -497,4 +538,10 @@ export function evaluateGoal(goal, progressCtx, cfg = {}) {
   if (progress.unsupported) return null;
   const model = buildGoalModel(goal, progress, null, cfg);
   return { progress, model };
+}
+
+export function goalOffTrack(progress, model) {
+  return (
+    !!progress && !!model && progress.met === false && model.tone === 'watch' && progress.readable !== false
+  );
 }

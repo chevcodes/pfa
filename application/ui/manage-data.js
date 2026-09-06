@@ -17,8 +17,13 @@
 import { compileRules } from '../statements/categorise.js';
 import { compileBrandRules } from '../../settings/category-rules.js';
 import { Store } from '../core/storage.js';
-import { requireCtx, withConfigDefaults } from '../core/shared-helpers.js';
+import { requireCtx, withConfigDefaults, formatDisplayDate } from '../core/shared-helpers.js';
 import { compileFromRaw } from '../statements/merchant-resolver.js';
+import { resetPlanDraft } from './plan-render.js';
+import { PLAN_DRAFT_KEY } from '../analysis/plan-draft.js';
+import { ownDestinations } from '../analysis/set-aside.js';
+import { buildStatementRemovalPlan } from '../analysis/statement-cascade.js';
+import { commitAndRender } from './reversible.js';
 
 export function createManageData(ctx) {
   requireCtx(
@@ -30,12 +35,11 @@ export function createManageData(ctx) {
       'toast',
       'render',
       'closePicker',
-      'openOverlay',
       'openModal',
-      'persist',
-      'persistBank',
+      'classifiedBank',
       'applyThemeColours',
       'buildCategoryColours',
+      'resetWorkspaceState',
     ],
     'createManageData'
   );
@@ -46,12 +50,11 @@ export function createManageData(ctx) {
     toast,
     render,
     closePicker,
-    openOverlay,
     openModal,
-    persist,
-    persistBank,
+    classifiedBank,
     applyThemeColours,
     buildCategoryColours,
+    resetWorkspaceState,
   } = ctx;
 
   // Re-fetch config.json (cache-busting) and re-apply everything it drives, then
@@ -83,7 +86,10 @@ export function createManageData(ctx) {
               pattern: new RegExp(r.pattern, r.flags || 'i'),
               replacement: r.replacement || '',
             });
-          } catch {}
+          } catch {
+            // One unparseable cleanup pattern must not cost the person every
+            // other rule in the file. Skip it and keep compiling the rest.
+          }
         }
         state.resolver = compileFromRaw(rawMerchants, cfg, cleanupRules);
         state.merchants = state.resolver.compiled;
@@ -109,10 +115,50 @@ export function createManageData(ctx) {
   // That was survivable while Manage Data lived only on Cards; now that it
   // renders on every tab, it needs to be honest about every statement stored,
   // not just the card ledger's.
+  async function removeInvestmentStatement(st) {
+    await commitAndRender({
+      commit: async () => {
+        await Store.investmentStatements.delete(st.hash);
+        state._investmentStatements = await Store.investmentStatements.all();
+        closePicker();
+      },
+      render,
+      notify: () => toast(`Removed the investment statement ending ${formatDisplayDate(st.periodEnd)}.`),
+    });
+  }
+
+  function investmentRows() {
+    return (state._investmentStatements || [])
+      .slice()
+      .sort((a, b) => String(b.periodEnd).localeCompare(String(a.periodEnd)))
+      .map((st) => {
+        const holdings = (st.holdings || []).length;
+        return el(
+          'div',
+          { class: 'stmt-row' },
+          el(
+            'div',
+            { class: 'stmt-body' },
+            el('div', { class: 'strong' }, `${st.source_file} · Investments`),
+            el(
+              'div',
+              { class: 'muted small' },
+              `Statement ending ${formatDisplayDate(st.periodEnd)} · ${holdings} holding${holdings === 1 ? '' : 's'}`
+            )
+          ),
+          el(
+            'button',
+            { class: 'btn sm danger', onclick: () => removeInvestmentStatement(st) },
+            'Remove statement'
+          )
+        );
+      });
+  }
+
   async function openRemoveStatement() {
     const cardStmts = await Store.allStatements();
     const bankStmts = await Store.allBankStatements();
-    if (!cardStmts.length && !bankStmts.length) {
+    if (!cardStmts.length && !bankStmts.length && !(state._investmentStatements || []).length) {
       toast('No statements are stored yet.');
       return;
     }
@@ -126,11 +172,19 @@ export function createManageData(ctx) {
       ...cardStmts.map((st) => ({ ...st, ledger: 'card' })),
       ...bankStmts.map((st) => ({ ...st, ledger: 'bank' })),
     ].sort((a, b) => String(b.importedAt || '').localeCompare(String(a.importedAt || '')));
-    const list = el('div', { class: 'picker-list' });
+    const grouped = new Map();
     for (const st of combined) {
+      const key = `${st.ledger}:${st.source_file}`;
+      const existing = grouped.get(key);
+      if (existing) existing.statementCount += 1;
+      else grouped.set(key, { ...st, statementCount: 1 });
+    }
+    const list = el('div', { class: 'picker-list' });
+    for (const st of grouped.values()) {
       const count =
         st.ledger === 'card' ? byFile[st.source_file] || 0 : byBankFile[st.source_file] || 0;
       const ledgerLabel = st.ledger === 'card' ? 'Card' : 'Account';
+      const statementLabel = `${st.statementCount} statement${st.statementCount === 1 ? '' : 's'}`;
       list.append(
         el(
           'div',
@@ -142,7 +196,7 @@ export function createManageData(ctx) {
             el(
               'div',
               { class: 'muted small' },
-              `${st.period ? st.period + ' · ' : ''}${count} transaction${count === 1 ? '' : 's'}`
+              `${statementLabel} · ${count} transaction${count === 1 ? '' : 's'}`
             )
           ),
           el(
@@ -151,23 +205,24 @@ export function createManageData(ctx) {
               class: 'btn sm danger',
               onclick: () => (st.ledger === 'card' ? removeStatement(st) : removeBankStatement(st)),
             },
-            'Remove'
+            'Remove file'
           )
         )
       );
     }
+    list.append(...investmentRows());
     const box = el(
       'div',
       {
         class: 'picker wide',
         role: 'dialog',
-        'aria-label': 'Remove a statement',
+        'aria-label': 'Remove an imported file',
       },
-      el('div', { class: 'picker-head' }, 'Remove a statement'),
+      el('div', { class: 'picker-head' }, 'Remove an imported file'),
       el(
         'p',
         { class: 'muted small' },
-        'This drops that statement and its transactions from this device. Re-import the PDF to bring it back. Your category rules are kept.'
+        'This drops every statement in that PDF and their transactions from this device. Re-import the PDF to bring them back. Your category rules are kept.'
       ),
       list,
       el(
@@ -178,34 +233,93 @@ export function createManageData(ctx) {
     );
     openModal(box);
   }
-  async function removeStatement(st) {
-    const remaining = state.records.filter((r) => r.source_file !== st.source_file);
-    const removed = state.records.length - remaining.length;
-    state.records = remaining;
-    await Store.deleteStatement(st.hash);
-    await persist();
-    closePicker();
-    render();
-    toast(`Removed ${st.source_file} and ${removed} transaction${removed === 1 ? '' : 's'}.`);
-  }
-  // Bank-ledger counterpart to removeStatement, same shape: filter by
-  // source_file (the same file-level granularity the card path already uses -
-  // a consolidated PDF's transactions carry no finer per-statement link, so
-  // this matches existing behaviour rather than introducing a new limitation),
-  // delete the per-statement record, persist, refresh the cached statement
-  // list, then close and report exactly like the card path does.
-  async function removeBankStatement(st) {
-    const remaining = state.bankRecords.filter((r) => r.source_file !== st.source_file);
-    const removed = state.bankRecords.length - remaining.length;
-    state.bankRecords = remaining;
-    await Store.deleteBankStatement(st.hash);
-    await persistBank();
-    state._bankStatements = await Store.allBankStatements();
-    closePicker();
-    render();
-    toast(
-      `Removed ${st.source_file} and ${removed} account transaction${removed === 1 ? '' : 's'}.`
+  async function applyStatementRemoval(st, ledger) {
+    const plan = buildStatementRemovalPlan(state, st.source_file, ledger);
+    const [sourceStatements, dormantGoals] = await Promise.all([
+      Store.allStatements(),
+      Store.goals.all(),
+    ]);
+    const previous = {};
+    for (const key of Object.keys(plan.state)) previous[key] = state[key];
+    previous._planSetAside = state._planSetAside;
+    previous.lastLocalUpdate = state.lastLocalUpdate;
+    Object.assign(state, plan.state);
+    const availableDestinations = new Set(
+      ownDestinations(classifiedBank(), {
+        baseCurrency: (state.cfg.currency || {}).code || 'JMD',
+      })
+        .filter((item) => item.months >= 2)
+        .map((item) => item.key)
     );
+    state._planSetAside = (state._planSetAside || []).filter((key) => availableDestinations.has(key));
+    const updatedAt = new Date().toISOString();
+    const statements =
+      ledger === 'card'
+        ? sourceStatements.filter((item) => item.hash !== st.hash)
+        : sourceStatements;
+    try {
+      await Store.restoreSnapshot({
+        stores: {
+          transactions: state.records,
+          statements,
+          rules: state.rules,
+          bankTransactions: state.bankRecords,
+          bankStatements: state._bankStatements,
+          cardStatements: state._cardStatements,
+          tags: state.tags,
+          transactionSplits: state.transactionSplits,
+          categoryIntentions: state.categoryIntentions,
+          goals: dormantGoals,
+          forecastSnapshots: [],
+          manualAssets: state.manualAssets,
+          balanceUpdates: state.balanceUpdates || [],
+          investmentStatements: state._investmentStatements || [],
+        },
+        meta: {
+          bankConfirmedIncomeIds: state.confirmedIncomeIds,
+          bankRefundIncomeIds: state.refundIncomeIds,
+          financeGoalLog: state.goalLog,
+          planSetAside: state._planSetAside,
+          lastLocalUpdate: updatedAt,
+        },
+      });
+    } catch (error) {
+      Object.assign(state, previous);
+      throw error;
+    }
+    state.lastLocalUpdate = updatedAt;
+    return plan.removedTransactions;
+  }
+
+  // Both removals go through the shared contract: the cascade is committed in
+  // full, the page repaints from what remains, and only then is the removal
+  // announced. Removing a statement touches transactions, tags, splits,
+  // forecasts and goal history at once, so "committed" has to mean all of it.
+  async function removeStatement(st) {
+    await commitAndRender({
+      commit: async () => {
+        const removed = await applyStatementRemoval(st, 'card');
+        closePicker();
+        return removed;
+      },
+      render,
+      notify: (removed) =>
+        toast(`Removed ${st.source_file} and ${removed} transaction${removed === 1 ? '' : 's'}.`),
+    });
+  }
+  async function removeBankStatement(st) {
+    await commitAndRender({
+      commit: async () => {
+        const removed = await applyStatementRemoval(st, 'bank');
+        closePicker();
+        return removed;
+      },
+      render,
+      notify: (removed) =>
+        toast(
+          `Removed ${st.source_file} and ${removed} account transaction${removed === 1 ? '' : 's'}.`
+        ),
+    });
   }
 
   // Clear everything on this device (guarded). Rules are kept unless the person
@@ -245,55 +359,78 @@ export function createManageData(ctx) {
     openModal(box);
   }
   async function doClearAll(keepRules) {
-    // Clear EVERY ledger, not just the card one. Previously the bank ledger and
-    // the card-statement records survived a "start over", so a privacy-first
-    // wipe silently kept a person's bank history. All three stores and their
-    // in-memory state are cleared together.
-    await Store.clearTransactions();
-    await Store.clearStatements();
-    await Store.clearBankTransactions();
-    await Store.clearBankStatements();
-    await Store.clearCardStatements();
-    if (!keepRules) {
-      state.rules = [];
-      await Store.clearRules();
-    }
-    state.records = [];
-    state.bankRecords = [];
-    state._bankStatements = [];
-    state._cardStatements = [];
-    // Learned own-account numbers (the card number, the my-accounts list) are
-    // derived from imported statements, so they are reset too; user re-learns
-    // them on the next import.
-    state.cardAccounts = [];
-    state.myAccounts = [];
-    await Store.setMeta('bankCardAccounts', []);
-    await Store.setMeta('bankMyAccounts', []);
-    // Ledger-rule confirmations are also statement-derived: reset them too, so
-    // "start over" truly leaves nothing behind.
-    state.confirmedIncomeIds = [];
-    state.refundIncomeIds = [];
-    state.sharedAccounts = [];
-    state.householdPayees = [];
-    await Store.setMeta('bankConfirmedIncomeIds', []);
-    await Store.setMeta('bankRefundIncomeIds', []);
-    await Store.setMeta('bankSharedAccounts', []);
-    await Store.setMeta('bankHouseholdPayees', []);
-    // Round 4: the goal LOG is a record of facts derived from the statement
-    // data just wiped, so it is reset alongside the other statement-derived
-    // fields above. The goal itself (state.goal) is a personal intention, not
-    // derived from any specific statement, so it survives - the same
-    // treatment state.firstName already gets.
-    state.goalLog = [];
-    await Store.setMeta('financeGoalLog', []);
-    await Store.setMeta('mockPersonaLoaded', null);
-    // Clear-all polish: reset the per-account selection and the last-imported
-    // marker so no stale account or device note lingers after a wipe.
-    state.bankAccount = 'all';
-    state.lastImportedFrom = null;
-    await Store.setMeta('lastImportedFrom', null);
-    state.view = 'cards';
-    await Store.setMeta('lastLocalUpdate', new Date().toISOString());
+    const updatedAt = new Date().toISOString();
+    const rules = keepRules ? state.rules : [];
+    // A name the person typed is theirs; a name lifted off a statement belongs
+    // to the statement and leaves with it.
+    const keepManualName = state.firstNameSource === 'manual';
+    const dormantGoals = await Store.goals.all();
+    await Store.restoreSnapshot({
+      stores: {
+        transactions: [],
+        statements: [],
+        rules,
+        bankTransactions: [],
+        bankStatements: [],
+        cardStatements: [],
+        tags: [],
+        transactionSplits: [],
+        categoryIntentions: state.categoryIntentions,
+        goals: dormantGoals,
+        forecastSnapshots: [],
+        manualAssets: state.manualAssets,
+        balanceUpdates: [],
+        investmentStatements: [],
+      },
+      meta: {
+        bankCardAccounts: [],
+        bankMyAccounts: [],
+        bankConfirmedIncomeIds: [],
+        bankRefundIncomeIds: [],
+        bankSharedAccounts: [],
+        bankHouseholdPayees: [],
+        financeGoalLog: [],
+        planSetAside: [],
+        accountNames: null,
+        mockPersonaLoaded: null,
+        lastImportedFrom: null,
+        lastLocalUpdate: updatedAt,
+        [PLAN_DRAFT_KEY]: null,
+        /* Four keys that used to outlive the data they describe.
+         *
+         * The dialog promises this "removes every transaction and statement
+         * from this device". These are not transactions, which is how they
+         * survived - but each one is DERIVED from the transactions, so keeping
+         * them leaves the app asserting things about data that is gone:
+         *
+         *  - a name READ OFF a statement kept greeting the person by name on a
+         *    completely empty app. A name they typed themselves is a
+         *    preference and is kept; one inferred from an import is not, and
+         *    goes with the import. (See learnFirstName's rank: manual outranks
+         *    card outranks bank.)
+         *  - planGroups are per-category corrections - the same family as the
+         *    category rules the dialog explicitly asks about - so they follow
+         *    the same answer instead of silently persisting either way.
+         *  - lastForecastSnapshotDate pointed at snapshots that were just
+         *    deleted, so the next run would decide today's snapshot had
+         *    already been taken and skip it.
+         *  - backupPromptDismissed said "you have already been told to back
+         *    this up" about data that no longer exists.
+         */
+        ...(keepManualName ? {} : { firstName: null, firstNameSource: null }),
+        ...(keepRules ? {} : { planGroups: null }),
+        lastForecastSnapshotDate: null,
+        backupPromptDismissed: null,
+        workspaceState: {
+          version: 1,
+          view: 'overview',
+          activityTab: 'analysis',
+          period: { type: 'latest-complete', from: null, to: null },
+        },
+      },
+    });
+    resetPlanDraft();
+    resetWorkspaceState({ rules, updatedAt, keepManualName, keepRules });
     closePicker();
     render();
     toast(

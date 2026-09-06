@@ -76,6 +76,13 @@ const server = http.createServer((req, res) => {
   const ext = path.extname(resolved).toLowerCase();
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',
+    // A development server must never let the browser hold on to a file. With
+    // no cache header at all the browser is free to apply its own heuristics,
+    // which is how an edit can be saved, the page reloaded, and the previous
+    // version still served. Explicit no-store removes the guesswork.
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    Pragma: 'no-cache',
+    Expires: '0',
   });
   createReadStream(resolved).pipe(res);
 });
