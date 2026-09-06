@@ -22,14 +22,10 @@
  *
  *  PURE and Node-testable. No DOM, no fetch, no mutation.
  * ======================================================================== */
+import { median } from '../core/shared-helpers.js';
+import { makeMoney } from '../core/money-format.js';
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
-}
-function median(a) {
-  if (!a.length) return 0;
-  const s = a.slice().sort((x, y) => x - y);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
 /* Is this snapshot mature enough to score as of `todayISO`, and does the ledger
@@ -39,7 +35,8 @@ function median(a) {
 export function snapshotScorable(snap, todayISO, bankMaxDate) {
   if (!snap || !snap.horizonEnd) return { ok: false, reason: 'no-horizon' };
   if (String(snap.horizonEnd) > String(todayISO)) return { ok: false, reason: 'immature' }; // horizon not yet passed
-  if (bankMaxDate && String(snap.horizonEnd) > String(bankMaxDate))
+  if (!bankMaxDate) return { ok: false, reason: 'ledger-missing' };
+  if (String(snap.horizonEnd) > String(bankMaxDate))
     return { ok: false, reason: 'ledger-short' }; // data doesn't reach the horizon yet
   return { ok: true, reason: 'ok' };
 }
@@ -119,19 +116,11 @@ export function accuracyReport(
 
 /* view-model: one plain sentence + tag. Forward, no blame, honest about state. */
 export function buildAccuracyModel(report, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Math.round(Number(n || 0));
-  }
+  // One formatter for the whole app (core/money-format.js), here with whole-
+  // currency rounding, plus the privacy gate every figure must pass.
+  const money = makeMoney({
+    currency: Object.assign({}, (cfg && cfg.currency) || {}, { decimals: 0 }),
+  });
 
   if (report.state === 'building') {
     return {

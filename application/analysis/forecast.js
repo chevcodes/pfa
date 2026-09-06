@@ -25,6 +25,22 @@ import {
   twoWayKeys,
   liquidBalance,
 } from './commitment-income.js';
+// median is still used here for the SIGNED month-over-month liquid deltas and
+// their MAD. Those straddle zero, where a relative-agreement tolerance has no
+// meaning, and the MAD there sizes a forecast BAND rather than naming a typical
+// month - so that one deliberately stays a median and is not routed through
+// typicalMonthlyValue.
+import {
+  median,
+  typicalMonthlyValue,
+  sortedCardStatements,
+  daysBetweenIso as daysBetween,
+  isInternal,
+  dirOf,
+  amtOf,
+  ccyOf,
+  dateOf,
+} from '../core/shared-helpers.js';
 
 function toDate(iso) {
   return new Date(iso + 'T00:00:00Z');
@@ -45,12 +61,6 @@ function clampDay(y, mo, day) {
 }
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
-}
-function median(a) {
-  if (!a.length) return 0;
-  const s = a.slice().sort((x, y) => x - y);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 function ymOf(iso) {
   return iso.slice(0, 7);
@@ -89,27 +99,19 @@ function typicalFlexibleMonthly(bankRecords, opts, asOf, committedKeys) {
   const base = opts.baseCurrency;
   const byMonth = new Map();
   for (const r of bankRecords) {
-    const d = String(r.date || r.Date || '');
+    const d = dateOf(r);
     if (!d || d > asOf) continue;
-    const internal =
-      r.internalTransfer != null
-        ? !!r.internalTransfer
-        : String(r.Flow || '') === 'Internal transfer';
-    if (internal) continue;
-    const ccy = String(r.currency || r.Currency || base);
-    if (ccy !== base) continue;
-    const dir =
-      r.direction || (r.Flow === 'Cash inflow' ? 'in' : r.Flow === 'Cash outflow' ? 'out' : '');
-    if (dir !== 'out') continue;
+    if (isInternal(r)) continue;
+    if (ccyOf(r, base) !== base) continue;
+    if (dirOf(r) !== 'out') continue;
     const key = r.counterpartyKey || r.Group || r['Counterparty / Merchant'] || '';
     if (committedKeys.has(key)) continue; // commitments handled separately
-    const a = Math.abs(Number(r.amount != null ? r.amount : r.Amount) || 0);
-    byMonth.set(ymOf(d), (byMonth.get(ymOf(d)) || 0) + a);
+    byMonth.set(ymOf(d), (byMonth.get(ymOf(d)) || 0) + amtOf(r));
   }
   const months = [...byMonth.keys()].sort();
   const complete = months.slice(0, -1); // drop the (possibly partial) last month
   const vals = complete.map((m) => byMonth.get(m));
-  return { monthly: r2(median(vals)), monthsUsed: vals.length };
+  return { monthly: r2(typicalMonthlyValue(vals).amount), monthsUsed: vals.length };
 }
 
 /* median signed month-over-month change in LIQUID balance, over recent complete
@@ -120,7 +122,7 @@ function typicalFlexibleMonthly(bankRecords, opts, asOf, committedKeys) {
 function medianMonthlyLiquidDelta(bankRecords, opts, asOf) {
   // month-ends strictly before asOf, most recent ~8
   const yms = [
-    ...new Set(bankRecords.map((r) => String(r.date || r.Date || '').slice(0, 7)).filter(Boolean)),
+    ...new Set(bankRecords.map((r) => dateOf(r).slice(0, 7)).filter(Boolean)),
   ].sort();
   const ends = [];
   for (const ym of yms) {
@@ -162,6 +164,7 @@ export function buildForecast({
   asOf,
   horizonDays = 90,
   manualFutureItems = [],
+  confirmations = [],
 }) {
   const opts = resolveOpts(cfg);
   const horizonEnd = addDays(asOf, horizonDays);
@@ -171,7 +174,7 @@ export function buildForecast({
   const start = liquid.total;
 
   // recurring income (shared primitive)
-  const inc = expectedIncome(bankRecords, opts, asOf);
+  const inc = expectedIncome(bankRecords, opts, asOf, confirmations);
   const gaps = [];
   if (!inc) gaps.push('no recurring income detected');
 
@@ -216,9 +219,7 @@ export function buildForecast({
     for (const e of monthlyEvents(asOf, horizonEnd, d.typicalDay, -d.typical))
       events.push({ ...e, type: 'commitment', kind: 'estimated', key: d.key });
   // card payment: the amount due, on its due date, if within horizon
-  const stmts = (cardStatements || [])
-    .slice()
-    .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)));
+  const stmts = sortedCardStatements(cardStatements);
   const latest = stmts[stmts.length - 1];
   if (
     latest &&
@@ -346,9 +347,6 @@ export function buildForecast({
     },
     gaps,
   };
-}
-function daysBetween(a, b) {
-  return Math.round((toDate(b) - toDate(a)) / 86400000);
 }
 
 /* ===========================================================================

@@ -1,4 +1,4 @@
-import { fnv1a } from '../core/shared-helpers.js';
+import { accountNamesOnly, fnv1a } from '../core/shared-helpers.js';
 
 /* ===========================================================================
  * 8) Encrypted history file  (export / import; AES-GCM + PBKDF2)
@@ -14,6 +14,7 @@ import { fnv1a } from '../core/shared-helpers.js';
 // bundle, so nothing bank-side is brought in (backward compatible).
 const HISTORY_MAGIC = 'CCAHIST1';
 const HISTORY_MAGIC_V2 = 'CCAHIST2';
+const HISTORY_MAGIC_V3 = 'CCAHIST3';
 // PBKDF2 work factor for the encrypted history file. Written into every
 // exported envelope (iterations) and read back at import, so this value can be
 // raised over time without breaking files created with an older count: each
@@ -43,6 +44,16 @@ function atobSafe(s) {
   return typeof atob === 'function' ? atob(s) : Buffer.from(s, 'base64').toString('binary');
 }
 
+function recordsWith(value, key) {
+  return Array.isArray(value)
+    ? value.filter((record) => record && typeof record === 'object' && record[key])
+    : [];
+}
+
+function strings(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item) : [];
+}
+
 async function deriveKey(passphrase, salt, iterations) {
   const crypto = getCrypto();
   const enc = new TextEncoder();
@@ -69,31 +80,68 @@ export async function exportHistory(records, meta, passphrase, bundle = {}) {
   const key = await deriveKey(passphrase, salt, PBKDF2_ITERATIONS_DEFAULT);
   const payload = new TextEncoder().encode(
     JSON.stringify({
-      magic: HISTORY_MAGIC_V2,
+      magic: HISTORY_MAGIC_V3,
       exportedAt: new Date().toISOString(),
       meta: meta || {},
       records,
       rules: bundle.rules || [],
       ledgerRules: {
-        confirmedIncomeIds: bundle.confirmedIncomeIds || [],
         sharedAccounts: bundle.sharedAccounts || [],
         householdPayees: bundle.householdPayees || [],
       },
       profile: {
         firstName: bundle.firstName || null,
-        // Round 4: the goal is a personal intention, portable across devices
-        // like firstName; goalLog travels alongside it so a device move never
-        // loses the honest monthly record already built up.
+        firstNameSource: bundle.firstNameSource || null,
         goal: bundle.goal || null,
         goalLog: Array.isArray(bundle.goalLog) ? bundle.goalLog : [],
+        goalBoundary: bundle.goalBoundary || null,
       },
       bank: {
         transactions: bundle.bankRecords || [],
+        sourceStatements: bundle.sourceStatements || [],
         statements: bundle.bankStatements || [],
         cardStatements: bundle.cardStatements || [],
         myAccounts: bundle.myAccounts || [],
         cardAccounts: bundle.cardAccounts || [],
       },
+      investments: {
+        statements: Array.isArray(bundle.investmentStatements) ? bundle.investmentStatements : [],
+      },
+      planning: {
+        target: bundle.planTarget || null,
+        groups: bundle.planGroups || null,
+        // Uncommitted work travels with the backup too. Restoring a machine
+        // and finding a half-answered wizard reset to zero would lose real
+        // effort that the person had not been asked to commit yet.
+        draft: bundle.planDraft || null,
+      },
+      userData: {
+        customCategories: Array.isArray(bundle.customCategories) ? bundle.customCategories : [],
+        tags: Array.isArray(bundle.tags) ? bundle.tags : [],
+        transactionSplits: Array.isArray(bundle.transactionSplits)
+          ? bundle.transactionSplits
+          : [],
+        categoryIntentions: Array.isArray(bundle.categoryIntentions)
+          ? bundle.categoryIntentions
+          : [],
+        forecastSnapshots: Array.isArray(bundle.forecastSnapshots)
+          ? bundle.forecastSnapshots
+          : [],
+        manualAssets: Array.isArray(bundle.manualAssets) ? bundle.manualAssets : [],
+        balanceUpdates: Array.isArray(bundle.balanceUpdates) ? bundle.balanceUpdates : [],
+        goals: Array.isArray(bundle.goals) ? bundle.goals : [],
+        // Every answer the person has given about an inference, in the one
+        // shape they are all stored in. A backup made before this existed
+        // carries the three old shapes instead, and the reader below still
+        // understands them, so restoring an older file loses nothing.
+        confirmations: Array.isArray(bundle.confirmations) ? bundle.confirmations : [],
+      },
+      preferences: {
+        theme: ['auto', 'light', 'dark'].includes(bundle.theme) ? bundle.theme : null,
+        privacy: ['on', 'off'].includes(bundle.privacy) ? bundle.privacy : null,
+        accountNames: accountNamesOnly(bundle.accountNames),
+      },
+      workspace: bundle.workspace && typeof bundle.workspace === 'object' ? bundle.workspace : null,
     })
   );
   const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, payload));
@@ -167,39 +215,84 @@ export async function importHistory(fileText, passphrase) {
       'This backup file looks corrupted or was not fully transferred. Get a fresh copy and try again.'
     );
   }
-  if (!obj || !Array.isArray(obj.records)) {
+  if (
+    !obj ||
+    ![HISTORY_MAGIC, HISTORY_MAGIC_V2, HISTORY_MAGIC_V3].includes(obj.magic) ||
+    !Array.isArray(obj.records)
+  ) {
     throw new Error(
       'This backup file looks corrupted or was not fully transferred. Get a fresh copy and try again.'
     );
   }
-  const bank = obj.bank || {};
-  const ledgerRules = obj.ledgerRules || {};
-  const profile = obj.profile || {};
+  const bank = obj.bank && typeof obj.bank === 'object' ? obj.bank : {};
+  const ledgerRules = obj.ledgerRules && typeof obj.ledgerRules === 'object' ? obj.ledgerRules : {};
+  const profile = obj.profile && typeof obj.profile === 'object' ? obj.profile : {};
+  const planning = obj.planning && typeof obj.planning === 'object' ? obj.planning : {};
+  const userData = obj.userData && typeof obj.userData === 'object' ? obj.userData : {};
+  const preferences =
+    obj.preferences && typeof obj.preferences === 'object' ? obj.preferences : {};
+  const investments =
+    obj.investments && typeof obj.investments === 'object' ? obj.investments : {};
   return {
-    records: obj.records || [],
-    meta: obj.meta || {},
+    records: recordsWith(obj.records, 'id'),
+    investments: {
+      statements: recordsWith(investments.statements, 'hash'),
+    },
+    meta: obj.meta && typeof obj.meta === 'object' ? obj.meta : {},
     exportedAt: obj.exportedAt,
-    rules: Array.isArray(obj.rules) ? obj.rules : [],
+    rules: Array.isArray(obj.rules) ? obj.rules.filter((rule) => rule && typeof rule === 'object') : [],
     ledgerRules: {
-      confirmedIncomeIds: Array.isArray(ledgerRules.confirmedIncomeIds)
-        ? ledgerRules.confirmedIncomeIds
-        : [],
-      sharedAccounts: Array.isArray(ledgerRules.sharedAccounts) ? ledgerRules.sharedAccounts : [],
-      householdPayees: Array.isArray(ledgerRules.householdPayees)
-        ? ledgerRules.householdPayees
-        : [],
+      sharedAccounts: strings(ledgerRules.sharedAccounts),
+      householdPayees: strings(ledgerRules.householdPayees),
+    },
+    // Answers carried by a backup written before the shared confirmation store
+    // existed. Read, never written; the importer turns them into confirmations
+    // so an older file's answers survive the move.
+    legacyConfirmations: {
+      incomeIds: strings(ledgerRules.confirmedIncomeIds),
+      refundIds: strings(ledgerRules.refundIncomeIds),
+      savingKeys: strings(planning.setAside),
     },
     profile: {
       firstName: typeof profile.firstName === 'string' ? profile.firstName : null,
+      firstNameSource:
+        typeof profile.firstNameSource === 'string' ? profile.firstNameSource : null,
       goal: profile.goal && typeof profile.goal === 'object' ? profile.goal : null,
-      goalLog: Array.isArray(profile.goalLog) ? profile.goalLog : [],
+      goalLog: recordsWith(profile.goalLog, 'month'),
+      goalBoundary:
+        profile.goalBoundary && typeof profile.goalBoundary === 'object'
+          ? profile.goalBoundary
+          : null,
     },
     bank: {
-      transactions: bank.transactions || [],
-      statements: bank.statements || [],
-      cardStatements: bank.cardStatements || [],
-      myAccounts: bank.myAccounts || [],
-      cardAccounts: bank.cardAccounts || [],
+      transactions: recordsWith(bank.transactions, 'id'),
+      sourceStatements: recordsWith(bank.sourceStatements, 'hash'),
+      statements: recordsWith(bank.statements, 'hash'),
+      cardStatements: recordsWith(bank.cardStatements, 'hash'),
+      myAccounts: strings(bank.myAccounts),
+      cardAccounts: strings(bank.cardAccounts),
     },
+    planning: {
+      target: planning.target && typeof planning.target === 'object' ? planning.target : null,
+      groups: planning.groups && typeof planning.groups === 'object' ? planning.groups : null,
+      draft: planning.draft && typeof planning.draft === 'object' ? planning.draft : null,
+    },
+    userData: {
+      customCategories: recordsWith(userData.customCategories, 'name'),
+      tags: recordsWith(userData.tags, 'id'),
+      transactionSplits: recordsWith(userData.transactionSplits, 'id'),
+      categoryIntentions: recordsWith(userData.categoryIntentions, 'id'),
+      forecastSnapshots: recordsWith(userData.forecastSnapshots, 'id'),
+      manualAssets: recordsWith(userData.manualAssets, 'id'),
+      balanceUpdates: recordsWith(userData.balanceUpdates, 'id'),
+      goals: recordsWith(userData.goals, 'id'),
+      confirmations: recordsWith(userData.confirmations, 'id'),
+    },
+    preferences: {
+      theme: ['auto', 'light', 'dark'].includes(preferences.theme) ? preferences.theme : null,
+      privacy: ['on', 'off'].includes(preferences.privacy) ? preferences.privacy : null,
+      accountNames: accountNamesOnly(preferences.accountNames),
+    },
+    workspace: obj.workspace && typeof obj.workspace === 'object' ? obj.workspace : null,
   };
 }

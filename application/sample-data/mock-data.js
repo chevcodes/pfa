@@ -1,5 +1,5 @@
 const PERSONA_LABELS = {
-  cardAndBank: 'Trevor - pays card in full',
+  cardAndBank: 'Trevor - carries a card balance',
   bankOnly: 'Marsha - everyday banking only',
   cardOnly: 'Damion - carries a card balance',
 };
@@ -26,7 +26,8 @@ const PERSONA_LABELS = {
  *  a curated slice of the wider database rather than the whole of it, so the
  *  file stays readable and the categoriser is tested against a realistic mix
  *  instead of a copy of its own dictionary. A separate drift-check script
- *  (merchant-drift-check.mjs) reports national chains added to the database
+ *  (developer-tools/merchant-drift-check.js) reports national chains added
+ *  to the database
  *  later that could be folded in, so the slice never quietly goes stale.
  *  Groceries carry the heaviest weight throughout, because food is roughly
  *  thirty-seven per cent of the Jamaican shopping basket, the highest share in
@@ -393,8 +394,8 @@ const PERSONAS = {
   /* -------------------------------------------------------------------------
    *  CARD + BANK  ·  TREVOR ASHFORD  ·  44  ·  Kingston   (placeholder name)
    *  ---------------------------------------------------------------------
-   *  Trevor runs the finance function at a mid-sized firm and earns a little
-   *  above $520,000 a month, past the $500,000 line where the higher 30%
+   *  Trevor runs the finance function at a mid-sized firm and earns around
+   *  $780,000 a month, past the $500,000 line where the higher 30%
    *  income-tax rate begins. His money runs like clockwork. The salary lands
    *  once a month; a newer car he financed at one of the near-zero dealer-
    *  promotion rates leaves a fixed note of $70,000 every month; and the day
@@ -410,25 +411,50 @@ const PERSONAS = {
    *  courier, and the property-tax bill when it falls. The card carries a real
    *  annual fee of $8,884.12 that posts once a year, and one month he buys a
    *  major appliance outright, a clear big-ticket outlier. A returned purchase
-   *  shows up now and then as a credit. He clears the full balance every month
-   *  without fail, so he never pays a cent of interest.
+   *  shows up now and then as a credit. He pays a substantial amount each
+   *  month but keeps roughly half the limit outstanding, so interest lands on
+   *  every statement after the first and the app has a genuine payoff path to
+   *  explain rather than treating the card as settled.
    *
-   *  What the app should do with him: read the card as paid-in-full and stay
-   *  calm, with no payoff maths; let the monthly move into the fund read as
-   *  saving, not spending; catch the appliance as the standout charge it is;
-   *  and treat the returned-purchase credits as refunds rather than income.
+   *  Beyond the everyday account he keeps a separate savings account he sweeps
+   *  into monthly, and a small US-dollar account he tops up now and again for
+   *  the odd trip or overseas bill - two more accounts than the old single-
+   *  account picture, so the app's own account switcher and multi-currency
+   *  handling have something real to show. He also sends his mother a fixed
+   *  monthly transfer, tagged as household support rather than his own
+   *  spending. The unit-trust sweep is a genuine position, not just a bank
+   *  debit: it carries its own monthly statement, mostly climbing, with one
+   *  month where the market takes a real bite out of it. He set an emergency-
+   *  fund goal nine months back, has a rough budget split saved, and a dining
+   *  ceiling he is trying to hold to; his car is the one thing on the Position
+   *  screen he has typed in himself rather than the app reading it off a
+   *  statement.
+   *
+   *  What the app should do with him: read the card as a carried balance,
+   *  show the interest cost and payoff maths without alarmism; let the monthly
+   *  move into the fund read as saving, not spending; catch the appliance as
+   *  the standout charge it is;
+   *  treat the returned-purchase credits as refunds rather than income; keep
+   *  the transfer to his mother out of his own spending total; and let the
+   *  fund's one bad month, the emergency-fund goal and the dining ceiling each
+   *  show the "not just going up" states the app is equally meant to say
+   *  plainly, not only the calm ones.
    * --------------------------------------------------------------------- */
   cardAndBank: {
     firstName: 'Trevor',
     seed: 'cardandbank',
-    months: 8,
+    months: 12,
     hasCard: true,
     hasBank: true,
-    monthlyIncome: 520000,
+    monthlyIncome: 780000,
     incomeType: 'SALARY',
     incomeDesc: 'SALARY PAYROLL',
     cardTxnsPerMonth: 30,
-    cardBehaviour: 'transactor',
+    cardBehaviour: 'revolver',
+    // About 3.3% monthly produces a realistic high-rate card balance and sits
+    // close to the 47.9% EAIR printed on the generated statements.
+    interestRate: 0.033,
+    targetUtilisation: 0.52,
     creditLimit: 900000,
     cardAccount: '4021',
     cardAnnualFee: {
@@ -474,9 +500,130 @@ const PERSONAS = {
             day: 26,
             type: 'PC-BILL PAYMENT',
           },
+          {
+            desc: 'TRANSFER TO P ASHFORD',
+            amount: 25000,
+            day: 6,
+            type: 'TRANSFER',
+          },
+          {
+            desc: 'TRANSFER TO 5588',
+            amount: 60000,
+            day: 20,
+            type: 'TRANSFER',
+          },
+          {
+            desc: 'TRANSFER TO 7799',
+            amount: 47000,
+            day: 15,
+            type: 'TRANSFER',
+          },
         ],
       },
+      // A separate savings account, fed by a monthly sweep from the everyday
+      // account above - gives the accounts switcher and internal-transfer
+      // classification a genuine second JMD account to show, not only a card.
+      {
+        number: '5588',
+        currency: 'JMD',
+        opening: 750000,
+        recurringIn: [
+          {
+            desc: 'TRANSFER FROM 1234',
+            amount: 60000,
+            day: 20,
+            type: 'TRANSFER',
+          },
+        ],
+      },
+      // A small US-dollar account, topped up now and again rather than every
+      // month - a genuine foreign-currency balance the app must never blend
+      // into the JMD totals, and one skipped month so the accounts screen has
+      // a real coverage gap to show rather than an unbroken run of statements.
+      {
+        number: '7799',
+        currency: 'USD',
+        opening: 800,
+        recurringIn: [
+          {
+            desc: 'TRANSFER FROM 1234',
+            amount: 300,
+            day: 15,
+            type: 'TRANSFER',
+          },
+        ],
+        skip: [8],
+      },
     ],
+    // The everyday account is tagged shared and the transfer to his mother
+    // named as a household payee, so that one line is read as household
+    // support rather than folded into his own personal spending - see
+    // bank-analysis.js's household matching (shared account + payee substring).
+    sharedAccountNumbers: ['1234'],
+    householdPayeeNames: ['P ASHFORD'],
+    // The unit-trust position the UNIT TRUST INVESTMENT sweep above actually
+    // feeds: a real monthly statement, not just a bank debit. Mostly climbing
+    // on the strength of the contribution, with one named month where the
+    // market itself takes a real bite out of it - big enough to cross the
+    // app's own 10%/20% value-drop watch/alert thresholds (investments.js),
+    // so the Position screen's investment trend has something to say beyond
+    // "up and to the right".
+    investmentPlan: {
+      account: 'UT-88231',
+      provider: 'scotia',
+      description: 'SIGMA REAL GROWTH FUND',
+      openingValue: 210000,
+      openingPrice: 18.45,
+      monthlyContribution: 40000,
+      growthRate: 0.012,
+      // Keep the dip in the latest statement so the Position screen actually
+      // surfaces its current watch state; an older dip would only survive as
+      // a bend in the chart and leave the alerting path unexercised.
+      dipMonthIndex: 11,
+      dipShare: -0.14,
+    },
+    // An emergency-fund goal, set nine months into this history rather than
+    // on day one - the monthly follow-up log it grows should read as genuine
+    // progress over time (short of target early on, met later), the same way
+    // a real person's would, not a single flat verdict repeated every month.
+    goalPlan: {
+      type: 'runway',
+      targetMonths: 4,
+      createdMonthsAgo: 9,
+    },
+    // A saved Plan split and the category groups it applies to, so the Plan
+    // editor opens already populated instead of empty.
+    budgetPlan: {
+      fixed: 55,
+      setAside: 20,
+      free: 25,
+      groups: {
+        Groceries: 'free',
+        'Dining & Takeout': 'free',
+        'Fuel & Transport': 'fixed',
+        'Hotels & Travel': 'free',
+        'Entertainment & Recreation': 'free',
+        'Courier & Shipping': 'free',
+        Telecom: 'fixed',
+        'Pharmacy & Health': 'fixed',
+        'Online Shopping': 'free',
+        'Retail & Department': 'free',
+        'Government & Tax': 'fixed',
+      },
+    },
+    // A category ceiling on the one discretionary line he actually watches -
+    // exercises the pace-based intentions feature (category-intentions.js)
+    // separately from the Plan's group split above.
+    categoryIntentions: [{ category: 'Dining & Takeout', amount: 15000 }],
+    // A self-reported Position asset he has not revisited in a while, so the
+    // "may be out of date" staleness marker has something real to trigger on.
+    manualAsset: {
+      class: 'Vehicle',
+      label: 'Car (self-reported)',
+      amount: 1800000,
+      kind: 'asset',
+      staleMonthsAgo: 5,
+    },
   },
   /* -------------------------------------------------------------------------
    *  BANK ONLY  ·  MARSHA LYNCH  ·  31  ·  Kingston   (placeholder name)

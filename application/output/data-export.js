@@ -35,6 +35,7 @@ import {
   toDetailedCSV,
   buildUnknownMerchantsCSV,
   csvEscape,
+  csvDocument,
   bankRowToCsvFields,
 } from '../output/csv-export.js';
 import { exportHistory, importHistory } from '../output/history-codec.js';
@@ -49,7 +50,44 @@ import {
   cleanBankCounterparty,
 } from '../statements/read-statements.js';
 import { Store } from '../core/storage.js';
-import { requireCtx, DEV_SIGNATURE } from '../core/shared-helpers.js';
+import { requireCtx, DEV_SIGNATURE, enterModal, isoToday } from '../core/shared-helpers.js';
+import { mergeCategories } from '../analysis/custom-categories.js';
+import { ensureMigrated } from '../analysis/goal-migrate.js';
+import { PLAN_DRAFT_KEY, readPlanDraft } from '../analysis/plan-draft.js';
+import {
+  migrateLegacyConfirmations,
+  sanitiseConfirmations,
+} from '../analysis/confirmations.js';
+
+function mergeStoredRecords(existing, incoming, keyOf) {
+  const byKey = new Map();
+  for (const value of [...(existing || []), ...(incoming || [])]) {
+    if (!value || typeof value !== 'object') continue;
+    const key = keyOf(value);
+    if (!key) continue;
+    const current = byKey.get(key);
+    if (
+      !current ||
+      String(value.updatedAt || value.importedAt || '') >
+        String(current.updatedAt || current.importedAt || '')
+    ) {
+      byKey.set(key, value);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function sameGoal(a, b) {
+  const left = ensureMigrated(a);
+  const right = ensureMigrated(b);
+  if (!left || !right) return false;
+  // targetMonths is what the cushion is measured against, so two goals that
+  // differ only in their month target are DIFFERENT goals - without it here,
+  // changing 5 months to 8 would import as "no change" and be dropped.
+  return ['type', 'createdAt', 'targetDays', 'targetMonths', 'targetDate', 'amount'].every(
+    (key) => (left[key] ?? null) === (right[key] ?? null)
+  );
+}
 
 export function createDataExport(ctx) {
   requireCtx(
@@ -60,13 +98,12 @@ export function createDataExport(ctx) {
       'el',
       'toast',
       'render',
-      'persist',
       'persistRules',
-      'persistBank',
-      'persistLedgerRules',
       'classifiedBank',
       'visibleRows',
       'defaultDataView',
+      'applyWorkspaceSnapshot',
+      'buildCategoryColours',
       'currentBankViewRows',
       'openModal',
       'closePicker',
@@ -79,13 +116,12 @@ export function createDataExport(ctx) {
     el,
     toast,
     render,
-    persist,
     persistRules,
-    persistBank,
-    persistLedgerRules,
     classifiedBank,
     visibleRows,
     defaultDataView,
+    applyWorkspaceSnapshot,
+    buildCategoryColours,
     currentBankViewRows,
     openModal,
     closePicker,
@@ -110,9 +146,26 @@ export function createDataExport(ctx) {
     if (!m) return;
     const show = force != null ? force : m.hidden;
     m.hidden = !show;
+    // The trigger carries aria-expanded="false" in the markup and nothing ever
+    // updated it, so it said "collapsed" whether the menu was open or shut - a
+    // screen-reader user was told the opposite of what was on screen half the
+    // time. The attribute now follows the menu it describes.
+    const btn = $('#export-btn');
+    if (btn) btn.setAttribute('aria-expanded', show ? 'true' : 'false');
     if (show)
       setTimeout(() => document.addEventListener('click', onDocClickMenu, { once: true }), 0);
   }
+
+  // Escape closes it and returns focus to the trigger, so a keyboard user is
+  // not left inside a menu with no way out but Tab.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const m = $('#export-menu');
+    if (!m || m.hidden) return;
+    toggleExportMenu(false);
+    const btn = $('#export-btn');
+    if (btn && btn.focus) btn.focus();
+  });
   function onDocClickMenu(e) {
     if (!e.target.closest('#export-menu') && !e.target.closest('#export-btn'))
       toggleExportMenu(false);
@@ -184,10 +237,15 @@ export function createDataExport(ctx) {
             class: 'btn sm',
             onclick: () => {
               closePicker();
+              // A ternary evaluated for its side effect reads as a value being
+              // computed and thrown away; these are four different exports.
               if (scope === 'current') {
-                detailed ? exportCurrentDetailedCSV() : exportCurrentCSV();
+                if (detailed) exportCurrentDetailedCSV();
+                else exportCurrentCSV();
+              } else if (detailed) {
+                exportAllDetailedCSV();
               } else {
-                detailed ? exportAllDetailedCSV() : exportAllCSV();
+                exportAllCSV();
               }
             },
           },
@@ -261,7 +319,7 @@ export function createDataExport(ctx) {
           .join(',')
       );
     }
-    return lines.join('\n') + '\n';
+    return csvDocument(lines);
   }
 
   // The Detailed counterpart to combinedCSV: full traceability for BOTH
@@ -345,7 +403,7 @@ export function createDataExport(ctx) {
           .join(',')
       );
     }
-    return lines.join('\n') + '\n';
+    return csvDocument(lines);
   }
 
   // CSV export follows the ledger on screen. In the Accounts view it writes the
@@ -580,29 +638,63 @@ export function createDataExport(ctx) {
       exportedAt: new Date().toISOString(),
       count: state.records.length,
     };
-    // Carry ALL ledgers in the one file: card transactions, the bank ledger and
-    // its statement records, the card-statement records, and the learned
-    // own-account lists. A device move now keeps the whole picture.
+    const [sourceStatements, dormantGoals, workspace, theme, privacy] = await Promise.all([
+      Store.allStatements(),
+      Store.goals.all(),
+      Store.getMeta('workspaceState', null),
+      Store.getMeta('theme', null),
+      Store.getMeta('privacy', null),
+    ]);
     const bundle = {
       bankRecords: state.bankRecords || [],
+      sourceStatements,
       bankStatements: state._bankStatements || [],
       cardStatements: state._cardStatements || [],
       myAccounts: state.myAccounts || [],
       cardAccounts: state.cardAccounts || [],
       rules: state.rules || [],
-      confirmedIncomeIds: state.confirmedIncomeIds || [],
+      confirmations: state.confirmations || [],
       sharedAccounts: state.sharedAccounts || [],
       householdPayees: state.householdPayees || [],
       firstName: state.firstName || null,
+      firstNameSource: state.firstNameSource || null,
       goal: state.goal || null,
       goalLog: state.goalLog || [],
+      goalBoundary: state._goalBoundary || null,
+      planTarget: state._planTarget || null,
+      planGroups: state._planGroups || null,
+      planDraft: state._planDraft || null,
+      customCategories: state.customCategories || [],
+      tags: state.tags || [],
+      transactionSplits: state.transactionSplits || [],
+      categoryIntentions: state.categoryIntentions || [],
+      forecastSnapshots: state.forecastSnapshots || [],
+      manualAssets: state.manualAssets || [],
+      balanceUpdates: state.balanceUpdates || [],
+      investmentStatements: state._investmentStatements || [],
+      accountNames: state.accountNames || {},
+      goals: dormantGoals,
+      workspace,
+      theme,
+      privacy,
     };
-    const text = await exportHistory(state.records, meta, pass, bundle);
-    downloadFile(
-      exportFilename('Encrypted History Backup', { ext: 'ccah' }),
-      text,
-      'application/octet-stream'
-    );
+    // This codebase has already shipped one silent "Back up now did nothing
+    // visible" failure (see the late-bound doExportHistory comment above) -
+    // a different cause, but the same lesson: a backup attempt must never
+    // fail without the person seeing it, especially since a failure here
+    // means they still have no backup and may believe otherwise.
+    try {
+      const text = await exportHistory(state.records, meta, pass, bundle);
+      downloadFile(
+        exportFilename('Encrypted History Backup', { ext: 'ccah' }),
+        text,
+        'application/octet-stream'
+      );
+    } catch (err) {
+      console.warn('Encrypted backup could not be created:', err);
+      toast(`This backup could not be created. Try again.`);
+      return;
+    }
     toast('History file created. Move it to your other device, then Import history there.');
   }
   async function doImportHistory(e) {
@@ -631,94 +723,220 @@ export function createDataExport(ctx) {
     });
     const hadCardBefore = state.records.length > 0;
     const hadBankBefore = state.bankRecords.length > 0;
+    const [sourceStatements, dormantGoals, localWorkspace, localTheme, localPrivacy] =
+      await Promise.all([
+        Store.allStatements(),
+        Store.goals.all(),
+        Store.getMeta('workspaceState', null),
+        Store.getMeta('theme', null),
+        Store.getMeta('privacy', null),
+      ]);
     const merged = mergeTransactions(state.records, (data.records || []).map(tag));
-    state.records = merged.records;
-    await persist();
-    // Bring in the bank ledger and card-statement records too (v2 files). A v1
-    // file simply carries none, so nothing bank-side changes.
-    let bankAdded = 0;
     const bank = data.bank || {};
     const bankTx = (bank.transactions || []).map(tag);
-    if (bankTx.length) {
-      const bmerged = mergeBankTransactions(state.bankRecords, bankTx);
-      state.bankRecords = bmerged.records;
-      bankAdded = bmerged.added;
-      await persistBank();
-    }
-    let addedBankStatements = false;
-    for (const st of bank.statements || []) {
-      if (st && st.hash && !(await Store.hasBankStatement(st.hash))) {
-        await Store.putBankStatement(st);
-        addedBankStatements = true;
-      }
-    }
-    let addedCardStatements = false;
-    for (const cs of bank.cardStatements || []) {
-      if (cs && cs.hash && !(await Store.hasCardStatement(cs.hash))) {
-        await Store.putCardStatement(cs);
-        addedCardStatements = true;
-      }
-    }
-    if (bankAdded || addedBankStatements) state._bankStatements = await Store.allBankStatements();
-    if (addedCardStatements) state._cardStatements = await Store.allCardStatements();
-    if (bank.cardAccounts && bank.cardAccounts.length) {
-      state.cardAccounts = [...new Set([...(state.cardAccounts || []), ...bank.cardAccounts])];
-      await Store.setMeta('bankCardAccounts', state.cardAccounts);
-    }
-    if (bank.myAccounts && bank.myAccounts.length) {
-      state.myAccounts = [...new Set([...(state.myAccounts || []), ...bank.myAccounts])];
-      await Store.setMeta('bankMyAccounts', state.myAccounts);
-    }
-    let rulesAdded = 0;
-    if (data.rules && data.rules.length) {
-      const rmerged = mergeCategoryRules(state.rules, data.rules);
-      rulesAdded = rmerged.inserted + rmerged.updated;
-      state.rules = rmerged.rules;
-      await persistRules();
-    }
+    const bmerged = mergeBankTransactions(state.bankRecords, bankTx);
+    const bankAdded = bmerged.added;
+    const nextSourceStatements = mergeStoredRecords(
+      sourceStatements,
+      bank.sourceStatements,
+      (value) => value.hash
+    );
+    const nextBankStatements = mergeStoredRecords(
+      state._bankStatements,
+      bank.statements,
+      (value) => value.hash
+    );
+    const nextCardStatements = mergeStoredRecords(
+      state._cardStatements,
+      bank.cardStatements,
+      (value) => value.hash
+    );
+    const nextCardAccounts = [...new Set([...(state.cardAccounts || []), ...bank.cardAccounts])];
+    const nextMyAccounts = [...new Set([...(state.myAccounts || []), ...bank.myAccounts])];
+    const rmerged = mergeCategoryRules(state.rules, data.rules);
+    const rulesAdded = rmerged.inserted + rmerged.updated;
     const lr = data.ledgerRules || {};
-    state.confirmedIncomeIds = [
-      ...new Set([...(state.confirmedIncomeIds || []), ...(lr.confirmedIncomeIds || [])]),
-    ];
-    state.sharedAccounts = [
+    const nextSharedAccounts = [
       ...new Set([...(state.sharedAccounts || []), ...(lr.sharedAccounts || [])]),
     ];
-    state.householdPayees = [
+    const nextHouseholdPayees = [
       ...new Set([...(state.householdPayees || []), ...(lr.householdPayees || [])]),
     ];
-    await persistLedgerRules();
-    if (!state.firstName && data.profile && data.profile.firstName) {
-      state.firstName = data.profile.firstName;
-      await Store.setMeta('firstName', state.firstName);
+    const profile = data.profile || {};
+    const nextFirstName = state.firstName || profile.firstName || null;
+    const nextFirstNameSource = state.firstName
+      ? state.firstNameSource
+      : profile.firstNameSource || (profile.firstName ? 'manual' : null);
+    let nextGoal = state.goal;
+    let nextGoalLog = state.goalLog || [];
+    let nextGoalBoundary = state._goalBoundary || null;
+    if (!nextGoal && profile.goal) {
+      nextGoal = ensureMigrated(profile.goal) || profile.goal;
+      nextGoalLog = profile.goalLog || [];
+      nextGoalBoundary = profile.goalBoundary || null;
+    } else if (sameGoal(nextGoal, profile.goal)) {
+      nextGoalLog = mergeStoredRecords(nextGoalLog, profile.goalLog, (value) => value.month)
+        .sort((a, b) => String(a.month).localeCompare(String(b.month)))
+        .slice(-24);
+      nextGoalBoundary = nextGoalBoundary || profile.goalBoundary || null;
     }
-    // Round 4: same "never overwrite what is already here" rule as firstName
-    // above - an imported goal only ever fills a genuinely empty local goal,
-    // never replaces one already set on this device. goalLog is a historical
-    // record, so it merges by month instead (a month already logged locally
-    // keeps its own local entry; only genuinely new months are brought in).
-    if (!state.goal && data.profile && data.profile.goal) {
-      state.goal = data.profile.goal;
-      await Store.setMeta('financeGoal', state.goal);
-    }
-    if (data.profile && data.profile.goalLog && data.profile.goalLog.length) {
-      const knownMonths = new Set(state.goalLog.map((g) => g.month));
-      const newEntries = data.profile.goalLog.filter(
-        (g) => g && g.month && !knownMonths.has(g.month)
-      );
-      if (newEntries.length) {
-        state.goalLog = [...state.goalLog, ...newEntries]
-          .sort((a, b) => (a.month < b.month ? -1 : 1))
-          .slice(-24);
-        await Store.setMeta('financeGoalLog', state.goalLog);
-      }
-    }
-    state.lastImportedFrom = {
-      at: new Date().toISOString(),
-      device: data.meta.device || 'another device',
+    const planning = data.planning || {};
+    const nextPlanDraft = readPlanDraft(state._planDraft || planning.draft || null);
+    const nextPlanTarget = state._planTarget || planning.target || null;
+    const nextPlanGroups = state._planGroups || planning.groups || null;
+    const userData = data.userData || {};
+    const nextCustomCategories = mergeStoredRecords(
+      state.customCategories,
+      userData.customCategories,
+      (value) => String(value.name || '').trim().toLowerCase()
+    );
+    const nextTags = mergeStoredRecords(state.tags, userData.tags, (value) => value.id);
+    const nextTransactionSplits = mergeStoredRecords(
+      state.transactionSplits,
+      userData.transactionSplits,
+      (value) => value.id
+    );
+    const nextCategoryIntentions = mergeStoredRecords(
+      state.categoryIntentions,
+      userData.categoryIntentions,
+      (value) => value.id
+    );
+    const nextForecastSnapshots = mergeStoredRecords(
+      state.forecastSnapshots,
+      userData.forecastSnapshots,
+      (value) => value.id
+    );
+    const nextManualAssets = mergeStoredRecords(
+      state.manualAssets,
+      userData.manualAssets,
+      (value) => value.id
+    );
+    const nextBalanceUpdates = mergeStoredRecords(
+      state.balanceUpdates,
+      userData.balanceUpdates,
+      (value) => value.id
+    );
+    const nextInvestmentStatements = mergeStoredRecords(
+      state._investmentStatements,
+      (data.investments || {}).statements,
+      (value) => value.hash
+    );
+    const nextGoals = mergeStoredRecords(dormantGoals, userData.goals, (value) => value.id);
+    // A backup written before the shared answer store carried the same answers
+    // in three older shapes; they are turned into confirmations here so an
+    // older file's answers arrive intact. An answer already on this device wins
+    // over one arriving from a file, as every other merge here does.
+    const nextConfirmations = migrateLegacyConfirmations(
+      data.legacyConfirmations || {},
+      mergeStoredRecords(
+        sanitiseConfirmations(state.confirmations),
+        sanitiseConfirmations(userData.confirmations),
+        (value) => value.id
+      )
+    );
+    const lastImportedFrom = {
+      at: importedAt,
+      device: sourceDevice,
     };
-    await Store.setMeta('lastImportedFrom', state.lastImportedFrom);
-    if ((!hadCardBefore && state.records.length) || (!hadBankBefore && state.bankRecords.length))
+    const restoreWorkspace = !hadCardBefore && !hadBankBefore && data.workspace;
+    const nextWorkspace = restoreWorkspace ? data.workspace : localWorkspace;
+    const preferences = data.preferences || {};
+    const nextTheme = localTheme || preferences.theme || 'auto';
+    const nextPrivacy = localPrivacy || preferences.privacy || 'off';
+    const nextAccountNames = { ...(preferences.accountNames || {}), ...(state.accountNames || {}) };
+    // Everything above is pure in-memory computation; nothing about the
+    // stored data or app state has changed yet. This write is the one real
+    // point of failure (disk/quota/a blocked transaction), and until now
+    // nothing here caught it - an error would become an unhandled rejection
+    // on the <input change> listener with no toast, no state change, and no
+    // way for someone restoring a backup (already a high-stakes moment) to
+    // tell whether it worked. Caught the same way the decode step above
+    // already is: a clear toast, the picker reset, nothing left half-applied
+    // since state is only mutated below, after this succeeds.
+    try {
+      await Store.restoreSnapshot({
+        stores: {
+          transactions: merged.records,
+          statements: nextSourceStatements,
+          rules: rmerged.rules,
+          bankTransactions: bmerged.records,
+          bankStatements: nextBankStatements,
+          cardStatements: nextCardStatements,
+          tags: nextTags,
+          transactionSplits: nextTransactionSplits,
+          categoryIntentions: nextCategoryIntentions,
+          goals: nextGoals,
+          forecastSnapshots: nextForecastSnapshots,
+          manualAssets: nextManualAssets,
+          balanceUpdates: nextBalanceUpdates,
+          investmentStatements: nextInvestmentStatements,
+          confirmations: nextConfirmations,
+        },
+        meta: {
+          bankCardAccounts: nextCardAccounts,
+          bankMyAccounts: nextMyAccounts,
+          bankSharedAccounts: nextSharedAccounts,
+          bankHouseholdPayees: nextHouseholdPayees,
+          firstName: nextFirstName,
+          firstNameSource: nextFirstNameSource,
+          financeGoal: nextGoal,
+          financeGoalLog: nextGoalLog,
+          financeGoalBoundary: nextGoalBoundary,
+          planTarget: nextPlanTarget,
+          planGroups: nextPlanGroups,
+          [PLAN_DRAFT_KEY]: nextPlanDraft,
+          customCategories: nextCustomCategories,
+          lastImportedFrom,
+          lastLocalUpdate: importedAt,
+          theme: nextTheme,
+          privacy: nextPrivacy,
+          accountNames: nextAccountNames,
+          ...(nextWorkspace ? { workspaceState: nextWorkspace } : {}),
+        },
+      });
+    } catch (err) {
+      console.warn('Encrypted backup could not be restored:', err);
+      toast(`This backup could not be restored. Your existing data on this device is unchanged.`);
+      input.value = '';
+      return;
+    }
+    state.records = merged.records;
+    state.bankRecords = bmerged.records;
+    state._bankStatements = nextBankStatements;
+    state._cardStatements = nextCardStatements;
+    state.cardAccounts = nextCardAccounts;
+    state.myAccounts = nextMyAccounts;
+    state.rules = rmerged.rules;
+    state.confirmations = nextConfirmations;
+    state.sharedAccounts = nextSharedAccounts;
+    state.householdPayees = nextHouseholdPayees;
+    state.firstName = nextFirstName;
+    state.firstNameSource = nextFirstNameSource;
+    state.goal = nextGoal;
+    state.goalLog = nextGoalLog;
+    state._goalBoundary = nextGoalBoundary;
+    state._planTarget = nextPlanTarget;
+    state._planGroups = nextPlanGroups;
+    state._planDraft = nextPlanDraft;
+    state.customCategories = nextCustomCategories;
+    state.tags = nextTags;
+    state.transactionSplits = nextTransactionSplits;
+    state.categoryIntentions = nextCategoryIntentions;
+    state.forecastSnapshots = nextForecastSnapshots;
+    state.manualAssets = nextManualAssets;
+    state.balanceUpdates = nextBalanceUpdates;
+    state._investmentStatements = nextInvestmentStatements;
+    state.accountNames = nextAccountNames;
+    state.cfg.categories = mergeCategories(state.cfg.categories, nextCustomCategories);
+    state.lastImportedFrom = lastImportedFrom;
+    state.lastLocalUpdate = importedAt;
+    document.documentElement.dataset.theme = nextTheme;
+    document.documentElement.dataset.privacy = nextPrivacy;
+    buildCategoryColours();
+    if (restoreWorkspace) applyWorkspaceSnapshot(data.workspace);
+    else if ((!hadCardBefore && state.records.length) || (!hadBankBefore && state.bankRecords.length)) {
       state.view = defaultDataView();
+    }
     render();
     const bankNote = bankAdded
       ? ` Plus ${bankAdded} account transaction${bankAdded === 1 ? '' : 's'}.`
@@ -755,6 +973,17 @@ export function createDataExport(ctx) {
         note = el('div', { class: 'pass-note', hidden: '' }, 'Those passphrases do not match yet.');
         kids.push(confirmInp, note);
       }
+      // ONE way out, so no exit can forget to release the modal contract.
+      // Three separate `overlay.remove(); resolve(...)` pairs used to sit here
+      // (Continue, Cancel, backdrop) - with a contract to undo, a fourth path
+      // that skipped it would leave the page inert and unscrollable.
+      let release = null;
+      const finish = (value) => {
+        if (release) release();
+        release = null;
+        overlay.remove();
+        resolve(value);
+      };
       const done = () => {
         const v = inp.value.trim();
         if (!v) return;
@@ -764,8 +993,7 @@ export function createDataExport(ctx) {
             return;
           }
         }
-        overlay.remove();
-        resolve(v);
+        finish(v);
       };
       kids.push(
         el(
@@ -775,32 +1003,38 @@ export function createDataExport(ctx) {
             'button',
             {
               class: 'btn sm ghost',
-              onclick: () => {
-                overlay.remove();
-                resolve(null);
-              },
+              onclick: () => finish(null),
             },
             'Cancel'
           ),
           el('button', { class: 'btn sm', onclick: done }, 'Continue')
         )
       );
-      const box = el('div', { class: 'picker' }, ...kids);
+      // The most security-sensitive dialog in the app, and the one that had the
+      // least: no role, no label, no aria-modal, no Escape, no focus trap, a
+      // live tabbable page behind it, and the back-to-top button hit-testing on
+      // top of its backdrop. It goes through the same contract as every other
+      // overlay now, and says what it is.
+      const box = el(
+        'div',
+        { class: 'picker', role: 'dialog', 'aria-label': 'Passphrase' },
+        ...kids
+      );
       const overlay = el(
         'div',
         {
           class: 'overlay',
           onclick: (e) => {
-            if (e.target === overlay) {
-              overlay.remove();
-              resolve(null);
-            }
+            if (e.target === overlay) finish(null);
           },
         },
         box
       );
       document.body.append(overlay);
-      inp.focus();
+      release = enterModal(overlay, {
+        onDismiss: () => finish(null),
+        returnFocus: $('#export-btn'),
+      });
       const onKey = (e) => {
         if (e.key === 'Enter') done();
       };
@@ -823,7 +1057,7 @@ export function createDataExport(ctx) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => isoToday();
 
   return {
     toggleExportMenu,

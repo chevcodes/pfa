@@ -2,7 +2,15 @@
 // honesty intact - one coloured rect per category (area-proportional), merchant
 // subdivisions as faint outlines, labels only where they fit, and NO money value
 // in the rect geometry (so privacy blur can't distort the picture).
-import { createTreemapRenderer, adaptSpendBreakdownForTreemap } from '../application/ui/treemap-render.js';
+import {
+  createTreemapRenderer,
+  adaptSpendBreakdownForTreemap,
+  tileSurface as _tileSurface,
+  resolveDistinctTileFills,
+  colourDistance,
+  hexToHsl,
+} from '../application/ui/treemap-render.js';
+import { SHARE_PALETTE } from '../application/analysis/reporting-core.js';
 import { layoutCategoryTreemap } from '../application/analysis/treemap-layout.js';
 
 let pass = 0,
@@ -169,15 +177,60 @@ const catRects = findAll(
   (n) => n.tag === 'rect' && String(n.attrs.class || '').includes('tm-rect')
 );
 note(catRects.length === 5, `one category rect per category (5), got ${catRects.length}`);
-// colours come from catColour
-const grocRect = catRects.find((rc) => rc.attrs.fill === '#3f9d6b');
-note(!!grocRect, 'Groceries rect uses its category colour');
+/* COLOUR: identity is the HUE, and it survives the surface treatment.
+ *
+ * A tile fill is no longer catColour's own value byte-for-byte. Measured on
+ * the real palette every category landed between 0.38 and 0.62 luminance -
+ * straddling the point where readable ink flips - so half the map took black
+ * text and half white on differences of a few hundredths, and white on the
+ * lightest of them was about 1.5:1 contrast. _tileSurface pulls value into one
+ * band so a single ink is correct for the whole picture, and leaves hue
+ * untouched, which is what actually carries identity. Asserted as such. */
+const hueOf = (hex) => hexToHsl(hex).h;
+const grocRect = catRects.find(
+  (rc) => Math.abs(hueOf(rc.attrs.fill) - hueOf('#3f9d6b')) < 1
+);
+note(!!grocRect, "Groceries rect keeps its category colour's hue");
+/* Contrast is the whole guarantee now: the label carries NO outline behind
+ * it, so it stands or falls on the tile it is printed on. Proper sRGB
+ * relative luminance, and the WCAG 4.5:1 body-text bar. */
+const relLum = (hex) => {
+  const h = hex.replace('#', '');
+  const ch = [0, 2, 4].map((i) => {
+    const v = parseInt(h.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+};
+const ratio = (a, b) => {
+  const x = relLum(a);
+  const y = relLum(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+};
+const labelledTiles = findAll(
+  card,
+  (n) => n.tag === 'g' && String(n.attrs.class || '').includes('tm-tile')
+)
+  .map((g) => ({
+    rect: g.kids.find((k) => k.tag === 'rect' && String(k.attrs.class || '').includes('tm-rect')),
+    label: g.kids.find((k) => k.tag === 'text' && String(k.attrs.class || '').includes('tm-label')),
+  }))
+  .filter((t) => t.rect && t.label);
+note(
+  labelledTiles.length > 0 &&
+    labelledTiles.every((t) => ratio(t.rect.attrs.fill, t.label.attrs.fill) >= 4.5),
+  'every label clears 4.5:1 against its own tile, with no outline propping it up'
+);
+note(
+  new Set(labelledTiles.map((t) => t.label.attrs.fill)).size === 1,
+  'ONE ink serves the whole picture'
+);
 
 // AREA proportional: Groceries(60k) rect area == 2x Dining(30k) rect area
 {
   const area = (rc) => Number(rc.attrs.width) * Number(rc.attrs.height);
-  const groc = catRects.find((rc) => rc.attrs.fill === '#3f9d6b');
-  const din = catRects.find((rc) => rc.attrs.fill === '#c98a1b');
+  const groc = catRects.find((rc) => Math.abs(hueOf(rc.attrs.fill) - hueOf('#3f9d6b')) < 1);
+  const din = catRects.find((rc) => Math.abs(hueOf(rc.attrs.fill) - hueOf('#c98a1b')) < 1);
   const ratio = area(groc) / area(din);
   note(
     Math.abs(ratio - 2) < 0.05,
@@ -451,9 +504,23 @@ note(
         .includes('tm-label')
   );
 
+  /* The three-digit hex must still expand correctly, and the ink must still
+   * genuinely contrast with the surface it is printed on - which is the thing
+   * that actually matters, rather than one specific hex. */
+  const yellowFill = findAll(
+    yellowCard,
+    (node) => node.tag === 'rect' && String(node.attrs.class || '').includes('tm-rect')
+  )[0];
+  const rel = (hex) => {
+    const h = hex.replace('#', '');
+    const c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
   note(
-    labels.length === 1 && labels[0].attrs.fill === '#10161f',
-    'a light three-digit colour receives dark readable label text'
+    labels.length === 1 &&
+      /^#[0-9a-f]{6}$/i.test(yellowFill.attrs.fill) &&
+      Math.abs(rel(labels[0].attrs.fill) - rel(yellowFill.attrs.fill)) > 0.4,
+    'a three-digit colour expands and its label ink genuinely contrasts with the tile'
   );
 }
 
@@ -545,12 +612,21 @@ note(
           .split(/\s+/)
           .includes('is-interactive') &&
         group.attrs.role === 'button' &&
-        group.attrs.tabindex === '0' &&
+        // ROVING FOCUS: the map is ONE tab stop, not one per tile. The first
+        // selectable tile carries tabindex 0 and the rest -1; the arrow keys
+        // move focus between them (treemap-render.js). Ten tiles previously
+        // meant ten sequential tab stops to get past a single picture.
+        (group.attrs.tabindex === '0' || group.attrs.tabindex === '-1') &&
         group.attrs.style === 'cursor:pointer' &&
         typeof group.attrs['aria-label'] === 'string' &&
         group.attrs['aria-label'].includes('Open matching transactions')
     ),
     'every selectable category is a named keyboard button with a pointer cursor'
+  );
+
+  note(
+    clickableTiles.filter((group) => group.attrs.tabindex === '0').length === 1,
+    'the whole map is a single tab stop, with the arrow keys moving between tiles'
   );
 
   const staticCard = r.renderTreemapCard(analysis, {});
@@ -666,6 +742,75 @@ note(
     embeddedHeadings.length === 0,
     'embedded mode does not repeat the parent Where it went heading'
   );
+}
+
+/* -------------------------------------------------------------------------
+   NO TWO TILES MAY READ AS ONE COLOUR - MEASURED ON WHAT IS DRAWN.
+
+   Separation used to be judged on the RAW palette entry and the tile was then
+   pulled into a narrow lightness band, so two entries far enough apart in the
+   palette could land on top of each other once painted: in light mode
+   Pharmacy & Health and Insurance came out 3.5 dE apart, one colour under two
+   names. Worse, the search gave up after eight 47-degree steps - 376 degrees,
+   sixteen from where it started - and kept whatever the last step produced, so
+   exhausting the search landed on the LEAST separated colour available.
+
+   Both halves are guarded: the decision is made on the surfaced colour, and
+   giving up keeps the best candidate seen rather than the last.
+   ------------------------------------------------------------------------- */
+{
+  console.log('\n -- no two tiles read as one colour, in either theme --');
+  const names = [
+    'Dining & Takeout',
+    'Auto & Vehicle',
+    'Groceries',
+    'Fuel & Transport',
+    'Online Shopping',
+    'Pharmacy & Health',
+    'Entertainment & Recreation',
+    'Courier & Shipping',
+    'Subscriptions',
+    'Insurance',
+  ];
+  const slot = (name) => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return SHARE_PALETTE[h % SHARE_PALETTE.length];
+  };
+  for (const light of [true, false]) {
+    const surface = (c) => _tileSurface(c, light);
+    const chosen = resolveDistinctTileFills(names, slot, surface);
+    const drawn = names.map((n) => surface(chosen.get(n) || slot(n)));
+    let worst = Infinity;
+    let worstPair = '';
+    for (let i = 0; i < drawn.length; i++) {
+      for (let j = i + 1; j < drawn.length; j++) {
+        const d = colourDistance(drawn[i], drawn[j]);
+        if (d < worst) {
+          worst = d;
+          worstPair = `${names[i]} / ${names[j]}`;
+        }
+      }
+    }
+    const theme = light ? 'light' : 'dark';
+    // 10 dE is the floor a picture must never drop below; the light band
+    // clears far more than that, the dark band is tighter by construction.
+    note(
+      worst >= 10,
+      `${theme}: closest pair is ${worst.toFixed(1)} dE apart (${worstPair}) - must be >= 10`
+    );
+    // And the surfaced colours are what the decision was made on: separation
+    // measured on the RAW palette entries is not a substitute.
+    const raw = names.map(slot);
+    let rawWorst = Infinity;
+    for (let i = 0; i < raw.length; i++)
+      for (let j = i + 1; j < raw.length; j++)
+        rawWorst = Math.min(rawWorst, colourDistance(raw[i], raw[j]));
+    note(
+      rawWorst === 0,
+      `${theme}: the raw palette really does collide (${rawWorst.toFixed(1)} dE), so this is a real test`
+    );
+  }
 }
 
 console.log(`\n checks: ${pass} passed, ${fail} failed`);

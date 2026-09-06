@@ -3,9 +3,8 @@ import { ensureMigrated } from '../analysis/goal-migrate.js';
 import { evaluateGoal } from '../analysis/goals.js';
 import { buildNewEngineProgressCtx as buildNewEngineProgressCtxPure } from '../analysis/goal-progress-ctx.js';
 import { analyseBankActivity, analyseRollup, bankFlowOverTime } from '../analysis/bank-analysis.js';
-import { monthKey, roundMoney, formatDisplayDate } from '../core/shared-helpers.js';
+import { monthKey, roundMoney, formatDisplayDate, formatMonthYear, isoToday, latestCardStatement, requireCtx } from '../core/shared-helpers.js';
 import {
-  monthName,
   resolvePeriod,
   runwayDays,
   typicalMonthlyOutflow,
@@ -14,8 +13,34 @@ import {
   medianRecentPayment,
 } from '../analysis/reporting-periods.js';
 import { computeGoalProgress } from '../analysis/reporting-insights.js';
+import { monthlyCostOfLiving } from '../analysis/plan.js';
+import { CUSHION_BASIS } from '../analysis/cushion.js';
+import {
+  applyGoalSnapshot,
+  goalWritePlan,
+  replacementGoalSnapshot,
+  snapshotGoal,
+} from '../analysis/goal-cascade.js';
+import { commitAndRender } from './reversible.js';
 
 export function createGoalController(ctx) {
+  // Validated at construction, like every other factory here. The one factory
+  // that skipped this (app-messages) is the one that shipped a ctx member
+  // nobody passed, and the miss surfaced only as a ReferenceError on a button
+  // press. A missing member should stop the boot, not wait for a click.
+  requireCtx(
+    ctx,
+    [
+      'state',
+      'render',
+      'classifiedBank',
+      'overviewModel',
+      'allLedgerMonths',
+      'bankMoney',
+    ],
+    'createGoalController'
+  );
+
   const { state, render, classifiedBank, overviewModel, allLedgerMonths, bankMoney } = ctx;
   /* ===================================================================
    * Round 4 (Where you're headed): goal-setting, its monthly honest
@@ -26,21 +51,47 @@ export function createGoalController(ctx) {
    * recording one frozen entry per genuinely new complete month.
    * =================================================================== */
   async function setGoal(type, params) {
-    state.goal = {
+    // Stamp what a month means for an emergency-fund goal at the moment it is
+    // saved. A goal without this stamp was authored when the same months meant
+    // months of income, and goal-migrate reads its absence to say so rather
+    // than letting the target change meaning in silence.
+    const stamped =
+      (type === 'runway' || type === 'cushion') && params && params.targetMonths != null
+        ? { ...params, basis: CUSHION_BASIS }
+        : params;
+    const goal = {
       type,
-      params,
-      createdAt: new Date().toISOString().slice(0, 10),
+      params: stamped,
+      createdAt: isoToday(),
     };
-    await Store.setMeta('financeGoal', state.goal);
-    render();
+    const snapshot = replacementGoalSnapshot(goal);
+    await commitAndRender({
+      commit: async () => {
+        await Store.setMetaMany(goalWritePlan(snapshot));
+        applyGoalSnapshot(state, snapshot);
+      },
+      render,
+    });
   }
+  // Clearing a goal removes EVERYTHING that hung off it in one step: the goal,
+  // the monthly log written against it, and the safety floor set alongside it.
+  // Nothing may survive that would later be read as belonging to a goal the
+  // person has deleted - a log entry with no goal to judge, or a floor still
+  // constraining a forecast for a target that no longer exists.
+  //
+  // The snapshot returned is the whole of what was removed, so the undo path
+  // restores every piece rather than resurrecting a goal whose history was
+  // already thrown away.
   async function clearGoal() {
-    // The goal itself is cleared; goalLog (the historical record of past
-    // months' honest checks) is deliberately left intact, exactly like
-    // closing a chapter without erasing what already happened in it.
-    state.goal = null;
-    await Store.setMeta('financeGoal', null);
-    render();
+    const snapshot = snapshotGoal(state);
+    return commitAndRender({
+      commit: async () => {
+        await Store.setMetaMany(goalWritePlan(null));
+        applyGoalSnapshot(state, null);
+        return snapshot;
+      },
+      render,
+    });
   }
   // Restore a previously-cleared goal EXACTLY as it was - crucially keeping
   // its ORIGINAL createdAt, not today's date. setGoal() always stamps a fresh
@@ -49,11 +100,21 @@ export function createGoalController(ctx) {
   // `month < createdMonth` test) would silently shift and a month already
   // logged under the old goal could be re-evaluated. So this restores the
   // whole stored object directly rather than routing through setGoal.
-  async function restoreGoal(goalObject) {
-    if (!goalObject) return;
-    state.goal = goalObject;
-    await Store.setMeta('financeGoal', goalObject);
-    render();
+  // Accepts either a full snapshot (what clearGoal returns) or a bare goal
+  // object, so the older single-goal call site keeps working unchanged.
+  async function restoreGoal(snapshotOrGoal) {
+    if (!snapshotOrGoal) return;
+    const snapshot =
+      snapshotOrGoal.financeGoal !== undefined
+        ? snapshotOrGoal
+        : { financeGoal: snapshotOrGoal, financeGoalLog: state.goalLog || [], financeGoalBoundary: state._goalBoundary || null };
+    await commitAndRender({
+      commit: async () => {
+        await Store.setMetaMany(goalWritePlan(snapshot));
+        applyGoalSnapshot(state, snapshot);
+      },
+      render,
+    });
   }
 
   // The data bundle computeGoalProgress needs for a specific goal type.
@@ -156,14 +217,25 @@ export function createGoalController(ctx) {
         cardStatements: [],
       }).trend;
       const monthlyOutflow = typicalMonthlyOutflow(rollAllTrend, ymToday());
-      return { runwayDays: runwayDays(cashPosition, monthlyOutflow) };
+      // The emergency fund is judged in months of EXPENSES, so the bundle
+      // carries the saved figure and the monthly cost of living to measure it
+      // against. Same monthlyCostOfLiving() the live goal card reads - a
+      // follow-up entry must not judge the month against a different idea of
+      // what a month costs than the card the person was looking at when they
+      // saved it. runwayDays is kept: the safety-boundary card still asks the
+      // separate "how long could I last" question in days.
+      const cost = monthlyCostOfLiving(rollAllTrend, null);
+      return {
+        runwayDays: runwayDays(cashPosition, monthlyOutflow),
+        liquidNow: cashPosition,
+        cushionSaved: cashPosition,
+        typicalMonthlyExpenses: cost.amount,
+        expensesMonthsOfData: cost.monthsUsed,
+      };
     }
     if (goal.type === 'clear-card') {
       const roll = overviewModel().roll;
-      const latestStmt = (state._cardStatements || [])
-        .slice()
-        .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)))
-        .pop();
+      const latestStmt = latestCardStatement(state._cardStatements);
       const eairFrac = latestStmt ? normaliseEair(latestStmt.eair) : null;
       const typicalPayment = medianRecentPayment(state._cardStatements || []);
       return {
@@ -182,7 +254,7 @@ export function createGoalController(ctx) {
       const bankSpendForMonth = bankRow ? bankRow.moneyOut : 0;
       return {
         monthSpend: roundMoney(cardSpendForMonth + bankSpendForMonth),
-        monthLabel: monthName(month),
+        monthLabel: formatMonthYear(month),
       };
     }
     return null;
@@ -244,13 +316,20 @@ export function createGoalController(ctx) {
         month,
         type: migrated.type,
         targetDays: migrated.targetDays ?? null,
+        // What the goal is actually measured against now. Without this, a log
+        // entry could not say which target it was judged against, and a person
+        // who later changed 5 months to 8 would have their whole history
+        // silently re-read against the new number.
+        targetMonths: migrated.targetMonths ?? null,
         targetDate: migrated.targetDate ?? null,
         amount: migrated.amount ?? null,
         met,
         headline,
       },
     ].slice(-24);
-    Store.setMeta('financeGoalLog', state.goalLog);
+    Store.setMeta('financeGoalLog', state.goalLog).catch((error) =>
+      console.warn('Monthly goal history could not be saved.', error)
+    );
   }
 
   // Round 4: Overview's beat 11 needs a LIVE "how is this going right now"

@@ -22,19 +22,28 @@ import { smartTitle } from '../statements/categorise.js';
 import {
   appendExpandable,
 } from '../analysis/reporting-core.js';
-import { renderExplainer } from '../analysis/reporting-periods.js';
+import { hasAnswered } from '../analysis/confirmations.js';
 import {
   missingMonths,
   buildBankAppropriateInsights,
 } from '../analysis/reporting-insights.js';
 import {
   formatMoney,
+  namedMonths,
   smoothScrollToEl,
   requireCtx,
   formatDisplayDate,
+  formatMonthYear,
   MONTHS_SHORT,
-  isPrivacyMode,
+  parseTransferNarrative,
+  RECONCILE_MEANS,
 } from '../core/shared-helpers.js';
+import { renderColumnChart } from './chart-surface.js';
+import { categoriseBankRows } from '../analysis/bank-categorise.js';
+import { monthTickOf } from './chart-helpers.js';
+import { rulesToMerchantOverrides } from '../../settings/category-rules.js';
+import { makeProseMoney, currencyPrefix } from '../core/money-format.js';
+import { chartInfo, collapsibleCard, subhead, secItem } from './decision-header.js';
 
 
 // Shared, empty keep-upper / small-words set for smartTitle when tidying a bank
@@ -51,11 +60,10 @@ export function createAccountsRenderer(ctx) {
       'el',
       'icon',
       'render',
-      'persistLedgerRules',
+      'confirmQuestion',
       'bankMonthsList',
       'drillToAccountsPayee',
       'iconInfo',
-      'iconReceipt',
       'resolved',
       'bankRecordsInRange',
       'prevLabel',
@@ -64,12 +72,15 @@ export function createAccountsRenderer(ctx) {
       'iconAlert',
       'iconSpark',
       'iconGap',
+      'iconFlag',
       'iconBulb',
       'iconChevron',
       'monthLabel',
-      'clearFilters',
-      'clearBankFilters',
-      'trackUsage',
+      'monthShort',
+      'openMonth',
+      'pickStatements',
+      'openStatementCoverage',
+      'reviewStatements',
     ],
     'createAccountsRenderer'
   );
@@ -78,11 +89,10 @@ export function createAccountsRenderer(ctx) {
     el,
     icon,
     render,
-    persistLedgerRules,
+    confirmQuestion,
     bankMonthsList,
     drillToAccountsPayee,
     iconInfo,
-    iconReceipt,
     // Bank-appropriate insights (Part 2): period/range helpers reused for the
     // income-change comparison and the large-payment/new-payee checks, plus
     // the extra icons and monthLabel the insights card needs.
@@ -94,10 +104,17 @@ export function createAccountsRenderer(ctx) {
     iconAlert,
     iconSpark,
     iconGap,
+    iconFlag,
     monthLabel,
-    clearFilters,
-    clearBankFilters,
-    trackUsage,
+    monthShort,
+    openMonth,
+    pickStatements,
+    openStatementCoverage,
+    // The same removal dialog Data & settings' "Imported files" button opens,
+    // reused rather than paralleled: a filter and a reason turn it into the
+    // door a reconciliation figure or a per-account tile can open directly,
+    // landing on exactly the statements that figure is about.
+    reviewStatements,
   } = ctx;
   /* ---- Accounts view (Phase 1: read-only, balance-first) ----
    * A minimal cash-flow and balance screen for the bank ledger: Cash inflow,
@@ -106,13 +123,14 @@ export function createAccountsRenderer(ctx) {
    * transfers are shown but set apart. No categorisation, no card merchant
    * rules, no merging with card data (D1). */
   function bankMoney(n, currency) {
-    const { symbol = '$', locale = 'en-JM', decimals = 2, code = 'JMD' } = state.cfg.currency || {};
-    // A non-base currency (USD) is shown with its own prefix so a US$ figure is
-    // never mistaken for a JMD one. The base currency keeps the plain symbol.
-    const sym =
-      currency && currency !== code ? (currency === 'USD' ? 'US$' : currency + ' ') : symbol;
-    return formatMoney(n, sym, locale, decimals);
+    const { locale = 'en-JM', decimals = 2 } = state.cfg.currency || {};
+    return formatMoney(n, currencyPrefix(currency, state.cfg), locale, decimals);
   }
+
+  /* The same amount, written for a sentence rather than a value slot. Insights
+     and the review notes below are prose; bankMoney stays the exact figure for
+     rows, totals and headline slots. */
+  const prose = makeProseMoney(state.cfg || {});
 
   let _cbKey = null,
     _cbVal = null;
@@ -123,10 +141,11 @@ export function createAccountsRenderer(ctx) {
       _cbKey.ma === state.myAccounts &&
       _cbKey.ca === state.cardAccounts &&
       _cbKey.rz === state.resolver &&
-      _cbKey.ci === state.confirmedIncomeIds &&
-      _cbKey.ri === state.refundIncomeIds &&
+      _cbKey.cf === state.confirmations &&
       _cbKey.sa === state.sharedAccounts &&
-      _cbKey.hp === state.householdPayees
+      _cbKey.hp === state.householdPayees &&
+      _cbKey.cp === state.compiled &&
+      _cbKey.ru === state.rules
     ) {
       return _cbVal;
     }
@@ -134,26 +153,37 @@ export function createAccountsRenderer(ctx) {
       state.bankRecords,
       state.myAccounts,
       state.cardAccounts || [],
-      state.resolver
+      state.resolver,
+      state.confirmations || []
     );
     // Apply the evidence-backed exclusions on top (cash/ABM self-deposits out of
     // income by default, shared-account support to household kept off the
     // personal headline).
-    const out = applyLedgerRules(base, {
-      confirmedIncomeIds: new Set(state.confirmedIncomeIds || []),
-      refundIncomeIds: new Set(state.refundIncomeIds || []),
+    const ruled = applyLedgerRules(base, {
+      confirmations: state.confirmations || [],
       sharedAccounts: state.sharedAccounts || [],
       householdPayees: state.householdPayees || [],
+    });
+    // Category parity with the card ledger. Bank rows previously reached every
+    // screen with no category at all, so a personal rule a person had already
+    // written only ever worked on one of their two statement types. Same
+    // categorise() door, same personal rules, bank profile.
+    const out = categoriseBankRows(ruled, state.compiled, {
+      fallback: (state.cfg.special || {}).fallback || 'Uncategorised',
+      merchantOverrides: rulesToMerchantOverrides(state.rules || []),
+      routes: ((state.cfg.accountCategoryRoutes || {}).bank) || [],
+      resolver: state.resolver,
     });
     _cbKey = {
       br: state.bankRecords,
       ma: state.myAccounts,
       ca: state.cardAccounts,
       rz: state.resolver,
-      ci: state.confirmedIncomeIds,
-      ri: state.refundIncomeIds,
+      cf: state.confirmations,
       sa: state.sharedAccounts,
       hp: state.householdPayees,
+      cp: state.compiled,
+      ru: state.rules,
     };
     _cbVal = out;
     // INVARIANT: this array is now shared by reference across every caller
@@ -189,7 +219,7 @@ export function createAccountsRenderer(ctx) {
     return _rangeRecsVal;
   }
 
-  function buildBankInsights(a, recs, recsAll) {
+  function buildBankInsights(a, recs, recsAll, onNavigate = () => scrollToTx()) {
     const p = resolved();
     let prevIncome = null;
     if (p && p.prevFrom && p.prevTo) {
@@ -211,11 +241,18 @@ export function createAccountsRenderer(ctx) {
       currentIncome: a.cashIn,
       prevIncome,
       verdict,
-      bankMoney,
+      proseMoney: prose,
       prevLabel,
-      monthLabel,
+      monthLabel: monthShort,
       bankMonthsList,
-      onNavigate: () => scrollToTx(),
+      onNavigate,
+      // The one insight on this card that is NOT about the rows below it. It
+      // said "no account statement found for February 2024 and March 2024...
+      // add them" and then scrolled to the transactions a person DOES have.
+      // The hook for this has existed since the builder was written and was
+      // never passed, so the sentence has always pointed away from its own
+      // subject.
+      onMissingMonths: openStatementCoverage,
       onDrillToPayee: (key, label) => drillToPayee(key, cleanCounterparty(label)),
       icons: {
         up: iconUp,
@@ -248,13 +285,7 @@ export function createAccountsRenderer(ctx) {
     const trend = bankAnalysis(bankFlowOverTime, classifiedBank());
     if (!trend.length) return null;
     const p = resolved();
-    const monShort = (m) => {
-      const x = /-(\d{2})$/.exec(m);
-      return x ? MONTHS_SHORT[+x[1] - 1] : m;
-    };
     const shown = trend.slice(-12);
-    const H = 150;
-    const max = Math.max(1, ...shown.map((t) => Math.max(t.moneyIn, t.moneyOut)));
     const sec = el('section', { class: 'card' });
     sec.append(
       el(
@@ -263,267 +294,167 @@ export function createAccountsRenderer(ctx) {
         el('h3', { class: 'card-title' }, icon(iconSpark()), 'Cash in and out over time')
       )
     );
-    sec.append(
-      el(
-        'div',
-        { class: 'acct-trend-legend muted small' },
-        el(
-          'span',
-          { class: 'acct-trend-key' },
-          el('span', { class: 'acct-trend-swatch in' }),
-          'Cash inflow'
-        ),
-        el(
-          'span',
-          { class: 'acct-trend-key' },
-          el('span', { class: 'acct-trend-swatch out' }),
-          'Cash outflow'
-        )
-      )
-    );
-    const chart = el('div', { class: 'trend acct-trend' });
-    const bars = el('div', { class: 'acct-trend-bars' });
-    for (const t of shown) {
-      const inPeriod = p && t.month >= p.from && t.month <= p.to;
-      bars.append(
-        el(
-          'button',
-          {
-            class: 'acct-trend-col' + (inPeriod ? ' in-period' : ''),
-            'aria-label': isPrivacyMode()
-              ? `${t.month}: amounts hidden. Focus this month.`
-              : `${t.month}: in ${bankMoney(t.moneyIn)}, out ${bankMoney(t.moneyOut)}. Focus this month.`,
 
-            title: `${t.month}: in ${bankMoney(t.moneyIn)} \u00b7 out ${bankMoney(t.moneyOut)}`,
-            onclick: () => {
-              state.period = { type: 'custom', from: t.month, to: t.month };
-              clearFilters();
-              clearBankFilters();
-              state.showAllTx = false;
-              state.bankShowAllTx = false;
-              render();
-            },
-          },
-          el(
-            'div',
-            { class: 'acct-trend-pair' },
-            el('span', {
-              class: 'acct-trend-bar in',
-              style: `height:${Math.max(2, (t.moneyIn / max) * H)}px`,
-            }),
-            el('span', {
-              class: 'acct-trend-bar out',
-              style: `height:${Math.max(2, (t.moneyOut / max) * H)}px`,
-            })
-          ),
-          el('span', { class: 'acct-trend-mlabel' }, monShort(t.month))
-        )
-      );
-    }
-    chart.append(bars);
-    sec.append(chart);
-    sec.append(
-      renderExplainer(
-        el,
-        'Money arriving in and leaving your accounts each month, transfers between your own accounts excluded. Select a month to focus the tab on it.',
-        { label: 'How this chart is worked out' }
-      )
-    );
+    // Year on the ticks whenever these rows cross one (monthTickOf).
+    const monthTick = monthTickOf(MONTHS_SHORT, shown);
+    sec.append(renderColumnChart({ el, monthLabel, monthShort: monthTick }, {
+      label: 'Cash in and out by month',
+      money: bankMoney,
+      rows: shown.map((t) => ({ ...t, inPeriod: !!(p && t.month >= p.from && t.month <= p.to), selected: !!(p && p.from === t.month && p.to === t.month), detail: 'Own-account transfers excluded' })),
+      series: [
+        { key: 'moneyIn', label: 'Cash inflow', tone: 'in' },
+        { key: 'moneyOut', label: 'Cash outflow', tone: 'out' },
+      ],
+      onSelect: (t) => openMonth(t.month),
+    }));
     return sec;
   }
 
+  // The third hand-written copy of the leading strip, and the one that had
+  // drifted furthest: it understood neither a channel code in front of
+  // "Transfer" nor "trf from", so the same row read one way here and another in
+  // the transaction list. Now delegates to the ONE shared narrative parser.
   function cleanCounterparty(desc) {
-    let s = cleanBankCounterparty(desc); // strip stray header fragments first
-    s = s.replace(/^transfer\s+(to|from)\s+/i, '');
-    s = s.replace(/^trf\s+to:?\s+/i, '');
-    s = s.replace(/^\d{2,}[,\s-]+/, ''); // leading ref group "12, " / "12345 "
-    s = s.replace(/^\d{4,}-/, ''); // "1234-" style prefix
-    s = s.replace(/[\s,-]+\d{3,}\s*$/, '').trim(); // trailing account tail
-    s = s.replace(/[\s-]+$/, '').trim(); // dangling dash
-
-    return smartTitle(s, CP_LABEL_SET, CP_LABEL_SET);
+    const party = parseTransferNarrative(cleanBankCounterparty(desc)).party;
+    return smartTitle(party, CP_LABEL_SET, CP_LABEL_SET);
   }
 
-  // Confirm a cash/ABM deposit as the person's own income (moves it back into
-  // "Cash inflow"). Reversible from the same list.
-  async function confirmDepositAsIncome(id, on) {
-    if (on) trackUsage('confirm-deposit-income');
-    const set = new Set(state.confirmedIncomeIds || []);
-    if (on) set.add(id);
-    else set.delete(id);
-    state.confirmedIncomeIds = [...set];
-    await persistLedgerRules();
-    render();
-  }
-  // Confirm a refund/reversal as the person's own income (moves it back into
-  // "Cash inflow"). Reversible from the same list.
-  async function confirmRefundAsIncome(id, on) {
-    if (on) trackUsage('confirm-refund-income');
-    const set = new Set(state.refundIncomeIds || []);
-    if (on) set.add(id);
-    else set.delete(id);
-    state.refundIncomeIds = [...set];
-    await persistLedgerRules();
-    render();
-  }
-  // The compact "Review & adjustments" card for the Accounts view: surfaces the
-  // amounts kept out of the headline (cash/ABM deposits, household support,
-  // refunds, confirmed round-trips) and gives one obvious control per decision.
-  // Chunked into one place rather than scattered through the dense table.
-  function renderLedgerReview(a, recs) {
-    const deposits = recs.filter((r) => r.cashDeposit && r.excludedFromIncome);
-    const confirmed = recs.filter((r) => r.cashDeposit && !r.excludedFromIncome);
-    const refunds = recs.filter((r) => r.refundLike && r.refund);
-    const confirmedRefunds = recs.filter((r) => r.refundLike && !r.refund);
-    if (
-      !deposits.length &&
-      !confirmed.length &&
-      !(a.householdSupport > 0) &&
-      !refunds.length &&
-      !confirmedRefunds.length
-    )
-      return null;
-    const sec = el('section', { class: 'card acct-review' });
-    sec.append(
+  /* ONE question, one shape, wherever it is asked.
+   *
+   * These rows used to carry a "Count as income" button, and the ones already
+   * answered moved into a second fold with an "Undo" beside them - a different
+   * control, a different vocabulary and a different place from the identical
+   * answer the transaction row offers, which asks "Is this income?" and takes
+   * yes or no. Worse, this surface had no way to say NO: a person certain a
+   * deposit was not theirs could only leave it unanswered, so the app kept
+   * treating a settled question as an open guess.
+   *
+   * The card now renders the SAME line the category tag's dialog renders, built
+   * by the same helper in ui/confirm-control.js. Answered and unanswered rows
+   * sit in one list carrying their own answer, so nothing has to be opened to
+   * see what was already decided, and changing an answer is the same two chips
+   * that gave it.
+   */
+  function reviewRow(r, fallbackType) {
+    const holder = el('div', { class: 'review-row' });
+    holder.append(
       el(
         'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Review & adjustments')
+        { class: 'recurring-row' },
+        el(
+          'span',
+          { class: 'recurring-name' },
+          `${formatDisplayDate(r.date)} \u00b7 ${cleanCounterparty(r.description) || r.type || fallbackType}`
+        ),
+        el('span', { class: 'recurring-amt num strong' }, bankMoney(r.amount))
       )
     );
-    if (deposits.length) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small' },
-          `${bankMoney(a.cashDeposits)} in cash/ABM deposits are not yet confirmed as income, because a machine deposit can be your own cash or cash for someone else. Confirm any that are genuinely your income.`
-        )
-      );
-      const list = el('div', { class: 'recurring-list' });
-      const renderDepositRow = (r) =>
-        el(
-          'div',
-          { class: 'recurring-row' },
-          el(
-            'span',
-            { class: 'recurring-name' },
-            `${formatDisplayDate(r.date)} · ${cleanCounterparty(r.description) || r.type || 'Deposit'}`
-          ),
-          el('span', { class: 'recurring-amt num strong' }, bankMoney(r.amount)),
-          el(
-            'button',
-            {
-              class: 'btn sm',
-              onclick: () => confirmDepositAsIncome(r.id, true),
-            },
-            'Count as income'
-          )
-        );
-      appendExpandable(el, list, deposits, renderDepositRow, { initial: 5 });
-      sec.append(list);
-    }
+    holder.append(confirmQuestion(r));
+    return holder;
+  }
 
-    if (confirmed.length) {
-      const list = el('div', { class: 'recurring-list' });
-      const renderConfirmedRow = (r) =>
-        el(
-          'div',
-          { class: 'recurring-row' },
+  function renderLedgerReview(a, recs) {
+    const answered = (r, inference) => hasAnswered(state.confirmations || [], inference, [r.id]);
+    const pending = (rows, inference) => [
+      ...rows.filter((r) => !answered(r, inference)),
+      ...rows.filter((r) => answered(r, inference)),
+    ];
+    const deposits = pending(recs.filter((r) => r.cashDeposit), 'income');
+    const refunds = pending(recs.filter((r) => r.refundLike), 'refund');
+    if (!deposits.length && !refunds.length && !(a.householdSupport > 0)) return null;
+    const unanswered = (rows, inference) => rows.filter((r) => !answered(r, inference)).length;
+    const waiting = unanswered(deposits, 'income') + unanswered(refunds, 'refund');
+    const appendReviewDetails = (host) => {
+      if (deposits.length) {
+        host.append(
           el(
-            'span',
-            { class: 'recurring-name muted' },
-            `${formatDisplayDate(r.date)} · ${cleanCounterparty(r.description) || r.type || 'Deposit'}`
-          ),
-          el('span', { class: 'recurring-amt num' }, bankMoney(r.amount)),
-          el(
-            'button',
-            {
-              class: 'btn sm ghost',
-              onclick: () => confirmDepositAsIncome(r.id, false),
-            },
-            'Undo'
+            'p',
+            { class: 'muted small review-note' },
+            `${prose(a.cashDeposits)} in cash/ABM deposits is not counted as income`,
+            chartInfo(
+              el,
+              '',
+              'A machine deposit can be your own cash or cash for someone else, so it is not counted as income until you say so. Answer each one and it stays answered.'
+            )
           )
         );
-      appendExpandable(el, list, confirmed, renderConfirmedRow, { initial: 5 });
-      sec.append(
-        renderExplainer(el, list, {
-          label: `Confirmed as income (${confirmed.length})`,
-        })
-      );
-    }
-    if (a.householdSupport > 0) {
-      sec.append(
-        el(
-          'p',
-          { class: 'muted small', style: 'margin-top:8px' },
-          `Support to household: ${bankMoney(a.householdSupport)} sent from your shared account to a household member. This is tracked here but kept out of your personal money-out figure.`
-        )
-      );
-    }
-    if (a.refunds > 0 || confirmedRefunds.length) {
-      if (a.refunds > 0) {
-        sec.append(
+        const list = el('div', { class: 'recurring-list' });
+        appendExpandable(el, list, deposits, (r) => reviewRow(r, 'Deposit'), { initial: 5 });
+        host.append(list);
+      }
+      if (a.householdSupport > 0) {
+        host.append(
           el(
             'p',
             { class: 'muted small', style: 'margin-top:8px' },
-            `${bankMoney(a.refunds)} came back as refunds or reversals. This money is not yet confirmed as income, since a refund is money returned rather than earned. Confirm any that are genuinely your income.`
+            `Support to household: ${prose(a.householdSupport)} sent from your shared account to a household member. This is tracked here but kept out of your personal money-out figure.`
+          )
+        );
+      }
+      if (refunds.length) {
+        host.append(
+          el(
+            'p',
+            { class: 'muted small review-note', style: 'margin-top:8px' },
+            `${prose(a.refunds)} came back as refunds or reversals`,
+            chartInfo(
+              el,
+              '',
+              'A refund is money returned rather than earned, so it is not counted as income until you say so. Answer each one and it stays answered.'
+            )
           )
         );
         const list = el('div', { class: 'recurring-list' });
-        const renderRefundRow = (r) =>
-          el(
-            'div',
-            { class: 'recurring-row' },
-            el(
-              'span',
-              { class: 'recurring-name' },
-              `${formatDisplayDate(r.date)} · ${cleanCounterparty(r.description) || r.type || 'Refund'}`
-            ),
-            el('span', { class: 'recurring-amt num strong' }, bankMoney(r.amount)),
-            el(
-              'button',
-              {
-                class: 'btn sm',
-                onclick: () => confirmRefundAsIncome(r.id, true),
-              },
-              'Count as income'
-            )
-          );
-        appendExpandable(el, list, refunds, renderRefundRow, { initial: 5 });
-        sec.append(list);
+        appendExpandable(el, list, refunds, (r) => reviewRow(r, 'Refund'), { initial: 5 });
+        host.append(list);
       }
-      if (confirmedRefunds.length) {
-        const list = el('div', { class: 'recurring-list' });
-        const renderConfirmedRefundRow = (r) =>
-          el(
-            'div',
-            { class: 'recurring-row' },
-            el(
-              'span',
-              { class: 'recurring-name muted' },
-              `${formatDisplayDate(r.date)} · ${cleanCounterparty(r.description) || r.type || 'Refund'}`
-            ),
-            el('span', { class: 'recurring-amt num' }, bankMoney(r.amount)),
-            el(
-              'button',
-              {
-                class: 'btn sm ghost',
-                onclick: () => confirmRefundAsIncome(r.id, false),
-              },
-              'Undo'
-            )
-          );
-        appendExpandable(el, list, confirmedRefunds, renderConfirmedRefundRow, {
-          initial: 5,
-        });
-        sec.append(
-          renderExplainer(el, list, {
-            label: `Refunds confirmed as income (${confirmedRefunds.length})`,
-          })
-        );
-      }
+    };
+    const sec = el('div', { class: 'review-adjustments-body' });
+    if (waiting) {
+      appendReviewDetails(sec);
+    } else {
+      const answers = el('div', { class: 'review-answers', id: 'activity-review-answers', hidden: '' });
+      appendReviewDetails(answers);
+      const manage = el(
+        'button',
+        {
+          class: 'btn sm review-manage',
+          type: 'button',
+          'aria-controls': 'activity-review-answers',
+          'aria-expanded': 'false',
+          onclick: () => {
+            const opening = answers.hidden;
+            answers.hidden = !opening;
+            manage.setAttribute?.('aria-expanded', String(opening));
+            manage.textContent = opening ? 'Close answers' : 'Manage answers';
+          },
+        },
+        'Manage answers'
+      );
+      sec.append(
+        el(
+          'div',
+          { class: 'review-settled' },
+          el('p', { class: 'muted small' }, 'All review decisions are addressed. You can revisit an answer at any time.'),
+          manage
+        ),
+        answers
+      );
     }
-    return sec;
+    const card = collapsibleCard(el, {
+      title: 'Review & adjustments',
+      icon: icon(iconFlag()),
+      summary: waiting ? `${waiting} to address` : 'All addressed',
+      body: sec,
+      name: 'activity-review',
+      alwaysOpen: waiting > 0,
+      foldAll: false,
+    });
+    if (card) {
+      card.classList.add('acct-review');
+      card.classList.toggle('is-action-needed', waiting > 0);
+    }
+    return card;
   }
 
   // Account-statement reconciliation, relocated into "Data & settings" to
@@ -618,7 +549,6 @@ export function createAccountsRenderer(ctx) {
 
     const totalN = stmts.length;
     const totalOk = stmts.filter((s) => s.reconciled).length;
-    const allOk = totalOk === totalN;
     const accountsN = byAccount.size;
     const coveredMonths = [...coveredAll].filter(Boolean).sort();
     const first = coveredMonths[0] || null;
@@ -626,68 +556,79 @@ export function createAccountsRenderer(ctx) {
     const gaps = missingMonths(coveredMonths);
     const spanText = first
       ? first === last
-        ? monthLabel(first)
-        : `${monthLabel(first)} - ${monthLabel(last)}`
+        ? formatMonthYear(first)
+        : `${formatMonthYear(first)} - ${formatMonthYear(last)}`
       : '-';
+    const drawerPreview = `${spanText} · ${accountsN} account${accountsN === 1 ? '' : 's'}`;
 
-    const wrap = el('div', { class: 'sec-section' });
-
-    // Heading carries a status pill on its right, so the verdict is the first
-    // thing seen, coloured (calm green / caution) without relying on colour alone.
+    const wrap = el('details', { class: 'disclosure sec-fold stmt-summary-section' });
     wrap.append(
       el(
-        'div',
-        { class: 'sec-subhead stmt-head' },
-        el('span', { class: 'stmt-head-title' }, icon(iconReceipt()), ' Account statements'),
-        el(
-          'span',
-          { class: 'pill ' + (allOk ? 'ok' : 'caution') },
-          allOk ? '\u2713 All add up' : `${totalN - totalOk} need a look`
-        )
+        'summary',
+        {},
+        subhead(el, {
+          title: 'Account statements',
+          note: `${totalOk} of ${totalN} reconcile`,
+          explain: RECONCILE_MEANS,
+        }),
+        el('span', { class: 'sec-fold-meta' }, drawerPreview)
       )
     );
-
-    // Three compact tiles: accuracy, coverage span, freshness. One glance answers
-    // "do the figures add up, how much history is here, and how current is it".
-    const stat = (value, label, dotTone) =>
-      el(
-        'div',
-        { class: 'stmt-stat' },
+    const detailBody = el('div', { class: 'disclosure-body sec-fold-body' });
+    wrap.append(detailBody);
+    if (totalOk < totalN)
+      detailBody.append(
         el(
           'div',
-          { class: 'stmt-stat-value' },
-          dotTone ? el('span', { class: 'stmt-dot ' + dotTone }) : null,
-          value
-        ),
-        el('div', { class: 'stmt-stat-label' }, label)
-      );
-    wrap.append(
-      el(
-        'div',
-        { class: 'stmt-summary' },
-        stat(
-          `${totalOk}/${totalN}`,
-          allOk ? 'Statements reconcile' : 'Reconcile, rest need a look',
-          allOk ? 'good' : 'warn'
-        ),
-        stat(spanText, `Covered \u00b7 ${accountsN} account${accountsN === 1 ? '' : 's'}`),
-        stat(
-          latestImport ? new Date(latestImport).toLocaleDateString(state.cfg.currency.locale) : '-',
-          'Last updated'
+          { class: 'manage-actions settings-actions' },
+          el(
+            'button',
+            {
+              class: 'btn sm ghost',
+              onclick: () =>
+                reviewStatements({
+                  match: (st) => st.ledger === 'bank' && !st.reconciled,
+                  reason: 'Account statements that need a look',
+                }),
+            },
+            'Review'
+          )
         )
+      );
+
+    // Coverage span and freshness: the two facts this panel answers beyond
+    // reconciliation (already stated above), in the same boxless glance row
+    // "180 statements / 1929 transactions / 36 months" uses two rows up -
+    // one shape for "figures at a glance", not a bordered tile here and
+    // plain text there for the same idea.
+    const glance = el('div', { class: 'sec-glance' });
+    glance.append(secItem(el, `Covered \u00b7 ${accountsN} account${accountsN === 1 ? '' : 's'}`, spanText));
+    glance.append(
+      secItem(
+        el,
+        'Last updated',
+        // formatDisplayDate, like every other date in the app. This one line
+        // used the browser locale, so "Last updated" printed 9/8/2026 while
+        // every date beside it read 08-Sep-26.
+        latestImport ? formatDisplayDate(String(latestImport).slice(0, 10)) : '-'
       )
     );
+    detailBody.append(glance);
 
     // Completeness line: name any month inside the covered span with no
     // statement - the one thing a list of present statements can never show.
     if (first && last && first !== last) {
-      wrap.append(
+      detailBody.append(
         el(
           'p',
           { class: 'muted small stmt-note' },
           gaps.length
-            ? `No statement for ${gaps.slice(0, 3).map(monthLabel).join(', ')}${gaps.length > 3 ? ` and ${gaps.length - 3} more` : ''}, so that stretch is incomplete. Add those PDFs for a full picture.`
-            : 'Every month in that range has a statement, so nothing is missing.'
+            ? // Named through the one shared helper, so this line and the
+              // coverage card sitting two sections below it in the same fold
+              // use the same words for the same months, instead of two
+              // hand-rolled joins that had already drifted apart.
+              `No statement for ${namedMonths(gaps, formatMonthYear, 3)}, so that stretch is incomplete. Add those PDFs for a full picture.`
+            : 'All months covered.'
         )
       );
     }
@@ -715,19 +656,35 @@ export function createAccountsRenderer(ctx) {
     const renderAccountCard = (g) => {
       const span = g.first
         ? g.first === g.last
-          ? monthLabel(g.first)
-          : `${monthLabel(g.first)} - ${monthLabel(g.last)}`
+          ? formatMonthYear(g.first)
+          : `${formatMonthYear(g.first)} - ${formatMonthYear(g.last)}`
         : 'no dated statements';
       const health = g.failed
         ? el('span', { class: 'recon-warn' }, `${g.failed} of ${g.n} need a look`)
-        : el('span', { class: 'recon-ok' }, '\u2713 all reconcile');
+        : el('span', { class: 'recon-ok' }, 'All reconcile');
+      // A tile that names a problem is the door to it: tapping opens exactly
+      // this account's failing statements, not the flat "Imported files" list
+      // of every account's every file. Nothing to open when it all reconciles,
+      // so the tile stays a plain, unclickable summary.
       return el(
-        'div',
-        { class: 'stmt-card' + (g.failed ? ' attn' : '') },
+        g.failed ? 'button' : 'div',
+        {
+          class: 'stmt-card' + (g.failed ? ' attn' : ''),
+          ...(g.failed
+            ? {
+                type: 'button',
+                onclick: () =>
+                  reviewStatements({
+                    match: (st) => st.ledger === 'bank' && st.account === g.account && !st.reconciled,
+                    reason: `Account ${g.account} statements that need a look`,
+                  }),
+              }
+            : {}),
+        },
         el(
           'div',
           { class: 'stmt-card-head' },
-          el('span', { class: 'stmt-dot ' + (g.failed ? 'warn' : 'good') }),
+          el('span', { class: 'stmt-dot ' + (g.failed ? 'warn' : 'neutral') }),
           el('span', { class: 'stmt-card-name' }, `Account ${g.account}`)
         ),
         el(
@@ -750,11 +707,11 @@ export function createAccountsRenderer(ctx) {
     if (needAttention.length) {
       const grid = el('div', { class: 'stmt-grid' });
       for (const g of needAttention) grid.append(renderAccountCard(g));
-      wrap.append(grid);
+      detailBody.append(grid);
     }
 
     if (healthy.length) {
-      const details = el('details', { class: 'explainer stmt-accounts-more' });
+      const details = el('details', { class: 'disclosure explainer stmt-accounts-more' });
       details.append(
         el(
           'summary',
@@ -764,8 +721,8 @@ export function createAccountsRenderer(ctx) {
       );
       const grid = el('div', { class: 'stmt-grid' });
       for (const g of healthy) grid.append(renderAccountCard(g));
-      details.append(el('div', { class: 'explainer-body' }, grid));
-      wrap.append(details);
+      details.append(el('div', { class: 'disclosure-body explainer-body' }, grid));
+      detailBody.append(details);
     }
 
     return wrap;

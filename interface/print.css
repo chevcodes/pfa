@@ -252,13 +252,6 @@ html.printing .print-only {
   color: #5a6675;
   margin-top: 3px;
 }
-.rp-sum-sub.tone-up {
-  color: #b3421a;
-}
-.rp-sum-sub.tone-down {
-  color: #1f7a4d;
-}
-
 /* Trend chart - the SVG scales to its container width (it keeps its own
    preserveAspectRatio); nothing beside it forces a minimum width. */
 .rp-chart-wrap {
@@ -510,10 +503,6 @@ html.printing .print-only {
   html[data-report-theme='dark'] .rp-table td {
     border-bottom-color: var(--edge);
   }
-  html[data-report-theme='dark'] .rp-sum-sub.tone-up {
-    color: var(--up);
-  }
-  html[data-report-theme='dark'] .rp-sum-sub.tone-down,
   html[data-report-theme='dark'] .rp-credit {
     color: var(--down);
   }
@@ -608,10 +597,6 @@ html.printing .print-only {
   html.printing .rp-table td {
     border-bottom-color: var(--edge);
   }
-  html.printing .rp-sum-sub.tone-up {
-    color: var(--up);
-  }
-  html.printing .rp-sum-sub.tone-down,
   html.printing .rp-credit {
     color: var(--down);
   }
@@ -676,3 +661,14 @@ html.printing .print-only {
   }
 }
 
+
+/* Plan section in the printed report: a table of what a normal month does
+   against what it is meant to do. Uses the report's own table idiom. */
+.rp-plan-table td.rp-num,
+.rp-plan-table th {
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-plan-table td:first-child {
+  font-weight: 600;
+}

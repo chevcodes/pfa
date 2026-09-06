@@ -29,6 +29,11 @@ function mk(t) {
       this.attrs[k] = String(v);
     },
     addEventListener() {},
+    // Real elements have it; the stub records that it was asked for, which is
+    // what "the form takes focus where it stands" means here.
+    focus() {
+      this.focused = true;
+    },
     set onclick(f) {
       this.attrs.onclick = f;
     },
@@ -74,7 +79,7 @@ function allText(n) {
   for (const k of n.kids) t += ' ' + allText(k);
   return t.replace(/\s+/g, ' ').trim();
 }
-function hasClass(n, c) {
+function _hasClass(n, c) {
   return String(n.attrs.class || '')
     .split(/\s+/)
     .includes(c);
@@ -122,6 +127,7 @@ const provenModels = {
   },
 };
 let renderCalls = 0;
+let authoredAt = Date.UTC(2026, 6, 1);
 const deps = {
   state,
   el,
@@ -133,11 +139,39 @@ const deps = {
   render: () => {
     renderCalls++;
   },
-  makeIntention,
+  makeIntention: (spec) => makeIntention({ ...spec, now: new Date(authoredAt++).toISOString() }),
   categorySpend: () => 30000,
   iconRepeat: () => '',
+  iconFlag: () => '',
   iconInfo: () => '',
   toast: () => {},
+  // The real reversible (ui/reversible.js) wraps every store write so it can be
+  // undone. This stub performs the SAME writes and reloads, so the proof still
+  // exercises the real save/remove paths - it just does not render a toast.
+  reversible: {
+    async addRecord({ store: st, record, reload, track }) {
+      await st.put(record);
+      if (reload) await reload();
+      deps.render();
+      if (track) track();
+    },
+    async removeRecords({ store: st, records, reload, track }) {
+      for (const r of records || []) await st.delete(r.id);
+      if (reload) await reload();
+      deps.render();
+      if (track) track();
+    },
+  },
+};
+// The limits card also reports categories running faster than usual with no
+// limit set, which used to be its own card. The detector is handed in, so the
+// stub decides what (if anything) is running hot.
+deps.money0 = (n) => `$${Math.round(Number(n) || 0).toLocaleString('en-US')}`;
+deps.midMonthPace = () => midMonthPaceStub;
+let midMonthPaceStub = [];
+let lastDrill = null;
+deps.drillToTransactions = (patch) => {
+  lastDrill = patch;
 };
 const renderIntentions = makeRenderIntentions(deps);
 
@@ -145,14 +179,16 @@ console.log('='.repeat(72));
 console.log(' B2 RENDER PROOF - card always renders, row carries id, save/remove wire');
 console.log('='.repeat(72));
 
-(async () => {
+await (async () => {
   // 1) with NO intentions, the card STILL renders with an add form (the way in)
   let card = renderIntentions();
   note(!!card, 'card renders even with zero intentions');
   note(
-    /Set a category ceiling/.test(allText(card)),
-    'shows the "Set a category ceiling" form when none exist'
+    findAll(card, (n) => n.tag === 'button' && allText(n) === 'Set limit').length === 1 &&
+      findAll(card, (n) => n.tag === 'input' && n.attrs.placeholder === 'Monthly limit').length === 1,
+    'shows the monthly-limit controls when none exist'
   );
+  note(!/Set a monthly limit for a category/.test(allText(card)), 'does not narrate the visible form');
   const catSel = findAll(card, (n) => n.tag === 'select')[0];
   note(
     catSel && catSel.kids.filter((k) => k.tag === 'option').length === 3,
@@ -160,7 +196,7 @@ console.log('='.repeat(72));
   );
 
   // 2) author a ceiling via the form's save handler, wired through the store
-  const addBtn = findAll(card, (n) => n.tag === 'button' && /Set ceiling/.test(allText(n)))[0];
+  const addBtn = findAll(card, (n) => n.tag === 'button' && /Set limit/.test(allText(n)))[0];
   // set the select value + amount input, then invoke onclick
   const amtInput = findAll(card, (n) => n.tag === 'input')[0];
   catSel.value = 'Groceries';
@@ -187,14 +223,13 @@ console.log('='.repeat(72));
     'Remove row carries the governing record id (NOT undefined) - the B1 seam pre-empted'
   );
   note(
-    /on track/.test(allText(card)),
-    'pace shows a no-guilt phrase (on track: full-month 30k spend == 30k ceiling)'
+    /within your limit/.test(allText(card)),
+    'pace names the relationship to the limit (30k spend == 30k ceiling: at it, not over it)'
   );
 
   // 4) EDIT via the form (same category, new amount) -> new record, resolver picks new
   //    (simulate a later authoring time so the tiebreak is monotonic)
   const before = (await store.all()).length;
-  // patch makeIntention call path by advancing time: set amount 50000
   amtInput.value = '50000';
   await addBtn.attrs.onclick();
   note(
@@ -215,8 +250,60 @@ console.log('='.repeat(72));
   );
   card = renderIntentions();
   note(
-    /Set a category ceiling/.test(allText(card)),
-    'card falls back to the empty "set a ceiling" state'
+    findAll(card, (n) => n.tag === 'button' && allText(n) === 'Set limit').length === 1,
+    'card falls back to the empty limit form'
+  );
+
+  /* 6) RUNNING HOT WITH NO LIMIT - the half that used to be its own card,
+   *    "Partway through the month", whose only action scrolled the page here
+   *    and opened this one with the category pre-picked. */
+  midMonthPaceStub = [
+    { category: 'Dining', projected: 24000, typical: 9000, dayOfMonth: 12, daysInMonth: 31 },
+    { category: 'Groceries', projected: 80000, typical: 30000, dayOfMonth: 12, daysInMonth: 31 },
+  ];
+  card = renderIntentions();
+  const setLimitBtns = findAll(card, (n) => n.tag === 'button' && allText(n) === 'Set a limit');
+  note(setLimitBtns.length === 2, 'each category running faster than usual is listed with a way to cap it');
+  note(
+    /day 12 of 31/.test(allText(card)) &&
+      /projections, not final figures/.test(allText(card)) &&
+      /On pace for about \$24\.0k this month, against a typical \$9\.0k\./.test(allText(card)),
+    'and the card says these are projections with compact pace amounts, where it used to be hidden inside a second card'
+  );
+  const sel = findAll(card, (n) => n.tag === 'select')[0];
+  sel.value = 'Groceries';
+  setLimitBtns[0].attrs.onclick();
+  const amt = findAll(card, (n) => n.tag === 'input')[0];
+  note(
+    sel.value === 'Dining' && amt.focused === true,
+    'pressing one fills the form in place and takes focus, with no navigation'
+  );
+
+  // Once a category HAS a limit it is reported by its own row above, so it must
+  // not also be listed as unlimited - the duplication this merge removes.
+  amtInput.value = '40000';
+  sel.value = 'Groceries';
+  await addBtn.attrs.onclick();
+  card = renderIntentions();
+  const hotAfter = findAll(card, (n) => n.tag === 'button' && allText(n) === 'Set a limit');
+  note(hotAfter.length === 1, 'a category that now has a limit drops out of the running-hot list');
+
+  /* 7) PRINCIPLE 8 - a limit passed over is the door to what pushed it over,
+   *    the same drillToTransactions({ category }) Cards' own category panel
+   *    already uses, not a dead end beside Remove. categorySpend is fixed at
+   *    30000, so a 20000 ceiling is over by construction. */
+  amtInput.value = '20000';
+  sel.value = 'Groceries';
+  await addBtn.attrs.onclick();
+  card = renderIntentions();
+  note(/\d[\d,]* over/.test(allText(card)), 'the row states the category is over its limit');
+  const refineBtn = findAll(card, (n) => n.tag === 'button' && allText(n) === 'Refine')[0];
+  note(!!refineBtn, 'an over-limit row offers Refine, not just Remove');
+  lastDrill = null;
+  refineBtn.attrs.onclick();
+  note(
+    !!lastDrill && lastDrill.category === 'Groceries',
+    'Refine drills to exactly this category’s transactions'
   );
 
   console.log(`\n checks: ${pass} passed, ${fail} failed`);

@@ -144,16 +144,13 @@
   .f-range .muted {
     flex: 0 0 auto;
   }
-  /* 16px text on every focusable field stops iOS Safari auto-zooming (and the
-     layout jump) when a field is tapped. Padding, height and chevrons unchanged. */
-  .filters input:not([type='checkbox']):not([type='radio']),
-  .filters select,
-  .period-select,
-  .mini,
-  .mobile-sort-field,
-  .pass {
-    font-size: 16px;
-  }
+  /* The 16px-at-narrow-widths rule that used to live here is gone. It existed
+     to stop iOS Safari zoom-jumping on a field under 16px, which is an ENGINE
+     problem, not a width one - and it was also making every field in a narrow
+     desktop window a third larger than the same kind of field two screens
+     away. That one exception now lives on --t-field itself, under
+     `@supports (-webkit-touch-callout: none)`, and reaches every field
+     through the single element rule in controls.css. */
   .f-check {
     width: 100%;
     justify-content: flex-start;
@@ -190,7 +187,6 @@
     border-radius: 9px;
     background: var(--panel);
     color: var(--fg);
-    font-size: 16px; /* 16px avoids iOS focus-zoom */
     -webkit-appearance: none;
     appearance: none;
     background-image: var(--select-chevron);
@@ -201,31 +197,12 @@
     min-width: 96px;
     justify-content: center;
   }
-  .mobile-context {
-    display: block;
-    margin: 4px 0 0;
-  }
   .wrap {
     padding-top: 14px;
     gap: 14px;
   }
-  .hero {
-    padding: var(--card-pad-y) var(--card-pad-x);
-  }
-  .hero-head {
-    flex-direction: column;
-  }
-  .hero-title {
-    font-size: 20px;
-  }
   .hero-figure {
     min-width: 0;
-  }
-  .hero-amount {
-    font-size: 30px;
-  }
-  .hero-body {
-    gap: 14px 24px;
   }
   .row2 {
     grid-template-columns: 1fr;
@@ -306,9 +283,6 @@
   table.grid.tx td[data-label]::before {
     content: none;
   }
-  /* The category on the row stays tappable (it opens the picker), but it must
-     not reclaim the height the coarse-pointer 44px target would add here; the
-     whole row is already a large tap target that opens the detail panel. */
   table.grid.tx tr.tx-row button.cat-tag-btn {
     min-height: 0;
     padding: 0;
@@ -550,7 +524,7 @@
   }
 }
 
-@media (pointer: fine) {
+@media (pointer: fine) and (min-width: 640px) {
   .btn,
   .btn.sm,
   .menu-item,
@@ -591,11 +565,15 @@
   }
 }
 
+/* Tablets: coarse AND wide. This is the one case the width axis genuinely
+   cannot distinguish from a desktop, so the pointer query earns its place here
+   - unlike the phone-width rules, which were moved off it. .cat-tag-btn is gone
+   with the element: catTag() only produces a button when passed an onclick, and
+   no call site does. */
 @media (pointer: coarse) and (min-width: 640px) {
   .btn,
   .btn.sm,
   .menu-item,
-  .cat-tag-btn,
   .chip,
   .f-check,
   .period-select,
@@ -605,4 +583,3 @@
     min-height: var(--tap-lg);
   }
 }
-

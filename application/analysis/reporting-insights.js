@@ -28,6 +28,7 @@ import {
   roundMoney,
   capitaliseFirst,
   requireCtx,
+  namedMonths,
   monthIndex,
   recurringStatus,
   monthKey,
@@ -37,7 +38,14 @@ import {
   isoDay,
   detectSustainedRise,
   median,
+  modifiedZ,
 } from '../core/shared-helpers.js';
+import {
+  DEFAULT_CUSHION_MONTHS,
+  cushionStanding,
+  monthsLabel,
+  monthsAdjective,
+} from './cushion.js';
 import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
 
@@ -59,9 +67,9 @@ import {
 export const GOAL_TYPES = [
   {
     id: 'runway',
-    label: 'Keep a cushion of at least this many days',
-    unit: 'days',
-    paramKey: 'targetDays',
+    label: 'Keep an emergency fund of at least this many months of expenses',
+    unit: 'months',
+    paramKey: 'targetMonths',
   },
   {
     id: 'clear-card',
@@ -88,8 +96,13 @@ export function describeGoal(goal, bankMoney, formatDisplayDate) {
   // goal-migrate.js. Step 3 will retire the old branches once the new engine
   // is verified end to end.
   if (goal.type === 'runway' || goal.type === 'cushion') {
-    const days = goal.targetDays != null ? goal.targetDays : goal.params && goal.params.targetDays;
-    return `Keep a cushion of at least ${days} days`;
+    const months =
+      goal.targetMonths != null
+        ? goal.targetMonths
+        : (goal.params && goal.params.targetMonths) != null
+          ? goal.params.targetMonths
+          : DEFAULT_CUSHION_MONTHS;
+    return `Keep an emergency fund of at least ${monthsLabel(months)} of expenses`;
   }
   if (goal.type === 'clear-card') {
     const targetDate =
@@ -114,20 +127,32 @@ export function describeGoal(goal, bankMoney, formatDisplayDate) {
 export function computeGoalProgress(goal, data, bankMoney, formatDisplayDate) {
   if (!goal) return null;
   if (goal.type === 'runway' || goal.type === 'cushion') {
-    const targetDays =
-      goal.targetDays != null ? goal.targetDays : goal.params && goal.params.targetDays;
-    const days = data.runwayDays;
-    if (days == null)
+    const targetMonths =
+      goal.targetMonths != null
+        ? goal.targetMonths
+        : (goal.params && goal.params.targetMonths) != null
+          ? goal.params.targetMonths
+          : DEFAULT_CUSHION_MONTHS;
+    // ONE description of emergency-fund progress for the whole app. The
+    // follow-up history used to speak in days while the live card spoke in
+    // months, so the same month could be described two different ways depending
+    // on where you read it.
+    const standing = cushionStanding({
+      saved: data.cushionSaved != null ? data.cushionSaved : data.liquidNow,
+      monthlyExpenses: data.typicalMonthlyExpenses,
+      targetMonths,
+      monthsOfData: data.expensesMonthsOfData,
+    });
+    if (!standing.readable)
       return {
         met: null,
         headline: 'There is not yet enough of a cash position to judge this against.',
       };
-    const met = days >= targetDays;
     return {
-      met,
-      headline: met
-        ? `Keeping about ${days} days of cushion, at or above your ${targetDays}-day target.`
-        : `Currently keeping about ${days} days of cushion, below your ${targetDays}-day target.`,
+      met: standing.met,
+      headline: standing.met
+        ? `${capitaliseFirst(standing.progress.phrase)} - ${bankMoney(standing.saved)} against a ${monthsAdjective(targetMonths)} target.`
+        : `${capitaliseFirst(standing.progress.phrase)}, working toward ${monthsLabel(targetMonths)} of expenses. ${bankMoney(standing.shortfall)} still needed.`,
     };
   }
   if (goal.type === 'clear-card') {
@@ -419,7 +444,7 @@ export function detectCategorySpikes(rows, period, cfg = {}, splits = []) {
     const mad = median(history.map((v) => Math.abs(v - centre)));
     const z =
       mad > 0
-        ? (0.6745 * (curAmt - centre)) / mad
+        ? modifiedZ(curAmt, centre, mad)
         : centre > 0 && curAmt >= centre * 2.5
           ? t.categorySpikeZ
           : 0;
@@ -572,7 +597,8 @@ export function computeScenario(opts = {}) {
       : new Map(Object.entries(opts.reductions || {}));
   const legacyExcluded =
     opts.excludedKeys instanceof Set ? opts.excludedKeys : new Set(opts.excludedKeys || []);
-  const extraCost = Number(opts.extraCost) || 0;
+  const rawExtraCost = Number(opts.extraCost);
+  const extraCost = Number.isFinite(rawExtraCost) ? Math.max(0, rawExtraCost) : 0;
   const toggleableItems = opts.toggleableItems || [];
 
   const fractionFor = (key) => {
@@ -656,6 +682,27 @@ export function missingMonths(months) {
   return gaps;
 }
 
+/* THE missing-statement-months insight, for either ledger.
+ *
+ * Both halves of this card built their own, one word apart, and only one of
+ * them led anywhere sensible: the card side opened the file picker, the bank
+ * side fell through to "scroll to the transaction list" - the rows a person
+ * DOES have, under a sentence about the ones they do not. Same sentence, same
+ * destination now: the statement-coverage card, which names these months and
+ * carries the way to add them. */
+export function missingMonthsInsight({ ledger, months, monthLabel, icon, onOpen }) {
+  const gaps = missingMonths((months || []).slice().sort());
+  if (!gaps.length) return null;
+  const kind = ledger === 'card' ? 'card statement' : 'account statement';
+  return {
+    tone: 'info',
+    kind: 'missing-months',
+    icon,
+    text: `No ${kind} found for ${namedMonths(gaps, monthLabel)}. Add ${gaps.length === 1 ? 'it' : 'them'} for a complete picture.`,
+    onClick: onOpen,
+  };
+}
+
 // The ONE shared "What's new or unusual" bank-insight builder. Previously
 // this exact logic - the money-in-vs-previous-period comparison, the large/
 // unusual-payment check, the new-payee check, the missing-statement-months
@@ -683,6 +730,10 @@ export function missingMonths(months) {
 //   - onNavigate: where a click should take the person (switch to Accounts
 //     from Overview; scroll to the transaction list already on screen from
 //     Accounts itself).
+export function largePaymentSentence(payment, money) {
+  return `A payment to ${payment.label} of ${money(payment.amount)} is larger than usual.`;
+}
+
 export function buildBankAppropriateInsights(opts) {
   const {
     recsAll,
@@ -692,7 +743,12 @@ export function buildBankAppropriateInsights(opts) {
     prevIncome,
     verdict,
     coverage,
-    bankMoney,
+    /* Every figure this builder prints lands inside a SENTENCE, so the caller
+       hands it the prose formatter rather than the exact one. "$840,000.00 is
+       larger than usual" makes a reader count digits mid-clause; "$840k is
+       larger than usual" says the same thing at a glance, and the exact amount
+       is one tap away on the row the insight links to. */
+    proseMoney,
     prevLabel,
     monthLabel,
     bankMonthsList,
@@ -731,7 +787,7 @@ export function buildBankAppropriateInsights(opts) {
         kind: 'money-in-change',
         icon: diff > 0 ? icons.up() : icons.down(),
 
-        text: `Cash inflow this period was ${bankMoney(Math.abs(diff))} ${diff > 0 ? 'higher' : 'lower'} than ${prevLabel()}, at ${bankMoney(currentIncome)} vs ${bankMoney(prevIncome)}.`,
+        text: `Cash inflow this period was ${proseMoney(Math.abs(diff))} ${diff > 0 ? 'higher' : 'lower'} than ${prevLabel()}, at ${proseMoney(currentIncome)} vs ${proseMoney(prevIncome)}.`,
         onClick: onNavigate,
       });
     }
@@ -753,7 +809,7 @@ export function buildBankAppropriateInsights(opts) {
       tone: 'up',
       kind: 'large-payment',
       icon: icons.alert(),
-      text: `A payment to ${f.label} of ${bankMoney(f.amount)} is larger than usual - worth a look?`,
+      text: largePaymentSentence(f, proseMoney),
       onClick: drillTo(f.key, f.label),
     });
   }
@@ -767,7 +823,7 @@ export function buildBankAppropriateInsights(opts) {
       tone: 'new',
       kind: 'new-payee',
       icon: icons.spark(),
-      text: `New this period: ${newBig.label} (${bankMoney(newBig.amount)}).`,
+      text: `New this period: ${newBig.label} (${proseMoney(newBig.amount)}).`,
       onClick: drillTo(newBig.key, newBig.label),
     });
   }
@@ -794,17 +850,15 @@ export function buildBankAppropriateInsights(opts) {
       onClick: onNavigate,
     });
   }
-  // 5) Missing statement months.
-  const gaps = missingMonths(bankMonthsList().slice().sort());
-  if (gaps.length) {
-    out.push({
-      tone: 'info',
-      kind: 'missing-months',
-      icon: icons.gap(),
-      text: `No account statement found for ${gaps.slice(0, 2).map(monthLabel).join(' and ')}${gaps.length > 2 ? ` and ${gaps.length - 2} more` : ''}. Add ${gaps.length === 1 ? 'it' : 'them'} for a complete picture.`,
-      onClick: opts.onMissingMonths || onNavigate,
-    });
-  }
+  // 5) Missing statement months, through the one shared builder.
+  const gap = missingMonthsInsight({
+    ledger: 'bank',
+    months: bankMonthsList(),
+    monthLabel,
+    icon: icons.gap(),
+    onOpen: opts.onMissingMonths || onNavigate,
+  });
+  if (gap) out.push(gap);
 
   return rankInsights(out, insightsCfg.maxInsights || 3);
 }

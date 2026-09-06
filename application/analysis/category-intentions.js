@@ -34,6 +34,8 @@
  *       `categorySpendInMonth`, never re-derived here.
  * ======================================================================== */
 import { resolveOpts } from './commitment-income.js';
+import { makeMoney } from '../core/money-format.js';
+import { formatMonthYear, isoToday } from '../core/shared-helpers.js';
 
 function ymOf(iso) {
   return String(iso || '').slice(0, 7);
@@ -45,6 +47,10 @@ function daysInMonth(ym) {
   const y = +ym.slice(0, 4),
     mo = +ym.slice(5, 7);
   return new Date(Date.UTC(y, mo, 0)).getUTCDate();
+}
+export function asOfDayForMonth(targetMonth, now = new Date()) {
+  const today = isoToday(now);
+  return targetMonth === today.slice(0, 7) ? +today.slice(8, 10) : daysInMonth(targetMonth);
 }
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -114,13 +120,16 @@ export function paceForMonth({ intention, targetMonth, spendSoFar, asOfDay, cfg 
   const expectedByNow = r2(ceiling * fracElapsed); // pro-rata ceiling to date
   const overBy = r2(projected - ceiling);
 
-  // Signal thresholds use the same tolerance the rest of the app uses.
+  // How much room is left before the ceiling is reached. Negative once it has
+  // been passed. This is the figure a person actually wants while standing in a
+  // shop - "what can I still spend" - and it was previously not computed at all.
+  const remaining = r2(ceiling - spendSoFar);
+
   let signal;
   if (ceiling <= 0) signal = 'no-ceiling';
-  else if (projected > ceiling * (1 + opts.tolerance))
-    signal = 'ahead-of-pace'; // will overshoot
-  else if (projected < ceiling * (1 - opts.tolerance))
-    signal = 'under-pace'; // comfortably under
+  else if (spendSoFar > ceiling) signal = 'over';
+  else if (projected > ceiling) signal = 'ahead-of-pace'; // on course to pass it
+  else if (projected < ceiling * (1 - opts.tolerance)) signal = 'under-pace';
   else signal = 'on-pace';
 
   return {
@@ -129,11 +138,13 @@ export function paceForMonth({ intention, targetMonth, spendSoFar, asOfDay, cfg 
     source: intention.source,
     day,
     daysInMonth: dim,
+    month: targetMonth,
     spendSoFar: r2(spendSoFar),
     projected,
     expectedByNow,
+    remaining,
     overBy,
-    signal, // 'on-pace' | 'ahead-of-pace' | 'under-pace' | 'no-ceiling'
+    signal, // 'over' | 'ahead-of-pace' | 'on-pace' | 'under-pace' | 'no-ceiling'
   };
 }
 
@@ -143,43 +154,46 @@ export function paceForMonth({ intention, targetMonth, spendSoFar, asOfDay, cfg 
  * ======================================================================== */
 export function buildPaceModel(pace, cfg = {}) {
   if (!pace) return null;
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
+  // One formatter for the whole app (core/money-format.js): the same output
+  // this block produced, plus the privacy gate every figure must pass.
+  const money = makeMoney(cfg);
 
+  const materialVariance = pace.ceiling > 0
+    ? Math.max(0, pace.projected - pace.ceiling, pace.spendSoFar - pace.ceiling) / pace.ceiling
+    : 0;
+  const needsAttention = materialVariance >= 0.05;
   const tagBy = {
-    'on-pace': 'on track',
-    'ahead-of-pace': 'spending fast',
-    'under-pace': 'well under',
+    over: 'over your limit',
+    'ahead-of-pace': 'projected over your limit',
+    'on-pace': 'within your limit',
+    'under-pace': 'under your limit',
     'no-ceiling': '',
   };
   const toneBy = {
-    'on-pace': 'good',
-    'ahead-of-pace': 'watch',
-    'under-pace': 'good',
+    over: needsAttention ? 'watch' : 'neutral',
+    'ahead-of-pace': needsAttention ? 'watch' : 'neutral',
+    'on-pace': 'neutral',
+    'under-pace': 'neutral',
     'no-ceiling': 'neutral',
   };
 
-  // forward, plain-language detail; names the day so the pace is legible
+  const when = formatMonthYear(pace.month);
+  const left = money(Math.abs(pace.remaining));
+
+  // Every sentence leads with the thing a person came here for: how much room
+  // is left. The projection is context, not the headline - it was the headline
+  // before, which is part of why the card's purpose had to be inferred.
   let detail;
-  if (pace.signal === 'ahead-of-pace') {
-    detail = `${pace.category} is on pace for about ${money(pace.projected)} this month against your ${money(pace.ceiling)} ceiling, and it is only day ${pace.day} of ${pace.daysInMonth}.`;
+  if (pace.signal === 'over') {
+    detail = `${pace.category} has passed your ${money(pace.ceiling)} limit for ${when} by ${left}. Spent so far: ${money(pace.spendSoFar)}.`;
+  } else if (pace.signal === 'ahead-of-pace') {
+    detail = `${left} left of your ${money(pace.ceiling)} limit for ${when}, but at this rate ${pace.category} reaches about ${money(pace.projected)} by month end - over the limit. Day ${pace.day} of ${pace.daysInMonth}.`;
   } else if (pace.signal === 'under-pace') {
-    detail = `${pace.category} is on pace for about ${money(pace.projected)} this month, comfortably under your ${money(pace.ceiling)} ceiling, on day ${pace.day} of ${pace.daysInMonth}.`;
+    detail = `${left} left of your ${money(pace.ceiling)} limit for ${when}. At this rate ${pace.category} finishes around ${money(pace.projected)}, under the limit.`;
   } else if (pace.signal === 'on-pace') {
-    detail = `${pace.category} is tracking close to your ${money(pace.ceiling)} ceiling, on pace for about ${money(pace.projected)} by month end.`;
+    detail = `${left} left of your ${money(pace.ceiling)} limit for ${when}. At this rate ${pace.category} finishes around ${money(pace.projected)}, within the limit.`;
   } else {
-    detail = `${pace.category}: no ceiling set.`;
+    detail = `${pace.category}: no limit set.`;
   }
 
   return {
@@ -188,6 +202,14 @@ export function buildPaceModel(pace, cfg = {}) {
     amountText: money(pace.projected),
     ceilingText: money(pace.ceiling),
     spentText: money(pace.spendSoFar),
+    // 8b: the figure to keep in your head while shopping, formatted once here
+    // rather than re-derived by each surface that shows it.
+    remaining: pace.remaining,
+    remainingText: money(Math.abs(pace.remaining)),
+    isOver: pace.signal === 'over',
+    needsAttention,
+    // 8a: which month this card is reporting on, said plainly.
+    monthText: when,
     tag: tagBy[pace.signal] || '', // pronoun-free
     tone: toneBy[pace.signal] || 'neutral',
     signal: pace.signal,

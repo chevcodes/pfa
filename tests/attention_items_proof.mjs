@@ -21,6 +21,7 @@ console.log('='.repeat(72));
 const money0 = (n) => '$' + Number(n || 0).toLocaleString('en-US');
 const formatDisplayDate = (d) => String(d);
 const noop = () => {};
+let rulesOpened = 0;
 
 // Stub detectors with deterministic output so the proof asserts the
 // resolver's ORDERING and SHAPING, independent of detector internals.
@@ -70,6 +71,9 @@ const deps = {
   detectCategorySpikes,
   dismissReview: noop,
   pickStatements: noop,
+  openRulesSection: () => {
+    rulesOpened++;
+  },
   drillToTransactions: noop,
 };
 
@@ -99,12 +103,14 @@ note(
   'both unreconciled statements (card + bank) are blocking'
 );
 
-// 3) review purchases folded into ONE optional item, counting both rows
-const review = optional.find((i) => /second look/i.test(i.title));
+const review = optional.find((i) => /to categorise/i.test(i.title));
 note(
-  !!review && /2 purchases/.test(review.title),
-  'unrecognised + needs-review rows fold into one optional item counting both'
+  !!review && /\$5,000/.test(review.title) && !/2 purchases/.test(review.title),
+  'unrecognised + needs-review rows fold into one neutral optional item'
 );
+note(review.actions[0].label === 'Dismiss', 'optional review actions do not ask the app to judge a purchase as fine');
+review.onClick();
+note(rulesOpened === 1 && review.destination === 'rules', 'a review item opens Rules and categories directly when that destination is available');
 
 // 4) duplicate + spike are optional
 note(
@@ -163,6 +169,26 @@ note(
     calm.filter((i) => i.tone === 'blocking').length === 0,
     'calm inputs produce zero blocking items (Overview would show its calm confirmation)'
   );
+}
+
+{
+  let nudgeOpened = 0;
+  const nudged = buildAttentionItems({
+    ...deps,
+    cardStatements: [{ reconciled: true }],
+    bankStatements: [{ reconciled: true }],
+    cardRows: [],
+    availableNow: null,
+    detectPossibleDuplicates: () => [],
+    detectCategorySpikes: () => [],
+    statementNudges: [{ ledger: 'bank', status: 'due' }],
+    openStatementNudge: () => {
+      nudgeOpened++;
+    },
+  });
+  const nudge = nudged.find((i) => /add your next account statement/i.test(i.title));
+  nudge.onClick();
+  note(!!nudge && nudge.destination === 'statement-nudge' && nudgeOpened === 1, 'a due statement opens its next-statement card directly');
 }
 
 console.log(`\n checks: ${pass} passed, ${fail} failed`);

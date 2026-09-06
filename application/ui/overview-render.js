@@ -12,24 +12,27 @@
  * rendered is retired: its figures each live on their own screens (net
  * position on Position, runway on Ahead, income anomaly on the income card,
  * category spikes on Right Now's "Worth a look"), so narrating them here was
- * duplication the plan explicitly forbids. A dedicated "Needs attention"
- * section (the plan's own Overview element) is a later stage, not built here.
+ * duplication the plan explicitly forbids.
  */
 import {
   renderAttentionList,
   isUnrecognised,
 } from '../analysis/reporting-core.js';
 import {
-  periodCoverageNote,
+  periodCoverageParts,
   buildAttentionItems,
+  staleStatementNudges,
 } from '../analysis/reporting-periods.js';
 import {
   detectPossibleDuplicates,
   detectCategorySpikes,
 } from '../analysis/reporting-insights.js';
-import { requireCtx, formatDisplayDate } from '../core/shared-helpers.js';
+import {
+  requireCtx,
+  formatDisplayDate,
+} from '../core/shared-helpers.js';
+import { chartInfo } from './decision-header.js';
 import { createAvailableNow } from './available-now-preview.js';
-import { pairCards } from './chart-helpers.js';
 
 export function createOverviewRenderer(ctx) {
   requireCtx(
@@ -43,15 +46,20 @@ export function createOverviewRenderer(ctx) {
       'allLedgerMonths',
       'overviewModel',
       'periodEmptyNotice',
-      'switchLedgerView',
-      'trackUsage',
       'iconInfo',
       'provenModels',
       'renderFlowChart',
       'money0',
       'dismissReview',
       'pickStatements',
+      'openStatementCoverage',
+      'openImportedFiles',
+      'openRulesSection',
+      'openStatementNudge',
       'drillToTransactions',
+      'reviewCauses',
+      'openEvidence',
+      'balanceUpdates',
     ],
     'createOverviewRenderer'
   );
@@ -65,26 +73,55 @@ export function createOverviewRenderer(ctx) {
     allLedgerMonths,
     overviewModel,
     periodEmptyNotice,
-    switchLedgerView,
-    trackUsage,
     iconInfo,
     provenModels,
     renderFlowChart,
     money0,
     dismissReview,
     pickStatements,
+    openStatementCoverage,
+    openImportedFiles,
+    openRulesSection,
+    openStatementNudge,
     drillToTransactions,
+    reviewCauses,
+    openEvidence,
+    balanceUpdates,
   } = ctx;
 
-  // The plan's "available now" lead hero card. Built once here, matching
-  // every other factory-scoped renderer in this app.
   const { renderAvailableNow } = createAvailableNow({
     el,
     icon,
     provenModels,
     bankMoney,
     iconInfo,
+    openEvidence,
+    asOfTrace: () => balanceUpdates.asOfTrace(),
   });
+
+
+  /* Overview reads the FULL imported range, not the selected reporting period.
+   * Its period control is plain text (see renderPeriodBar's LIVE_VIEWS): the
+   * things this tab answers - what is spendable now, what needs attention - are
+   * either period-independent or actively wrong when narrowed, because a
+   * blocking item must not vanish just because a person is looking at an
+   * earlier month. Shaped exactly like resolvePeriod's output so every consumer
+   * below is unchanged. */
+  function allTimePeriod() {
+    const months = allLedgerMonths();
+    if (!months.length) return resolved();
+    const from = months[0];
+    const to = months[months.length - 1];
+    return {
+      type: 'all',
+      from,
+      to,
+      label: 'All time',
+      prevFrom: null,
+      prevTo: null,
+      kind: 'all',
+    };
+  }
 
   function renderOverview() {
     const wrap = el('div', { class: 'accounts-wrap accounts-grid view-overview' });
@@ -97,25 +134,23 @@ export function createOverviewRenderer(ctx) {
       return wrap;
     }
 
-    // 1) The lead hero: "available now" as one figure, working folded into Why.
-    const lead = renderAvailableNow();
+    const story = balanceUpdates.renderChangeStory();
+    if (story) wrap.append(story);
+    const lead = renderAvailableNow({ demoted: !!story });
     if (lead) wrap.append(lead);
 
-    // 2) Needs attention: only items that call for a DECISION (the plan's own
-    // bar). Reads the SAME buildAttentionItems (reporting.js) Right Now's
-    // fuller "Worth a look" queue reads, filtered here to the blocking head -
-    // a shortfall before income (from the same availableNow model the lead
-    // card above shows) or an unreconciled statement. The optional tidying
-    // (review-worthy purchases, duplicates, category spikes) stays on Right
-    // Now, never duplicated here. One resolver, two views, no divergence.
+    const causes = reviewCauses();
+    const storyMode = causes.mode === 'story';
     const attnItems = buildAttentionItems({
-      cardRows: [], // Overview's blocking items are statement/shortfall level,
+      cardRows: state.rows || [],
       cardStatements: state._cardStatements || [],
       bankStatements: state._bankStatements || [],
       brandRules: state.brandRules,
       merchants: state.merchants,
       rows: state.rows,
-      period: resolved(),
+      period: allTimePeriod(),
+      causes,
+      openEvidence,
       cfg: state.cfg,
       splits: state.transactionSplits || [],
       fallback: undefined,
@@ -127,13 +162,24 @@ export function createOverviewRenderer(ctx) {
       detectCategorySpikes,
       dismissReview,
       pickStatements,
+      openImportedFiles,
+      openRulesSection,
+      statementNudges: staleStatementNudges(
+        state._cardStatements || [],
+        state._bankStatements || [],
+        { toleranceDays: state.cfg.statementToleranceDays, includeOnTrack: true },
+        new Date()
+      ),
+      openStatementNudge,
       drillToTransactions,
-    }).filter((it) => it.tone === 'blocking');
+    }).filter((it) => it.tone === 'blocking' || it.cause || it.destination === 'rules');
+    const closing = storyMode ? causes.quiet : causes.stateLine;
     const attnCard = renderAttentionList(el, icon, {
-      title: 'Needs attention',
+      title: storyMode && causes.title ? causes.title : 'To review',
       iconInfo,
       items: attnItems,
-      calmText: 'Nothing needs a decision right now.',
+      calmText: closing || 'Nothing needs a decision right now.',
+      closing: attnItems.some((it) => it.cause) ? null : closing,
     });
 
     // 3) Cash inflow vs Cash outflow over the recent months, its own card. Shows
@@ -144,11 +190,16 @@ export function createOverviewRenderer(ctx) {
     const flowChart = renderFlowChart(rollAllTrend);
     if (flowChart) {
       const chartCard = el('section', { class: 'card overview-flow' });
+      // No year pill here on purpose. This chart already prints its exact
+      // window in its own footer ("September 2025 - August 2026"), built from
+      // the months it actually draws. A pill derived from the full history
+      // said "2024-2026" over a twelve-month chart - a second, coarser answer
+      // that contradicted the precise one directly below it.
       chartCard.append(
         el(
           'div',
           { class: 'card-head' },
-          el('h3', { class: 'card-title' }, icon(iconInfo()), 'Cash in and out')
+          el('h3', { class: 'card-title' }, icon(iconInfo()), 'Cash movement')
         )
       );
       chartCard.append(flowChart);
@@ -157,61 +208,44 @@ export function createOverviewRenderer(ctx) {
 
     // 3) Honest partial-data note when the period's coverage is incomplete -
     // the "partial data never looks complete" rule, kept.
-    const covNote = periodCoverageNote(state.coverage, resolved());
-    if (covNote) {
-      const noteCard = el('section', { class: 'card coverage-note' });
-      noteCard.append(el('p', { class: 'muted small', style: 'margin:0' }, covNote));
-      wrap.append(noteCard);
-    }
-
-    // 4) Where to go next: the two onward doorways. Compact card (no divider/
-    // heavy padding) so it reads as a tidy action pair, not a hollow panel.
-    // Header matches every other card's card-head/card-title/icon convention
-    // so this reads as a true peer of "Needs attention" beside it, not a
-    // leftover label style from the retired narrative-era Overview.
-    const next = el('section', { class: 'card overview-actions' });
-    next.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Quick actions')
-      )
-    );
-    const nextActions = el('div', { class: 'overview-next-actions' });
-    nextActions.append(
-      el(
-        'button',
-        {
-          class: 'btn primary',
-          onclick: () => {
-            trackUsage('overview-open-activity');
-            switchLedgerView('activity');
-          },
-        },
-        'Review activity'
-      )
-    );
-    if (state.bankRecords.length) {
-      nextActions.append(
+    // The fact on the line, the caveat behind the (i). This used to be a
+    // full-width CARD carrying nothing but one qualifying sentence about data
+    // completeness - a panel, a border, a shadow and 40px of padding spent on
+    // a footnote, sitting between the headline and the next real card. What a
+    // person needs at a glance is the coverage itself; why the total may run a
+    // little low is detail, on request.
+    const covParts = periodCoverageParts(state.coverage, allTimePeriod());
+    if (covParts) {
+      wrap.append(
         el(
-          'button',
-          {
-            class: 'btn primary',
-            onclick: () => {
-              trackUsage('overview-open-ahead');
-              switchLedgerView('ahead');
+          'p',
+          { class: 'coverage-note muted small' },
+          // The fact is the way in. It said "Based on 41 of 44 months" and
+          // stopped there: the three months it is about were not named, and
+          // the picture that knows them sat unreferenced in another card. It
+          // lands on that picture now, where those months are marked and the
+          // way to add them sits beside them. The (i) names them too, so the
+          // sentence and its destination agree before the tap as well as after.
+          el(
+            'button',
+            {
+              type: 'button',
+              class: 'linkbtn',
+              onclick: openStatementCoverage,
             },
-          },
-          'Check forecast'
+            covParts.headline
+          ),
+          chartInfo(el, '', covParts.detail)
         )
       );
     }
-    next.append(nextActions);
 
-    // Needs attention + Where to next: two short cards, paired side by side on
-    // desktop (both are compact - one calm line and two buttons - so stacking
-    // them full-width wasted a row each). The flow chart above stays full-width.
-    pairCards(wrap, attnCard, next);
+    // 4) No "Quick actions" card. It held two buttons - "Review activity" and
+    // "Open my plan" - that went to the Activity and Plan tabs, which are two
+    // rows above it on every screen and pinned to the thumb on a phone. A whole
+    // card, sitting beside the one thing on this screen that might genuinely
+    // need a decision, spent on a second way to press a tab.
+    wrap.append(attnCard);
     if (flowCard) wrap.append(flowCard);
 
     return wrap;

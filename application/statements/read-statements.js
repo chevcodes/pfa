@@ -2,10 +2,11 @@ import {
   fnv1a,
   toIso,
   money,
-  monthKey,
   roundMoney,
   yieldToBrowser,
+  recordMissingRequiredField,
 } from '../core/shared-helpers.js';
+import { isInvestmentStatement } from './read-investments.js';
 
 const AMOUNT_RE = /\$-?[\d,]+\.\d{2}/;
 const TXN_PREFIX = /^\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{8,12}\b/;
@@ -55,24 +56,79 @@ export function mergeForexDescription(merchantPart, forexPart) {
 }
 
 export function statementPeriod(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === 'Statement Period' && i + 1 < lines.length) {
-      return lines[i + 1].trim();
+  const L = (lines || []).map((line) => String(line == null ? '' : line).replace(/\s+/g, ' ').trim());
+  const footerEnd = scotiaCardFooterCloseDate(L);
+  for (let i = 0; i < L.length; i++) {
+    const marker = /STATEMENT PERIOD/i.exec(L[i]);
+    if (!marker) continue;
+    const candidates = [L[i].slice(marker.index + marker[0].length), L[i + 1] || ''];
+    for (const candidate of candidates) {
+      const match = candidate.match(
+        /([A-Za-z]{3}\w*\s+\d{1,2}\s*[-\u2013]\s*[A-Za-z]{3}\w*\s+\d{1,2},?(?:\s*\d{4})?)/
+      );
+      if (!match) continue;
+      let period = match[1].trim();
+      if (!/\b\d{4}\b/.test(period)) {
+        const followingYear = /\b(\d{4})\s*$/.exec(L[i + 2] || '');
+        const year = footerEnd ? footerEnd.slice(0, 4) : followingYear && followingYear[1];
+        if (!year) continue;
+        period = `${period} ${year}`;
+      }
+      return period;
     }
   }
   return '';
+}
+
+function numericCardDate(value) {
+  const match = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(String(value || ''));
+  if (!match) return null;
+  const day = +match[1],
+    month = +match[2],
+    year = +match[3];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day)
+    return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+export function scotiaCardFooterCloseDate(lines) {
+  for (const line of lines || []) {
+    const dates = String(line == null ? '' : line).match(NUMERIC_DATE_G);
+    if (!dates || dates.length < 2) continue;
+    const close = numericCardDate(dates[0]);
+    const due = numericCardDate(dates[1]);
+    if (close && due) return close;
+  }
+  return null;
+}
+
+export function scotiaCardPeriod(lines) {
+  const periodText = statementPeriod(lines);
+  const label = parseCardPeriod(periodText);
+  const footerEnd = scotiaCardFooterCloseDate(lines);
+  const periodEnd = footerEnd || (label && label.end) || null;
+  return {
+    periodText,
+    periodStart: (label && label.start) || null,
+    periodEnd,
+    statementKey: periodEnd ? periodEnd.slice(0, 7) : '',
+    source: footerEnd ? 'footer' : label ? 'label' : '',
+  };
 }
 
 export function detectStatementFormat(lines) {
   const text = (Array.isArray(lines) ? lines.join('\n') : String(lines == null ? '' : lines))
     .toLowerCase()
     .replace(/\s+/g, ' ');
-  if (!text.trim()) return 'card'; // nothing to read: leave the existing path to report it
+  if (!text.trim()) return 'card';
+  if (isInvestmentStatement(lines)) return 'investment';
   const ledgerHeader = /transactions\s*\(?\s*withdrawals\s*(?:&|and)\s*deposits/.test(text);
   const hasWithdrawals = /\bwithdrawals?\b/.test(text);
   const hasDeposits = /\bdeposits?\b/.test(text);
   const hasAccountSummary = /\baccount summary\b/.test(text);
   if (ledgerHeader || (hasWithdrawals && hasDeposits && hasAccountSummary)) return 'bank';
+  if (detectBankStatementFormat(lines) === 'ncb') return 'bank';
   return 'card';
 }
 
@@ -196,7 +252,12 @@ export function parseStatementLines(lines, sourceFile) {
     out.warnings.push('No text could be read from this PDF.');
     return out;
   }
-  out.period = statementPeriod(lines);
+  const period = scotiaCardPeriod(lines);
+  out.period = period.periodText;
+  if (!period.periodEnd)
+    out.warnings.push(
+      `${sourceFile || 'This file'}'s statement date could not be read, so it will not be used as the “since your last statement” anchor.`
+    );
   const clean = lines.map((l) => l.replace(/\s+/g, ' ').trim());
 
   const isAnchor = new Array(clean.length).fill(false);
@@ -404,6 +465,18 @@ export function bankStatementPeriod(lines) {
   };
 }
 
+function isoOfYmd(y, m, d) {
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+export function bankStatementPeriodStart(range) {
+  return range ? isoOfYmd(range.startY, range.startM, range.startD) : null;
+}
+
+export function bankStatementPeriodEnd(range) {
+  return range ? isoOfYmd(range.endY, range.endM, range.endD) : null;
+}
+
 export function bankAccountNumber(lines) {
   for (const l of lines) {
     const m = /withdrawals\s*(?:&|and)\s*deposits\s*\)?\s*-\s*(\d{4,})/i.exec(l);
@@ -560,6 +633,7 @@ export function parseOneBankStatement(clean, sourceFile, seqStart) {
   const range = bankStatementPeriod(clean);
   out.periodRange = range;
   out.account = bankAccountNumber(clean);
+  if (!out.account) recordMissingRequiredField(out.warnings, sourceFile, 'account number');
   out.currency = bankStatementCurrency(clean); // 'JMD' (base) or 'USD'
   if (range)
     out.period = `${String(range.startD).padStart(2, '0')} ${BMONTH_ABBR[range.startM - 1].replace(/^./, (c) => c.toUpperCase())} ${range.startY} - ${String(range.endD).padStart(2, '0')} ${BMONTH_ABBR[range.endM - 1].replace(/^./, (c) => c.toUpperCase())} ${range.endY}`;
@@ -648,6 +722,7 @@ export function parseBankStatementLines(lines, sourceFile) {
     seq += one.transactions.length;
     out.statements.push(one);
     out.transactions.push(...one.transactions);
+    out.warnings.push(...one.warnings);
   }
   if (out.statements.length) {
     out.openingBalance = out.statements[0].openingBalance;
@@ -693,9 +768,7 @@ export function reconcileOne(parsed, printedSummary = null) {
     if (t.balanceAfter != null) {
       res.checkedBalances++;
       if (Math.abs(running - t.balanceAfter) > 0.01)
-        res.balanceBreaks.push(
-          `Balance break at ${t.rawDate}: printed ${t.balanceAfter.toFixed(2)}, computed ${running.toFixed(2)}`
-        );
+        res.balanceBreaks.push(`Balance did not reconcile at ${t.rawDate}.`);
     }
   }
   res.computedClosing = roundMoney(running);
@@ -787,25 +860,70 @@ export function bankStatementHash(st) {
   );
 }
 
+function identityFields(row) {
+  const record = row || {};
+  const description = String(record.description || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+  const amount = record.signedAmount == null ? record.amount : record.signedAmount;
+  const balance = record.balanceAfter == null ? '' : roundMoney(record.balanceAfter).toFixed(2);
+  return [
+    String(record.account || ''),
+    String(record.date || record.txn_date || ''),
+    String(record.posting_date || ''),
+    roundMoney(Number(amount) || 0).toFixed(2),
+    String(record.ref || record.ncbRefRaw || ''),
+    description,
+    balance,
+    String(record.sseq == null ? '' : record.sseq),
+    String(record.ncbDisc == null ? '' : record.ncbDisc),
+    String(record.statementKey || ''),
+  ].join('|');
+}
+
+export function sameTransactionIdentityFields(left, right) {
+  return identityFields(left) === identityFields(right);
+}
+
+function identityBase(id) {
+  return String(id || '').replace(/#\d+$/, '');
+}
+
+function matchingTransaction(rows, record) {
+  const base = identityBase(record.id);
+  return rows.findIndex(
+    (row) => identityBase(row.id) === base && sameTransactionIdentityFields(row, record)
+  );
+}
+
+function collisionSafeIdentity(rows, record) {
+  const base = identityBase(record.id);
+  const used = new Set(rows.map((row) => String(row.id)));
+  let suffix = 1;
+  while (used.has(`${base}#${suffix}`)) suffix++;
+  return `${base}#${suffix}`;
+}
+
 export function mergeBankTransactions(existing, incoming) {
-  const byId = new Map();
-  for (const r of existing)
-    byId.set(r.id || bankTransactionIdentity(r), {
-      ...r,
-      id: r.id || bankTransactionIdentity(r),
-    });
+  const records = existing.map((r) => ({ ...r, id: r.id || bankTransactionIdentity(r) }));
   let added = 0,
-    alreadyPresent = 0;
+    alreadyPresent = 0,
+    hashCollisions = 0;
   for (const raw of incoming) {
     const rec = { ...raw, id: raw.id || bankTransactionIdentity(raw) };
-    if (byId.has(rec.id)) {
+    if (matchingTransaction(records, rec) >= 0) {
       alreadyPresent++;
       continue;
     }
-    byId.set(rec.id, rec);
+    if (records.some((row) => identityBase(row.id) === identityBase(rec.id))) {
+      rec.id = collisionSafeIdentity(records, rec);
+      hashCollisions++;
+    }
+    records.push(rec);
     added++;
   }
-  return { records: [...byId.values()], added, alreadyPresent };
+  return { records, added, alreadyPresent, hashCollisions };
 }
 
 export function cardAccountsFromLines(lines) {
@@ -895,6 +1013,7 @@ export function parseCardStatementSummary(lines, sourceFile) {
     amountOwing: null,
     minimumPayment: null,
     eair: null,
+    warnings: [],
   };
   for (let i = 0; i < L.length; i++) {
     const ln = L[i];
@@ -937,8 +1056,6 @@ export function parseCardStatementSummary(lines, sourceFile) {
       if (vals.length >= 2) out.minimumPayment = cardMoney(vals[1]);
       const pb = nx.match(/([A-Za-z]+\s+\d{1,2},?\s*\d{0,4})\s*$/);
       if (pb) out.payBy = pb[1].trim();
-    } else if (!out.periodText && /STATEMENT PERIOD/.test(u)) {
-      out.periodText = (L[i + 1] || '').trim();
     } else if (out.eair == null && /ANNUAL\/EAIR/.test(u.replace(/\s+/g, ''))) {
       for (let j = i; j < Math.min(i + 4, L.length); j++) {
         const e = L[j].match(/([\d.]+)%\s*\/\s*([\d.]+)%/);
@@ -950,12 +1067,13 @@ export function parseCardStatementSummary(lines, sourceFile) {
     }
   }
 
-  const per = parseCardPeriod(out.periodText);
-  if (per) {
-    out.periodStart = per.start;
-    out.periodEnd = per.end;
-    out.statementKey = per.key;
-  }
+  const period = scotiaCardPeriod(L);
+  out.periodText = period.periodText;
+  out.periodStart = period.periodStart;
+  out.periodEnd = period.periodEnd;
+  out.statementKey = period.statementKey;
+  if (!out.account) recordMissingRequiredField(out.warnings, sourceFile, 'card number');
+  if (!out.statementKey) recordMissingRequiredField(out.warnings, sourceFile, 'statement period');
   return out;
 }
 
@@ -1193,8 +1311,7 @@ export function reconcileCardStatement(summary) {
   res.computedNew = roundMoney(s.previousBalance + s.purchases + s.payments);
   res.difference = roundMoney(res.computedNew - s.newBalance);
   res.ok = Math.abs(res.difference) <= 0.01;
-  if (!res.ok)
-    res.break = `previous + purchases + payments = ${res.computedNew.toFixed(2)}, printed new balance ${s.newBalance.toFixed(2)}`;
+  if (!res.ok) res.break = 'Statement totals did not reach the printed new balance.';
   return res;
 }
 
@@ -1281,21 +1398,6 @@ export function linkCardPayments(bankPayments, cardPayments, opts = {}) {
   return { links, unmatched, matched: links.length, total: banks.length };
 }
 
-export function assignCardStatementKeys(cardTxns, statements) {
-  const periods = (statements || [])
-    .filter((s) => s.periodStart && s.periodEnd)
-    .map((s) => ({
-      start: s.periodStart,
-      end: s.periodEnd,
-      key: s.statementKey,
-    }));
-  return (cardTxns || []).map((t) => {
-    const d = t.date || t.txn_date || '';
-    const hit = periods.find((p) => d >= p.start && d <= p.end);
-    return { ...t, statementKey: hit ? hit.key : d ? d.slice(0, 7) : '' };
-  });
-}
-
 export function transactionIdentity(t) {
   const normDesc = String(t.description || '')
     .replace(/\s+/g, ' ')
@@ -1306,49 +1408,49 @@ export function transactionIdentity(t) {
 }
 
 export function mergeTransactions(existing, incoming) {
-  const byId = new Map();
-  for (const r of existing)
-    byId.set(r.id || transactionIdentity(r), {
-      ...r,
-      id: r.id || transactionIdentity(r),
-    });
-  const result = { added: 0, alreadyPresent: 0, conflicts: 0 };
+  const records = existing.map((r) => ({ ...r, id: r.id || transactionIdentity(r) }));
+  const result = { added: 0, alreadyPresent: 0, conflicts: 0, hashCollisions: 0 };
   for (const raw of incoming) {
     const rec = { ...raw, id: raw.id || transactionIdentity(raw) };
-    const cur = byId.get(rec.id);
-    if (!cur) {
-      byId.set(rec.id, rec);
+    const currentIndex = matchingTransaction(records, rec);
+    if (currentIndex < 0) {
+      if (records.some((row) => identityBase(row.id) === identityBase(rec.id))) {
+        rec.id = collisionSafeIdentity(records, rec);
+        result.hashCollisions++;
+      }
+      records.push(rec);
       result.added++;
       continue;
     }
+    const cur = records[currentIndex];
     result.alreadyPresent++;
     const curOv = cur.categoryOverride || null;
     const recOv = rec.categoryOverride || null;
     if (curOv === recOv) continue; // equivalent
     if (curOv && !recOv) continue; // keep local explicit override
     if (!curOv && recOv) {
-      byId.set(rec.id, {
+      records[currentIndex] = {
         ...cur,
         categoryOverride: recOv,
         lastChanged: rec.lastChanged,
-      });
+      };
       continue;
     }
     // Both overridden differently: newer lastChanged wins; else mark conflict.
     const ct = Date.parse(cur.lastChanged || 0) || 0;
     const rt = Date.parse(rec.lastChanged || 0) || 0;
     if (rt > ct)
-      byId.set(rec.id, {
+      records[currentIndex] = {
         ...cur,
         categoryOverride: recOv,
         lastChanged: rec.lastChanged,
-      });
+      };
     else if (rt === ct) {
-      byId.set(rec.id, { ...cur, conflict: { a: curOv, b: recOv } });
+      records[currentIndex] = { ...cur, conflict: { a: curOv, b: recOv } };
       result.conflicts++;
     }
   }
-  return { records: [...byId.values()], ...result };
+  return { records, ...result };
 }
 
 /* ===========================================================================
@@ -1438,7 +1540,7 @@ export function makeNcbDateResolver(statementYear, statementMonth, statementDay)
   };
 }
 
-export function parseNcbHeader(lines) {
+export function parseNcbHeader(lines, sourceFile) {
   const clean = (lines || []).map((l) => String(l).replace(/\s+/g, ' ').trim());
   const out = {
     statementDateRaw: '',
@@ -1451,6 +1553,7 @@ export function parseNcbHeader(lines) {
     dueDate: '',
     creditLimit: null,
     cardLast4: '',
+    warnings: [],
   };
   const iso8 = (d) => `${d.slice(4, 8)}-${d.slice(2, 4)}-${d.slice(0, 2)}`;
   for (const l of clean) {
@@ -1471,6 +1574,8 @@ export function parseNcbHeader(lines) {
       out.creditLimit = ncbAmount(s[2]);
     }
   }
+  if (!out.cardLast4) recordMissingRequiredField(out.warnings, sourceFile, 'card number');
+  if (!out.statementKey) recordMissingRequiredField(out.warnings, sourceFile, 'statement period');
   return out;
 }
 
@@ -1501,7 +1606,7 @@ export function splitNcbStatements(lines) {
 
 export function parseOneNcbStatement(segLines, sourceFile) {
   const clean = (segLines || []).map((l) => String(l).replace(/\s+/g, ' ').trim());
-  const header = parseNcbHeader(clean);
+  const header = parseNcbHeader(clean, sourceFile);
   const resolve = makeNcbDateResolver(
     header.statementYear == null ? new Date().getFullYear() : header.statementYear,
     header.statementMonth == null ? 1 : header.statementMonth,
@@ -1707,9 +1812,13 @@ export function effectiveAnnualRateFromMonthly(monthlyPct) {
 
 export function parseNcbStatementSummary(lines, sourceFile) {
   const clean = (lines || []).map((l) => String(l).replace(/\s+/g, ' ').trim());
-  const header = parseNcbHeader(clean);
+  const header = parseNcbHeader(clean, sourceFile);
   const box = parseNcbSummaryBox(clean);
   const gctTotal = parseNcbGctTotal(clean);
+  const boxComputedNew =
+    box.boxComputedNew == null
+      ? null
+      : roundMoney(box.boxComputedNew + (gctTotal == null ? 0 : gctTotal));
   const daysInCycle = parseNcbDaysInCycle(clean);
   const newBalance = header.newBalance != null ? header.newBalance : box.newBalance;
   const rates = parseNcbPurchaseRates(clean);
@@ -1732,7 +1841,7 @@ export function parseNcbStatementSummary(lines, sourceFile) {
     interest: box.interest,
     otherCharges: box.otherCharges,
     boxNewBalance: box.newBalance,
-    boxComputedNew: box.boxComputedNew,
+    boxComputedNew,
     boxPresent: box.present,
     gctTotal,
     daysInCycle,
@@ -1740,6 +1849,7 @@ export function parseNcbStatementSummary(lines, sourceFile) {
     purchaseMonthlyPct: rates ? rates.monthlyPurchasePct : null,
     eair,
     eairEstimated: eair != null,
+    warnings: header.warnings,
   };
 }
 
@@ -1770,9 +1880,7 @@ export function reconcileNcbStatement(record) {
     res.boxDifference = roundMoney(r.newBalance - r.boxComputedNew);
     res.boxOk = Math.abs(res.boxDifference) <= 0.01;
   }
-  if (!res.ok) {
-    res.break = `new - previous = ${res.targetDelta.toFixed(2)}, transaction sum ${res.computedDelta.toFixed(2)}`;
-  }
+  if (!res.ok) res.break = 'Transaction total did not match the printed balance movement.';
   return res;
 }
 
@@ -1804,8 +1912,14 @@ export function ncbTransactionIdentity(t) {
       : r.posIndex == null
         ? ''
         : String(r.posIndex);
+  // The card's own account (last-4) is part of identity: without it, two
+  // different NCB cards' statements for the same month can hash identically
+  // for a boilerplate row at the same position (annual fee, GCT, interest)
+  // and the second card's real transaction is dropped as "already present".
   return fnv1a(
-    [r.statementKey || '', r.txn_date || '', r.posting_date || '', normDesc, disc].join('|')
+    [r.account || '', r.statementKey || '', r.txn_date || '', r.posting_date || '', normDesc, disc].join(
+      '|'
+    )
   );
 }
 
@@ -1820,7 +1934,7 @@ export function buildNcbStatementRecord(segLines, sourceFile) {
   const parsed = parseOneNcbStatement(segLines, sourceFile);
   const summary = parseNcbStatementSummary(segLines, sourceFile);
   const transactions = parsed.transactions.map((t) => {
-    const withKey = { ...t, statementKey: summary.statementKey };
+    const withKey = { ...t, account: summary.cardLast4, statementKey: summary.statementKey };
     return { ...withKey, id: ncbTransactionIdentity(withKey) };
   });
   const signedBillingSum = roundMoney(transactions.reduce((a, t) => a + t.amount, 0));
@@ -1874,4 +1988,444 @@ export function buildNcbStatementRecord(segLines, sourceFile) {
     daysInCycle: summary.daysInCycle,
   };
   return { summary, transactions, statementRecord, reconciliation: recon };
+}
+
+/* ===========================================================================
+ *  NCB BANK-ACCOUNT STATEMENT SUPPORT
+ *  ---------------------------------------------------------------------------
+ *  A fourth document class beside the Scotiabank ledger, the two card readers
+ *  and the investment reader. It produces the SAME bank transaction record the
+ *  Scotiabank ledger produces, so every screen, merge, total and identity
+ *  downstream cannot tell the two banks apart, and it is reconciled through the
+ *  SAME reconcileOne / reconcileBankStatement model.
+ *
+ *  ONE real statement exists and no more will ever be available, so the split
+ *  below is deliberate: the shapes that statement proves are parsed, and every
+ *  shape it cannot prove raises a visible warning instead of a confident guess.
+ *  The proven path is the August, positive-balance, single-account, JMD,
+ *  two-page statement. Year roll-over, a broken balance chain, a footer that
+ *  disagrees with its own rows and a multi-statement file are all handled by
+ *  SAYING SO, never by inference.
+ *  ======================================================================== */
+
+const NCB_BANK_PAGE_MARK = /^[A-Z]{1,4}\s+(\d{2})-(\d{2})\/(\d{1,3})$/;
+const NCB_BANK_ROW =
+  /^(\d{1,2})\/([A-Za-z]{3})\s+(\S.*?)\s+(-[\d,]+\.\d{2}|[\d,]+\.\d{2})\s+([\d,]+\.\d{2})$/;
+const NCB_BANK_CARRY = /^(?:(\d{1,2})\/([A-Za-z]{3})|\/)\s+([\d,]+\.\d{2})$/;
+const NCB_BANK_FOOTER =
+  /^(\d{1,4})\s+([\d,]+(?:\.\d{2})?)\s+(\d{1,4})\s+([\d,]+(?:\.\d{2})?)(?:\s+[\d,]+(?:\.\d{2})?)*$/;
+const NCB_BANK_HEADER_DATE = /\b(\d{2})-(\d{2})-(\d{4})\b/g;
+const NCB_BANK_CCY = /\b(JMD|USD)\s*$/;
+const NCB_BANK_ACCOUNT_TAIL = /(\d[\d ]{5,})$/;
+const NCB_POS_FEE = /^POS\s+Tx\s+Fee$/i;
+const NCB_POS_FEE_GCT = /^GCT\s+on\s+POS\s+Tx\s+Fee$/i;
+const NCB_POSREV = /^POSREV$/i;
+const NCB_BANK_TYPES = [
+  { token: 'GCT on POS Tx Fee', re: /^GCT\s+on\s+POS\s+Tx\s+Fee\b/i },
+  { token: 'POS Tx Fee', re: /^POS\s+Tx\s+Fee\b/i },
+  { token: 'POSREV', re: /^POSREV\b/i },
+  { token: 'ELink TRF', re: /^ELink\s+TRF\b/i },
+  { token: 'BPYMT', re: /^BPYMT\b/i },
+  { token: 'ACH', re: /^ACH\b/i },
+];
+
+export function ncbBankMoney(token) {
+  const t = String(token == null ? '' : token).trim();
+  if (!/^-?[\d,]+(?:\.\d{2})?$/.test(t)) return null;
+  const n = parseFloat(t.replace(/,/g, ''));
+  return Number.isNaN(n) ? null : roundMoney(n);
+}
+
+export function detectBankStatementFormat(lines) {
+  const arr = Array.isArray(lines) ? lines : [String(lines == null ? '' : lines)];
+  const clean = arr.map((l) => String(l == null ? '' : l).replace(/\s+/g, ' ').trim());
+  const text = clean.join('\n').toLowerCase();
+  if (!text.trim()) return 'scotia';
+  let signals = 0;
+  if (/account status\s*:/.test(text)) signals++;
+  if (/end of statement/.test(text)) signals++;
+  if (clean.some((l) => NCB_BANK_PAGE_MARK.test(l))) signals++;
+  if (clean.filter((l) => NCB_BANK_ROW.test(l)).length >= 2) signals++;
+  return signals >= 2 ? 'ncb' : 'scotia';
+}
+
+export function ncbBankPages(lines) {
+  const clean = (lines || []).map((l) => String(l == null ? '' : l).replace(/\s+/g, ' ').trim());
+  const starts = [];
+  for (let i = 0; i < clean.length; i++) {
+    const m = NCB_BANK_PAGE_MARK.exec(clean[i]);
+    if (m) starts.push({ i, markDay: m[1], markMonth: m[2], index: +m[3] });
+  }
+  const pages = [];
+  for (let p = 0; p < starts.length; p++) {
+    const to = p === starts.length - 1 ? clean.length : starts[p + 1].i;
+    pages.push({
+      index: starts[p].index,
+      markDay: starts[p].markDay,
+      markMonth: starts[p].markMonth,
+      lines: clean.slice(starts[p].i, to),
+    });
+  }
+  return pages;
+}
+
+export function parseNcbBankPageHeader(page) {
+  const lines = (page && page.lines) || [];
+  const out = { account: '', statementDate: '', dateOpened: '', currency: '' };
+  let body = lines.length;
+  for (let i = 1; i < lines.length; i++) {
+    if (NCB_BANK_ROW.test(lines[i]) || NCB_BANK_CARRY.test(lines[i])) {
+      body = i;
+      break;
+    }
+  }
+  const head = lines.slice(1, body);
+  const dates = [];
+  for (const l of head) {
+    NCB_BANK_HEADER_DATE.lastIndex = 0;
+    let m;
+    while ((m = NCB_BANK_HEADER_DATE.exec(l))) dates.push({ day: m[1], month: m[2], year: m[3] });
+  }
+  for (const d of dates) {
+    if (page && d.day === page.markDay && d.month === page.markMonth && !out.statementDate)
+      out.statementDate = `${d.year}-${d.month}-${d.day}`;
+  }
+  for (const d of dates) {
+    const iso = `${d.year}-${d.month}-${d.day}`;
+    if (iso !== out.statementDate && !out.dateOpened) out.dateOpened = iso;
+  }
+  for (const l of head) {
+    const c = NCB_BANK_CCY.exec(l);
+    if (c && !out.currency) out.currency = c[1].toUpperCase();
+    const a = NCB_BANK_ACCOUNT_TAIL.exec(l);
+    if (a && !out.account) {
+      const digits = a[1].replace(/\D/g, '');
+      if (digits.length >= 6) out.account = digits;
+    }
+  }
+  return out;
+}
+
+export function parseNcbBankFooter(page) {
+  const lines = (page && page.lines) || [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i];
+    if (NCB_BANK_ROW.test(l) || NCB_BANK_CARRY.test(l)) return null;
+    const m = NCB_BANK_FOOTER.exec(l);
+    if (!m) continue;
+    const debitTotal = ncbBankMoney(m[2]);
+    const creditTotal = ncbBankMoney(m[4]);
+    if (debitTotal == null || creditTotal == null) continue;
+    return { nDebits: +m[1], debitTotal, nCredits: +m[3], creditTotal };
+  }
+  return null;
+}
+
+export function ncbBankTypeOf(particulars) {
+  const p = String(particulars == null ? '' : particulars).trim();
+  for (const t of NCB_BANK_TYPES) if (t.re.test(p)) return t.token;
+  return '';
+}
+
+export function resolveNcbBankYears(rows, statementDate) {
+  const sY = /^\d{4}-\d{2}-\d{2}$/.test(String(statementDate || ''))
+    ? +String(statementDate).slice(0, 4)
+    : new Date().getFullYear();
+  let jumps = 0;
+  for (let i = 1; i < rows.length; i++) if (rows[i].month < rows[i - 1].month) jumps++;
+  let year = sY - jumps;
+  const out = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0 && rows[i].month < rows[i - 1].month) year++;
+    out.push(year);
+  }
+  return { years: out, rollovers: jumps };
+}
+
+export function attachNcbPosFees(rows) {
+  const out = rows.map((r) => ({ ...r }));
+  let parent = null;
+  for (const r of out) {
+    const p = r.type;
+    if (NCB_POS_FEE.test(p) || NCB_POS_FEE_GCT.test(p)) {
+      if (parent && parent.date === r.date) {
+        r.attachedTo = parent.attachedTo || parent.description || parent.type;
+        r.feeFor = parent.sseq;
+      }
+      continue;
+    }
+    if (NCB_POSREV.test(p)) continue;
+    if (r.direction === 'out') parent = r;
+  }
+  return out;
+}
+
+export function matchNcbPosReversals(rows) {
+  const out = rows.map((r) => ({ ...r }));
+  const open = [];
+  for (const r of out) {
+    if (!NCB_POSREV.test(r.type)) {
+      if (r.direction === 'out') open.push(r);
+      continue;
+    }
+    let hit = null;
+    for (let k = open.length - 1; k >= 0; k--) {
+      if (open[k].reversed) continue;
+      if (roundMoney(open[k].amount) === roundMoney(r.amount)) {
+        hit = open[k];
+        break;
+      }
+    }
+    if (hit) {
+      hit.reversed = true;
+      r.reversalMatch = 'exact';
+      r.reverses = hit.sseq;
+      r.attachedTo = hit.attachedTo || hit.description || hit.type;
+    } else {
+      r.reversalMatch = 'unmatched';
+    }
+  }
+  return out;
+}
+
+export function parseOneNcbBankStatement(pages, sourceFile, seqStart) {
+  const out = {
+    source_file: sourceFile || '',
+    account: '',
+    period: '',
+    periodRange: null,
+    openingBalance: null,
+    closingBalance: null,
+    currency: 'JMD',
+    statementDate: '',
+    dateOpened: '',
+    transactions: [],
+    pages: [],
+    warnings: [],
+  };
+  const headers = pages.map((p) => parseNcbBankPageHeader(p));
+  out.statementDate = (headers.find((h) => h.statementDate) || {}).statementDate || '';
+  out.dateOpened = (headers.find((h) => h.dateOpened) || {}).dateOpened || '';
+  out.account = (headers.find((h) => h.account) || {}).account || '';
+  out.currency = (headers.find((h) => h.currency) || {}).currency || 'JMD';
+  const headerAccounts = [...new Set(headers.map((h) => h.account).filter(Boolean))];
+
+  const raw = [];
+  for (let p = 0; p < pages.length; p++) {
+    const page = pages[p];
+    const info = {
+      index: page.index,
+      opening: null,
+      openingDated: '',
+      closing: null,
+      footer: parseNcbBankFooter(page),
+      nDebits: 0,
+      nCredits: 0,
+      debitTotal: 0,
+      creditTotal: 0,
+      firstRow: raw.length,
+    };
+    for (const l of page.lines) {
+      const carry = NCB_BANK_CARRY.exec(l);
+      if (carry && info.opening == null && !raw.slice(info.firstRow).length) {
+        info.opening = ncbBankMoney(carry[3]);
+        info.openingDated = carry[1] ? `${carry[1]}/${carry[2]}` : '';
+        continue;
+      }
+      const m = NCB_BANK_ROW.exec(l);
+      if (!m) continue;
+      const amount = ncbBankMoney(m[4]);
+      const balanceAfter = ncbBankMoney(m[5]);
+      if (amount == null || balanceAfter == null) continue;
+      raw.push({
+        day: +m[1],
+        mon: m[2],
+        month: BMONTHS[m[2].toLowerCase()] || 0,
+        particulars: m[3].replace(/\s+/g, ' ').trim(),
+        amount: roundMoney(Math.abs(amount)),
+        direction: amount < 0 ? 'out' : 'in',
+        balanceAfter,
+        page: p,
+      });
+    }
+    info.lastRow = raw.length;
+    out.pages.push(info);
+  }
+
+  const { years, rollovers } = resolveNcbBankYears(raw, out.statementDate);
+  out.rollovers = rollovers;
+  let seq = seqStart;
+  let sseq = 0;
+  const built = raw.map((r, i) => {
+    const date = `${years[i]}-${String(r.month).padStart(2, '0')}-${String(r.day).padStart(2, '0')}`;
+    const type = ncbBankTypeOf(r.particulars);
+    return {
+      date,
+      rawDate: `${r.day}${r.mon.toUpperCase()}`,
+      seq: seq++,
+      sseq: sseq++,
+      type,
+      description: cleanBankCounterparty(r.particulars),
+      direction: r.direction,
+      amount: r.amount,
+      signedAmount: roundMoney(r.direction === 'in' ? r.amount : -r.amount),
+      balanceAfter: r.balanceAfter,
+      account: out.account,
+      currency: out.currency,
+      source_file: sourceFile || '',
+    };
+  });
+  out.transactions = matchNcbPosReversals(attachNcbPosFees(built));
+
+  for (const info of out.pages) {
+    const rows = out.transactions.slice(info.firstRow, info.lastRow);
+    for (const t of rows) {
+      if (t.direction === 'out') {
+        info.nDebits++;
+        info.debitTotal = roundMoney(info.debitTotal + t.amount);
+      } else {
+        info.nCredits++;
+        info.creditTotal = roundMoney(info.creditTotal + t.amount);
+      }
+    }
+    info.closing = rows.length ? rows[rows.length - 1].balanceAfter : info.opening;
+  }
+  out.openingBalance = out.pages.length ? out.pages[0].opening : null;
+  out.closingBalance = out.transactions.length
+    ? out.transactions[out.transactions.length - 1].balanceAfter
+    : out.openingBalance;
+
+  const first = out.transactions[0];
+  const last = out.transactions[out.transactions.length - 1];
+  if (first && out.statementDate) {
+    const end = out.statementDate;
+    out.periodRange = { start: first.date, end };
+    out.period = `${ncbBankDisplayDate(first.date)} - ${ncbBankDisplayDate(end)}`;
+  }
+  out.headerAccounts = headerAccounts;
+  if (last && out.statementDate && last.date > out.statementDate)
+    out.warnings.push('late-row');
+  if (rollovers > 0) out.warnings.push('year-rollover');
+  return out;
+}
+
+function ncbBankDisplayDate(iso) {
+  const p = String(iso || '').split('-');
+  if (p.length !== 3) return '';
+  const mon = BMONTH_ABBR[+p[1] - 1];
+  if (!mon) return '';
+  return `${p[2]} ${mon.replace(/^./, (c) => c.toUpperCase())} ${p[0]}`;
+}
+
+export function parseNcbBankStatementLines(lines, sourceFile) {
+  const out = {
+    source_file: sourceFile || '',
+    account: '',
+    period: '',
+    periodRange: null,
+    openingBalance: null,
+    closingBalance: null,
+    currency: 'JMD',
+    transactions: [],
+    statements: [],
+    warnings: [],
+  };
+  if (!lines || !lines.some((l) => l && String(l).trim())) {
+    out.warnings.push('No text could be read from this statement.');
+    return out;
+  }
+  const pages = ncbBankPages(lines);
+  if (!pages.length) {
+    out.warnings.push('No statement pages could be read.');
+    return out;
+  }
+  const groups = [];
+  for (const p of pages) {
+    const key = `${p.markDay}-${p.markMonth}`;
+    const g = groups.find((x) => x.key === key);
+    if (g) g.pages.push(p);
+    else groups.push({ key, pages: [p] });
+  }
+  if (groups.length > 1) out.warnings.push('multi-statement');
+  let seq = 0;
+  for (const g of groups) {
+    const one = parseOneNcbBankStatement(g.pages, sourceFile, seq);
+    seq += one.transactions.length;
+    out.statements.push(one);
+    out.transactions.push(...one.transactions);
+  }
+  if (out.statements.length) {
+    out.openingBalance = out.statements[0].openingBalance;
+    out.closingBalance = out.statements[out.statements.length - 1].closingBalance;
+    out.account = out.statements[0].account;
+    out.currency = out.statements[0].currency;
+    out.periodRange = out.statements[0].periodRange;
+    out.period =
+      out.statements.length === 1
+        ? out.statements[0].period
+        : `${out.statements[0].period} (+${out.statements.length - 1} more)`;
+  }
+  return out;
+}
+
+export function reconcileNcbBankStatement(parsed) {
+  const res = reconcileOne(parsed || {});
+  res.pageChecks = [];
+  res.footerOk = true;
+  res.carryOk = true;
+  const pages = (parsed && parsed.pages) || [];
+  for (let i = 0; i < pages.length; i++) {
+    const p = pages[i];
+    const check = {
+      index: p.index,
+      footerChecked: !!p.footer,
+      footerOk: null,
+      carryChecked: false,
+      carryOk: null,
+      movementChecked: false,
+      movementOk: null,
+    };
+    if (p.footer) {
+      check.footerOk =
+        p.footer.nDebits === p.nDebits &&
+        p.footer.nCredits === p.nCredits &&
+        Math.abs(p.footer.debitTotal - p.debitTotal) <= 0.01 &&
+        Math.abs(p.footer.creditTotal - p.creditTotal) <= 0.01;
+      if (!check.footerOk) {
+        res.footerOk = false;
+        res.balanceBreaks.push(`Page ${p.index} totals did not match its own rows.`);
+      }
+    } else {
+      res.footerOk = false;
+      res.balanceBreaks.push(`Page ${p.index} totals could not be read.`);
+    }
+    if (p.opening != null && p.closing != null) {
+      check.movementChecked = true;
+      check.movementOk =
+        Math.abs(roundMoney(p.opening - p.debitTotal + p.creditTotal) - p.closing) <= 0.01;
+      if (!check.movementOk) {
+        res.balanceBreaks.push(`Page ${p.index} did not add up to its own closing balance.`);
+      }
+    }
+    if (i > 0) {
+      const prev = pages[i - 1];
+      check.carryChecked = prev.closing != null && p.opening != null;
+      if (check.carryChecked) {
+        check.carryOk = Math.abs(prev.closing - p.opening) <= 0.01;
+        if (!check.carryOk) {
+          res.carryOk = false;
+          res.balanceBreaks.push(`Page ${p.index} did not continue from the page before it.`);
+        }
+      } else {
+        res.carryOk = false;
+        res.balanceBreaks.push(`Page ${p.index} did not state the balance it carried forward.`);
+      }
+    }
+    res.pageChecks.push(check);
+  }
+  res.unmatchedReversals = ((parsed && parsed.transactions) || []).filter(
+    (t) => t.reversalMatch === 'unmatched'
+  ).length;
+  res.ok = res.balanceBreaks.length === 0 && (parsed.closingBalance == null || res.closingOk);
+  return res;
 }

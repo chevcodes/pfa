@@ -1,3 +1,5 @@
+import { chartInfo, collapsibleCard, placeFoldAll } from './decision-header.js';
+import { projectionReadiness } from '../analysis/coverage-map.js';
 /*
  * ahead-render.js  -  the "Ahead" destination: Coming Up (Round 2) and Where
  * you're headed - goal-setting, the scenario tool, the monthly follow-up
@@ -27,11 +29,9 @@
  */
 import {
   projectCashFlow,
-  nextStatementNudge,
+  staleStatementNudges,
   typicalMonthlyOutflow,
   ymToday,
-  monthName,
-  runwayDays,
 } from '../analysis/reporting-periods.js';
 import {
   GOAL_TYPES,
@@ -42,8 +42,17 @@ import {
   analyseIncomePattern,
   analyseBankActivity,
 } from '../analysis/bank-analysis.js';
-import { formatDisplayDate, requireCtx, addDaysIso } from '../core/shared-helpers.js';
+import { accountName, formatDisplayDate, requireCtx, addDaysIso,
+  capitaliseFirst, markProportional, roundedDurationPhrase, selectOnFocus,
+} from '../core/shared-helpers.js';
 import { pairCards } from './chart-helpers.js';
+import {
+  DEFAULT_CUSHION_MONTHS,
+  EMERGENCY_FUND_LABEL,
+  savedFigureNote,
+  monthsLabel,
+} from '../analysis/cushion.js';
+import { makeMoneyCompact, makeProseMoney } from '../core/money-format.js';
 // Goal-system migration, now complete: the PROVEN goals engine
 // (goalProgress/buildGoalModel/resolveSafetyBoundary/safeContribution) is
 // the SOLE engine behind every goal type - cushion, spend-ceiling and (as
@@ -57,6 +66,7 @@ import {
   resolveSafetyBoundary,
   safeContribution,
   buildGoalModel,
+  goalOffTrack,
 } from '../analysis/goals.js';
 import { ensureMigrated } from '../analysis/goal-migrate.js';
 
@@ -95,6 +105,7 @@ export function createAheadRenderer(ctx) {
       'money0',
       'moneyShort',
       'monthLabel',
+      'monthShort',
       'bankMonthsList',
       'pickStatements',
       'trackUsage',
@@ -108,7 +119,6 @@ export function createAheadRenderer(ctx) {
       'setGoal',
       'clearGoal',
       'restoreGoal',
-      'renderForecastChart',
       'Store',
       'provenModels',
       'buildNewEngineProgressCtx',
@@ -119,6 +129,10 @@ export function createAheadRenderer(ctx) {
       'iconRepeat',
       'iconChart',
       'iconFlag',
+      'renderPlanHero',
+      'renderPlanLever',
+      'planModel',
+      'balanceUpdates',
     ],
     'createAheadRenderer'
   );
@@ -143,7 +157,6 @@ export function createAheadRenderer(ctx) {
     setGoal,
     clearGoal,
     restoreGoal,
-    renderForecastChart,
     Store,
     provenModels,
     buildNewEngineProgressCtx,
@@ -153,7 +166,15 @@ export function createAheadRenderer(ctx) {
     iconRepeat,
     iconChart,
     iconFlag,
+    monthLabel,
+    monthShort,
+    renderPlanHero,
+    renderPlanLever,
+    planModel,
+    balanceUpdates,
   } = ctx;
+  // Summary lines and annotations read short; headline figures stay exact.
+  const prose = makeProseMoney((ctx.state && ctx.state.cfg) || {});
 
   // Where a commitment or the income row should send a person when tapped.
   // A bank-side commitment (or the income row itself, which always carries a
@@ -194,90 +215,37 @@ export function createAheadRenderer(ctx) {
     return null;
   }
 
-  function eventRow(ev, dateIso) {
-    const isIncome = ev.type === 'income';
-    const onclick = rowDrill(ev);
-    const kids = [
-      el(
-        'span',
-        { class: 'commit-name' },
-        el('span', { class: 'commit-name-main' }, ev.label),
-        el(
-          'span',
-          { class: 'commit-name-sub muted small' },
-          `Expected around ${formatDisplayDate(dateIso)}`
-        )
-      ),
-      el(
-        'span',
-        { class: 'commit-amt num ' + (isIncome ? 'credit' : 'strong') },
-        (isIncome ? '+' : '-') + bankMoney(Math.abs(ev.amount))
-      ),
-    ];
-    return onclick
-      ? el('button', { class: 'commit-row', onclick }, ...kids)
-      : el('div', { class: 'commit-row' }, ...kids);
-  }
-
-  /* ===========================================================================
-   * D (forecast accuracy loop): a small "how has the forecast been doing"
-   * panel, reading provenModels.accuracyFor(90) - the same proven scorer that
-   * compares stored snapshots against actual balances via the SAME
-   * liquidBalance primitive the forecast itself is built from.
-   *
-   * TEMPORAL CONTRACT - the ONE sanctioned exception: this card is BACKWARD
-   * content (it scores PAST forecasts against what actually happened), yet it
-   * lives in Forecast (forward), because its sole meaning is "how much to trust
-   * the projection beside it" - backward data in service of a forward decision.
-   * It is the only card that resists the backward->Activity rule, and that
-   * rarity is what confirms the rule holds everywhere else.
-   *
-   * Placed directly beside the forecast chart it grades; hidden entirely when the
-   * forecast itself isn't showing (grading a forecast a person can't see
-   * would be confusing, not useful). Number -> tag -> dropdown, matching
-   * every other proven-model card in this app.
-   * ======================================================================== */
-  // (renderAccuracyCard removed - Part 5. Forecast confidence is now a quiet
-  // tag inside the forecast chart's own header, built by renderForecastChart
-  // from provenModels.accuracyFor, shown only when genuinely scored. There is
-  // no longer a standalone accuracy card, and nothing else calls this.)
   // Round 2 (Ahead foundation): the readiness gate. Bank history alone (not
   // card history) powers the forecast, since "cash position" and "income"
   // are bank-ledger concepts everywhere else in this app too. Below the
   // configured minimum, or with no readable closing balance yet, this
   // explains plainly what is missing rather than guessing.
-  function renderNotReady(monthsSoFar, minMonths) {
+  function renderNotReady(readiness) {
+    const { monthsSoFar, minMonths, reason, gapMonths } = readiness;
     const sec = el('section', { class: 'card empty' });
     const lines = el('div', { class: 'empty-lines' });
-    // The cash forecast is built on a bank-derived cash position - no amount
-    // of card history can ever satisfy this specific readiness check, so a
-    // card-only person seeing "not enough history yet" would reasonably read
-    // that as "keep importing card statements", which is not true. Stated
-    // plainly instead when there is genuinely no bank history at all, rather
-    // than the generic month-count message meant for someone who DOES have
-    // bank statements building toward the threshold.
-    if (monthsSoFar === 0) {
+    if (reason === 'gap') {
       lines.append(
-        el(
-          'p',
-          { class: 'muted' },
-          'This needs a bank statement - the cash forecast projects your bank balance forward, which a card statement alone cannot provide.'
+        chartInfo(
+          el,
+          'A month is missing',
+          `A projection assumes one month follows the next. ${gapMonths.map((m) => monthShort(m)).join(', ')} has no bank statement, so the run is broken.`
         )
+      );
+    } else if (monthsSoFar === 0) {
+      lines.append(
+        chartInfo(el, 'Bank statement needed', 'Cash forecasts need a bank balance. Add a bank statement to begin.')
       );
     } else {
       lines.append(
-        el(
-          'p',
-          { class: 'muted' },
-          `${monthsSoFar} month${monthsSoFar === 1 ? '' : 's'} of bank history so far. A forecast appears once there are at least ${minMonths}.`
-        )
+        el('progress', { max: minMonths, value: monthsSoFar, 'aria-label': `${monthsSoFar} of ${minMonths} bank months` })
       );
     }
     sec.append(
       el('div', { class: 'empty-icon', html: iconCal() }),
-      el('h2', {}, 'Not enough history yet'),
+      el('h2', {}, reason === 'gap' ? 'A statement is missing' : 'Not enough history yet'),
       lines,
-      el('button', { class: 'btn primary', onclick: pickStatements }, 'Add statement')
+      el('button', { class: 'btn primary', onclick: pickStatements }, 'Add')
     );
     return sec;
   }
@@ -286,34 +254,60 @@ export function createAheadRenderer(ctx) {
     const sec = el('section', { class: 'card empty' });
     const lines = el('div', { class: 'empty-lines' });
     lines.append(
-      el(
-        'p',
-        { class: 'muted' },
-        'Your statements do not carry a readable closing balance yet, so there is nothing to project forward.'
-      )
+      chartInfo(el, 'Closing balance needed', 'Add a bank statement with a readable closing balance.')
     );
     sec.append(
       el('div', { class: 'empty-icon', html: iconCal() }),
       el('h2', {}, 'Nothing to project yet'),
       lines,
-      el('button', { class: 'btn primary', onclick: pickStatements }, 'Add statement')
+      el('button', { class: 'btn primary', onclick: pickStatements }, 'Add')
     );
     return sec;
   }
 
-  function renderUpcoming(proj) {
+  function renderUpcoming(proj = null) {
     const rows = [];
-    for (const d of proj.days) for (const ev of d.events) rows.push({ ...ev, date: d.date });
-    if (!rows.length) return null;
-    const sec = el('section', { class: 'card' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconRepeat()), 'Expected payments')
-      )
-    );
-
+    for (const d of (proj && proj.days) || []) for (const ev of d.events) rows.push({ ...ev, date: d.date });
+    const commitmentIncome = provenModels.commitmentIncome();
+    const beforeIncome = (commitmentIncome && commitmentIncome.commitments) || [];
+    if (!rows.length && !beforeIncome.length) return null;
+    const sec = el('div', {});
+    if (beforeIncome.length) {
+      const total = beforeIncome.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const incomeDate = commitmentIncome && commitmentIncome.income && commitmentIncome.income.date;
+      sec.append(
+        el(
+          'p',
+          { class: 'muted small' },
+          `Before your next income${incomeDate ? ` on ${formatDisplayDate(incomeDate)}` : ''}: ${bankMoney(total)} across ${beforeIncome.length} payment${beforeIncome.length === 1 ? '' : 's'}.`
+        )
+      );
+      const list = el('div', { class: 'recurring-list' });
+      for (const item of beforeIncome) {
+        const source = item.basis === 'card' ? 'card' : item.basis === 'recurring' ? 'bank' : '';
+        const drill = rowDrill({
+          source,
+          key: item.basis === 'recurring' ? item.key : '',
+          label: item.label || item.key || 'Payment',
+        });
+        const content = [
+          el('span', { class: 'recurring-name' }, item.label || item.key || 'Payment'),
+          el('span', { class: 'recurring-months muted small' }, formatDisplayDate(item.date)),
+          el('span', { class: 'recurring-amt num' }, bankMoney(item.amount)),
+        ];
+        list.append(drill ? el('button', { class: 'recurring-row up-pay', onclick: drill }, ...content) : el('div', { class: 'recurring-row' }, ...content));
+      }
+      sec.append(list);
+    }
+    if (!rows.length) {
+      return collapsibleCard(el, {
+        title: 'Expected payments',
+        icon: icon(iconRepeat()),
+        summary: `${beforeIncome.length} before next income · ${prose(beforeIncome.reduce((sum, item) => sum + (Number(item.amount) || 0), 0))}`,
+        body: sec,
+        name: 'plan-expected-payments',
+      });
+    }
     const todayIso = proj.todayIso;
     const horizon = Math.max(1, proj.horizonDays || 21);
     const dayOffset = (iso) => {
@@ -402,15 +396,22 @@ export function createAheadRenderer(ctx) {
           el(
             'span',
             { class: 'up-pay-amt num ' + (isIncome ? 'credit' : 'strong') },
-            (isIncome ? '+' : '-') + bankMoney(Math.abs(r.amount))
+            // Every figure on this timeline is an EXPECTATION derived from a
+            // typical amount, not a bill that has arrived, so cents here are
+            // false precision: "-$9,935.82" reads as a known charge when the
+            // honest claim is "about ten thousand". Short throughout, matching
+            // the card's own closed summary line.
+            (isIncome ? '+' : '-') + prose(Math.abs(r.amount))
           ),
-          el(
-            'span',
-            { class: 'up-pay-bar' },
-            el('span', {
-              class: 'up-pay-bar-fill',
-              style: `width:${width}%;background:${colour}`,
-            })
+          markProportional(
+            el(
+              'span',
+              { class: 'up-pay-bar' },
+              el('span', {
+                class: 'up-pay-bar-fill',
+                style: `width:${width}%;background:${colour}`,
+              })
+            )
           ),
         ];
         block.append(
@@ -432,7 +433,29 @@ export function createAheadRenderer(ctx) {
 
     timeline.append(listHost);
     sec.append(el('div', { class: 'pair-scroll pair-scroll-upcoming' }, timeline));
-    return sec;
+
+    const SOON_DAYS = 7;
+    const soon = rows.filter((r) => {
+      const off = dayOffset(r.date);
+      return off != null && off >= 0 && off <= SOON_DAYS && Number(r.amount) < 0;
+    });
+    const nextOut = rows.find((r) => Number(r.amount) < 0);
+    const nextOutSummary = nextOut
+      ? `${prose(Math.abs(Number(nextOut.amount)))} on ${formatDisplayDate(nextOut.date)}`
+      : '';
+    return collapsibleCard(el, {
+      title: 'Expected payments',
+      icon: icon(iconRepeat()),
+      summary: beforeIncome.length
+        ? `${beforeIncome.length} before next income · ${prose(beforeIncome.reduce((sum, item) => sum + (Number(item.amount) || 0), 0))}`
+        : soon.length
+        ? `${soon.length} due within ${SOON_DAYS} days${nextOutSummary ? ` · next ${nextOutSummary}` : ''}`
+        : nextOut
+          ? `Next: ${nextOutSummary}`
+          : `${rows.length} expected`,
+      body: sec,
+      name: 'plan-expected-payments',
+    });
   }
 
 
@@ -443,34 +466,122 @@ export function createAheadRenderer(ctx) {
   // forecast chart) and the statement nudge below, so no income card is needed
   // here. Same analyseIncomePattern data, split by temporal stance.
 
-  function renderStatementNudge(nudge) {
-    if (!nudge || nudge.status === 'ontrack') return null;
-    const overdue = nudge.status === 'overdue';
-    const text = overdue
-      ? `${nudge.daysSinceLast} days since your last statement (through ${formatDisplayDate(nudge.latestEndDate)}) - longer than your usual ${nudge.cadenceDays}-day cycle.`
-      : `Your last statement covered through ${formatDisplayDate(nudge.latestEndDate)}. A new one is usually available by now.`;
-    const sec = el('section', { class: 'card attention' });
-    sec.append(
+  /* What to call the account on the SURFACE. A person thinks "my USD savings",
+   * never "the file called USD Digital - Jul 2026.pdf", so the filename is not
+   * a candidate here at all - it lives behind the ⓘ with the rest of the
+   * provenance. The rename feature is the one source of friendly names
+   * (accountName, shared-helpers); with no name set this falls back to a plain
+   * descriptor built from what the app actually knows about the account - its
+   * currency, when that distinguishes it from the rest, and otherwise just what
+   * kind of thing it is. Never the account tail: that is provenance, it is
+   * suppressed in private view, and it cannot carry a sentence. */
+  function nudgeSubject(nudge) {
+    if (Number(nudge.accountCount) > 1)
+      return nudge.ledger === 'card' ? 'one of your credit cards' : 'one of your bank accounts';
+    const friendly =
+      nudge.ledger === 'card' ? null : accountName(state.accountNames, 'bank', nudge.account);
+    if (friendly) {
+      /* A name the person typed may already read as possessive or already carry
+         its own determiner - "my USD savings", "Chev's savings". Only a bare
+         name gets "your" put in front of it. */
+      const owned = /^(my|your|our|the|a|an)\s/i.test(friendly) || /(’|')s\b/i.test(friendly);
+      return owned ? friendly : `your ${friendly}`;
+    }
+    if (nudge.ledger === 'card') return 'your credit card';
+    const base = ((state.cfg && state.cfg.currency) || {}).code || 'JMD';
+    const ccy = bankAccountCurrency(nudge.account);
+    /* KNOWN LIMIT, deliberately left: two unnamed accounts in the base currency
+       read the same here ("your bank account"), and are told apart only by
+       their durations and by opening the (i). The fix is a name, which the
+       person already has one click away in Position - not an account tail on
+       the surface, which is provenance and disappears in private view. Do not
+       "fix" this by putting the digits back in the sentence. */
+    return ccy && ccy !== base ? `your ${ccy} account` : 'your bank account';
+  }
+
+  /* The account's currency, read from the transactions already loaded. Used
+     only to tell one unnamed account from another, so the first row that
+     answers is enough. */
+  function bankAccountCurrency(account) {
+    const want = String(account == null ? '' : account);
+    for (const row of state.bankRecords || []) {
+      if (String(row.account) === want && row.currency) return String(row.currency);
+    }
+    return null;
+  }
+
+  function nudgeProvenance(nudge) {
+    const kind = nudge.ledger === 'card' ? 'credit card statement' : 'account statement';
+    const digits = String(nudge.account || '').replace(/\D/g, '');
+    const tail = digits ? ` for account …${digits.slice(-4)}` : '';
+    const file = nudge.sourceFile ? `“${nudge.sourceFile}”` : 'the last file added';
+    return [
       el(
         'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconGap()), 'Add your next statement')
-      )
-    );
-    sec.append(
+        {},
+        `Latest ${kind}${tail}: ${file}, covering through ${formatDisplayDate(nudge.latestEndDate)} - ${nudge.daysSinceLast} days ago.`
+      ),
       el(
         'div',
-        { class: 'attn-item' },
-        el('span', { class: 'attn-dot ' + (overdue ? 'warn' : 'review') }),
-        el('div', { class: 'attn-body' }, el('div', {}, text)),
+        { class: 'nudge-working' },
+        `This account's own statements have arrived about every ${nudge.cadenceDays} days - measured from its history, not assumed - so the next one is ${nudge.status === 'overdue' ? 'past due' : nudge.status === 'due' ? 'due about now' : 'not due yet'}.`
+      ),
+    ];
+  }
+
+  function renderStatementNudges(nudges) {
+    const tracked = (nudges || []).filter(Boolean);
+    if (!tracked.length) return null;
+    const list = tracked.filter((n) => n.status !== 'ontrack');
+    const current = !list.length;
+    const single = list.length === 1 ? list[0] : null;
+    const kind = single
+      ? single.ledger === 'card'
+        ? 'credit card statement'
+        : 'account statement'
+      : 'statements';
+    const sec = el('div', {});
+    for (const nudge of current ? tracked : list) {
+      sec.append(
+        el(
+          'div',
+          { class: 'attn-item' },
+          el('span', { class: 'attn-dot ' + (nudge.status === 'overdue' ? 'warn' : current ? 'neutral' : 'review') }),
+          el(
+            'div',
+            { class: 'attn-body' },
+            current
+              ? `${capitaliseFirst(nudgeSubject(nudge))} is up to date.`
+              : `${capitaliseFirst(nudgeSubject(nudge))} hasn't been updated in ${roundedDurationPhrase(nudge.daysSinceLast)}.`,
+            ' ',
+            chartInfo(el, null, nudgeProvenance(nudge))
+          )
+        )
+      );
+    }
+    if (!current) {
+      sec.append(
         el(
           'div',
           { class: 'attn-actions' },
-          el('button', { class: 'btn sm', onclick: pickStatements }, 'Add statement')
+          el('button', { class: 'btn sm', onclick: pickStatements }, 'Add')
         )
-      )
-    );
-    return sec;
+      );
+    }
+    const overdue = list.filter((n) => n.status === 'overdue').length;
+    const card = collapsibleCard(el, {
+      title: current ? 'Your statements' : `Add your next ${kind}`,
+      icon: icon(iconGap()),
+      summary: current
+        ? 'All up to date'
+        : overdue
+          ? 'Past expected date'
+          : 'Expected about now',
+      body: sec,
+      name: 'plan-statement-nudge',
+    });
+    if (card) card.classList.add('attention', 'statement-nudge');
+    return card;
   }
 
   /* ===========================================================================
@@ -489,8 +600,8 @@ export function createAheadRenderer(ctx) {
     const goalMeta = {
       runway: {
         icon: iconGap(),
-        title: 'Cash cushion',
-        desc: 'Keep a buffer of a few days\u2019 spending.',
+        title: EMERGENCY_FUND_LABEL,
+        desc: 'Hold a few months\u2019 expenses as a safety net.',
       },
       'clear-card': {
         icon: iconChart(),
@@ -530,15 +641,24 @@ export function createAheadRenderer(ctx) {
     if (_goalDraftType) {
       const type = GOAL_TYPES.find((t) => t.id === _goalDraftType);
       let input;
-      if (type.unit === 'days')
+      if (type.unit === 'months') {
+        // Prefilled with the default rather than left blank: "how many months
+        // of expenses should I hold?" is not a question most people arrive with
+        // an answer to, and an empty box asks them to invent one. Five is the
+        // common rule's own suggestion, offered as a starting point they can
+        // change, not this app's opinion about how much they should hold.
         input = el('input', {
           type: 'number',
           class: 'name-field',
           id: 'goal-draft-input',
-          placeholder: 'Number of days',
-          'aria-label': 'Cushion days',
+          placeholder: 'Number of months',
+          'aria-label': 'Emergency fund months of expenses',
           min: '1',
+          max: '24',
+          value: String(DEFAULT_CUSHION_MONTHS),
         });
+        selectOnFocus(input);
+      }
       else if (type.unit === 'date') input = el('input', { type: 'date', class: 'name-field', id: 'goal-draft-input', 'aria-label': 'Target date' });
       else
         input = el('input', {
@@ -548,17 +668,26 @@ export function createAheadRenderer(ctx) {
           placeholder: 'Amount',
           'aria-label': 'Monthly spending limit',
           min: '1',
+          step: '0.01',
         });
       const confirm = () => {
-        const raw = input.value;
+        const raw = input.value.trim();
         if (!raw) {
           toast('Enter a value first.');
           return;
         }
         const params = {};
-        if (type.unit === 'days') params.targetDays = Math.max(1, Math.round(Number(raw)));
-        else if (type.unit === 'date') params.targetDate = raw;
-        else params.ceiling = Math.max(1, Math.round(Number(raw)));
+        if (type.unit === 'date') params.targetDate = raw;
+        else {
+          const value = Number(raw);
+          if (!Number.isFinite(value) || value <= 0) {
+            toast('Enter a value greater than zero.');
+            input.focus();
+            return;
+          }
+          if (type.unit === 'months') params.targetMonths = Math.min(24, Math.round(value));
+          else params.ceiling = Math.round(value * 100) / 100;
+        }
         trackUsage('ahead-set-goal');
         _goalDraftType = null;
         setGoal(type.id, params);
@@ -576,7 +705,7 @@ export function createAheadRenderer(ctx) {
         el(
           'div',
           { class: 'manage-actions goal-draft-step' },
-          el('label', { class: 'field-label' }, el('span', {}, type.unit === 'date' ? 'Target date' : type.unit === 'days' ? 'Cushion days' : 'Monthly limit'), input),
+          el('label', { class: 'field-label' }, el('span', {}, type.unit === 'date' ? 'Target date' : type.unit === 'months' ? 'Months of expenses' : 'Monthly limit'), input),
           el('button', { class: 'btn sm', onclick: confirm }, 'Set this goal'),
           el('button', { class: 'btn sm ghost', onclick: cancelDraft }, 'Cancel')
         )
@@ -611,24 +740,51 @@ export function createAheadRenderer(ctx) {
    * reload.
    * ======================================================================== */
   function renderGoalCard() {
-    const sec = el('section', { class: 'card' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconFlag()), 'Your goal')
-      )
-    );
+    const sec = el('div', {});
     if (!state.goal) {
+      // No goal yet: this is an invitation, not a status. It rests closed - a
+      // person who has not set a goal has not asked to be shown the picker
+      // every time they open the tab.
       sec.append(el('p', { class: 'muted small goal-intro' }, 'Choose one goal. You can change it whenever you need to.'));
       sec.append(renderGoalForm());
-      return sec;
+      return collapsibleCard(el, {
+        title: 'Your goal',
+        icon: icon(iconFlag()),
+        summary: 'None set yet',
+        body: sec,
+      });
     }
 
     const migrated = ensureMigrated(state.goal);
     renderGoalCardNewEngine(sec, migrated);
 
-    return sec;
+    const standing = goalCardStanding(migrated);
+    return collapsibleCard(el, {
+      title: 'Your goal',
+      icon: icon(iconFlag()),
+      summary: standing.summary,
+      body: sec,
+    });
+  }
+
+  /* One line describing where the goal stands, and whether that needs a
+   * decision now. Reads the same engine the card body renders from. */
+  function goalCardStanding(migrated) {
+    try {
+      const ctx = buildNewEngineProgressCtx(migrated, {
+        month: latestCompleteGoalMonth(),
+        enteredCash: provenModels.enteredCash(),
+      });
+      if (!ctx) return { offTrack: false, summary: 'Not enough data yet' };
+      const progress = goalProgress(migrated, ctx);
+      const model = buildGoalModel(migrated, progress, null, state.cfg);
+      return {
+        offTrack: goalOffTrack(progress, model),
+        summary: model.tag || describeGoal(migrated, bankMoney, formatDisplayDate) || '',
+      };
+    } catch {
+      return { offTrack: false, summary: '' };
+    }
   }
 
   // The new engine's reading, for every goal type. The plain
@@ -639,9 +795,13 @@ export function createAheadRenderer(ctx) {
   // matching the "number -> tag -> dropdown" content model this app is
   // built around, not a second card's worth of machinery up front.
   function renderGoalCardNewEngine(sec, migrated) {
+    // Figures INSIDE this card's sentences read compactly, matching the
+    // headline. Mixing "$1.09M" in the lead with "$1,090,386.30" two lines
+    // below reads as two different numbers at a glance.
+    const cardMoney = makeMoneyCompact(state.cfg);
     const cb = classifiedBank();
     const month = latestCompleteGoalMonth();
-    const progressCtx = buildNewEngineProgressCtx(migrated, { month });
+    const progressCtx = buildNewEngineProgressCtx(migrated, { month, enteredCash: provenModels.enteredCash() });
 
     if (!progressCtx) {
       // Not enough data yet to judge this goal against - the same honest
@@ -656,17 +816,95 @@ export function createAheadRenderer(ctx) {
       const dailyOutflow = progressCtx.typicalDailyOutflow;
       const asOf = progressCtx.asOf;
       const progress = goalProgress(migrated, progressCtx);
+      // Full precision, like every other figure in the app.
+      //
+      // This card briefly used the compact form ($158K / $1.09M). It was the
+      // ONLY surface doing so, which made it read as a different product from
+      // the tab it sits on - every other figure on every other tab is exact.
+      // Shortening is a decision to make app-wide or not at all; it is not
+      // something one card gets to opt into.
       const model = buildGoalModel(migrated, progress, null, state.cfg);
-      const dot = progress.met === true ? 'good' : progress.met === false ? 'warn' : 'review';
+      const dot = goalOffTrack(progress, model) ? 'warn' : 'neutral';
 
-      sec.append(
-        el(
-          'div',
-          { class: 'attn-item', style: 'padding:8px 0' },
-          el('span', { class: 'attn-dot ' + dot }),
-          el('div', { class: 'attn-body' }, model.detail)
-        )
-      );
+      if (migrated.type === 'cushion' && progress.readable) {
+        // The GAP is the headline, in the app's existing hero-figure shape -
+        // the same weight the Overview gives its one important number. This
+        // card used to state its reading as a sentence inside an attention
+        // row, so a safety net far short of its target read as quietly as any
+        // other line while a louder figure elsewhere on the screen took the
+        // attention it deserved.
+        sec.append(
+          el(
+            'div',
+            { class: 'hero-figure' },
+            el('div', { class: 'fact-value metric-value metric--major' }, model.leadText),
+            el('div', { class: 'muted small' }, model.tag)
+          )
+        );
+        // The target's provenance, and ONLY when there is still something true
+        // to say. Under a year of statements the average monthly cost has not
+        // met the once-a-year bills yet, so the target is low and cannot know
+        // it; at twelve months or more that stops being true and the marker
+        // goes. It rides the app's one info bubble - no new mark, and no
+        // inline caveat text sitting permanently beside the figure.
+        const caveat = progress.coverage && progress.coverage.caveat;
+        sec.append(
+          el(
+            'p',
+            { class: 'attn-body' },
+            model.detail,
+            caveat ? ' ' : null,
+            caveat ? chartInfo(el, null, caveat) : null
+          )
+        );
+        // Same standard the Plan's hero figure holds itself to: no figure
+        // without a plain word on what it does and does not include, so a
+        // partial picture is never mistaken for a complete one.
+        sec.append(
+          el(
+            'p',
+            { class: 'muted small' },
+            savedFigureNote(
+              { cardOwed: progressCtx.cardBalance || 0, excludedForeign: 0 },
+              cardMoney
+            )
+          )
+        );
+        // A goal set when the same months meant months of INCOME. The number of
+        // months they chose is untouched; what it is measured against is not,
+        // and a person is told that in plain words rather than finding a target
+        // that quietly moved. Shown only on a goal that predates the change.
+        if (progress.rebasedFromIncome) {
+          sec.append(
+            el(
+              'p',
+              { class: 'muted small' },
+              `You set this target against your income. It is now measured against what you actually spend, which is what an emergency fund has to cover, so the amount differs from the one you first saw. The ${monthsLabel(progress.targetMonths)} you chose is unchanged.`
+            )
+          );
+        }
+        if (progressCtx.cashAsOf) {
+          sec.append(
+            el(
+              'p',
+              { class: 'muted small' },
+              `Progress uses the balances you entered on ${formatDisplayDate(progressCtx.cashAsOf)}. The target still comes from your statements.`
+            )
+          );
+        }
+      } else {
+        sec.append(
+          el(
+            'div',
+            { class: 'attn-item', style: 'padding:8px 0' },
+            el('span', { class: 'attn-dot ' + dot }),
+            el('div', { class: 'attn-body' }, model.detail)
+          )
+        );
+      }
+
+      const planLink = goalAgainstPlan(migrated, progress, cardMoney);
+      if (planLink) sec.append(el('p', { class: 'plan-note muted small' }, planLink));
 
       const boundaryConfig = state._goalBoundary || null;
       const boundary = resolveSafetyBoundary(boundaryConfig, {
@@ -701,7 +939,7 @@ export function createAheadRenderer(ctx) {
           : guard.note || '';
 
       const disclosure = el('details', {
-        class: 'explainer',
+        class: 'disclosure explainer',
         style: 'margin-top:6px',
       });
       disclosure.append(el('summary', { class: 'muted small' }, 'Why'));
@@ -715,28 +953,40 @@ export function createAheadRenderer(ctx) {
       if (boundaryStatus) disclosure.append(boundaryStatus);
       sec.append(disclosure);
 
-      if (_boundaryDraftKind !== null) {
-        sec.append(renderBoundaryForm());
-      } else {
-        sec.append(
-          el(
-            'div',
-            { class: 'manage-actions', style: 'margin-top:8px' },
+      // The safety floor is a CASH guard: it checks a projected balance low
+      // point against a line the person set. That is meaningful for the two
+      // goals about cash - the cushion and clearing the card - and meaningless
+      // for a spending limit, which is about what goes out, not what is left.
+      //
+      // It used to be offered for every goal type, so a spending-limit goal
+      // showed "Set a safety floor" beneath a sentence about its limit: the
+      // second half of the template bleed fixed in the description string,
+      // living in the ACTION row where that fix never reached.
+      const floorApplies = migrated.type === 'cushion' || migrated.type === 'clear-card';
+      if (floorApplies) {
+        if (_boundaryDraftKind !== null) {
+          sec.append(renderBoundaryForm());
+        } else {
+          sec.append(
             el(
-              'button',
-              {
-                class: 'btn sm ghost',
-                onclick: () => {
-                  _boundaryDraftKind = boundaryConfig ? boundaryConfig.kind : 'chosen';
-                  render();
+              'div',
+              { class: 'manage-actions', style: 'margin-top:8px' },
+              el(
+                'button',
+                {
+                  class: 'btn sm ghost',
+                  onclick: () => {
+                    _boundaryDraftKind = boundaryConfig ? boundaryConfig.kind : 'chosen';
+                    render();
+                  },
                 },
-              },
-              boundaryConfig && boundaryConfig.kind !== 'none'
-                ? 'Change safety floor'
-                : 'Set a safety floor'
+                boundaryConfig && boundaryConfig.kind !== 'none'
+                  ? 'Change safety floor'
+                  : 'Set a safety floor'
+              )
             )
-          )
-        );
+          );
+        }
       }
     }
 
@@ -776,11 +1026,14 @@ export function createAheadRenderer(ctx) {
                 // safe to explore - the "try it on, take it off" model,
                 // enforced at the moment of clearing rather than promised in
                 // words.
-                const prior = state.goal;
-                clearGoal();
-                toast('Goal cleared.', () => {
-                  trackUsage('ahead-restore-goal');
-                  restoreGoal(prior);
+                // The whole cascade is captured before it is removed, so undo
+                // brings back the log and the safety floor too, not just the
+                // goal object.
+                clearGoal().then((snapshot) => {
+                  toast('Goal cleared.', () => {
+                    trackUsage('ahead-restore-goal');
+                    restoreGoal(snapshot);
+                  });
                 });
               },
             },
@@ -789,6 +1042,47 @@ export function createAheadRenderer(ctx) {
         )
       );
     }
+  }
+
+  // The goal and the set-aside band are the same fact seen twice: a savings
+  // goal is the REASON that band is the size it is. When a target has been
+  // saved, this states the connection in one plain sentence rather than
+  // leaving the two cards to be read as unrelated. Silent when no target is
+  // saved, so it never invents a rate the person did not choose.
+  function goalAgainstPlan(goal, progress, money = bankMoney) {
+    // The plan stores a SHARE of take-home, not an amount, so the monthly rate
+    // is resolved against the same typical-month take-home the Plan tab reads.
+    // Reading the stored number as money would state a rate of "20 a month".
+    const built = planModel ? planModel() : null;
+    const target = built && built.raw ? built.raw : null;
+    if (!target || target.targetsAreDefault || !goal || !progress) return '';
+    const rate = Number(target.targetAmount.setAside) || 0;
+    if (!(rate > 0)) return '';
+    const rateText = money(rate);
+    if (goal.type === 'cushion' && progress.shortfall != null) {
+      if (!(progress.shortfall > 0)) {
+        return `Your plan sets aside ${rateText} a month, and this goal is already met.`;
+      }
+      // Spelled the same way the goal card and the check-in history spell it -
+      // the same progress must never be described two different ways depending
+      // on which line of the same screen you read.
+      const months = Math.ceil(progress.shortfall / rate);
+      return `Your plan sets aside ${rateText} a month. At that rate the remaining ${money(progress.shortfall)} is covered in about ${monthsLabel(months)}.`;
+    }
+    if (goal.type === 'clear-card' && progress.monthlyNeeded != null) {
+      const needed = Number(progress.monthlyNeeded);
+      if (rate >= needed) {
+        return `Your plan sets aside ${rateText} a month, which covers the ${money(needed)} a month this needs.`;
+      }
+      return `Your plan sets aside ${rateText} a month; this needs ${money(needed)}, so it is ${money(needed - rate)} a month short.`;
+    }
+    // No catch-all. This sentence used to be appended to EVERY goal type, so a
+    // spending-limit goal ended up reading "...of your limit this period, X
+    // over. Your plan sets aside Y a month." - two goals' vocabularies in one
+    // card, under a single heading, looking like one broken sentence. The plan
+    // link is only meaningful where the plan's set-aside rate actually bears on
+    // the goal, which is the two branches above.
+    return '';
   }
 
   /* ===========================================================================
@@ -817,7 +1111,7 @@ export function createAheadRenderer(ctx) {
       return el(
         'p',
         { class: 'muted small' },
-        `Safety floor: your regular commitments plus ${boundaryConfig.cushionDays} day${boundaryConfig.cushionDays === 1 ? '' : 's'} of typical spending.`
+        `Safety floor: your fixed expenses plus ${boundaryConfig.cushionDays} day${boundaryConfig.cushionDays === 1 ? '' : 's'} of typical spending.`
       );
     }
     return null;
@@ -827,7 +1121,7 @@ export function createAheadRenderer(ctx) {
     const box = el('div', {});
     const options = [
       { kind: 'chosen', label: 'A number I choose' },
-      { kind: 'calculated', label: 'Commitments plus a cushion of days' },
+      { kind: 'calculated', label: 'My fixed expenses plus a few days of spending' },
       { kind: 'none', label: 'No safety floor (clear it)' },
     ];
     const typeList = el('div', {
@@ -921,17 +1215,11 @@ export function createAheadRenderer(ctx) {
   function renderMonthlyFollowUp() {
     const log = state.goalLog || [];
     if (!log.length) return null;
-    const sec = el('section', { class: 'card' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconGap()), 'Monthly check-in')
-      )
-    );
+    const sec = el('div', {});
     const list = el('div', { class: 'recurring-list' });
-    for (const entry of log.slice().reverse().slice(0, 12)) {
-      const dot = entry.met === true ? 'good' : entry.met === false ? 'warn' : 'review';
+    const shown = log.slice().reverse().slice(0, 12);
+    for (const entry of shown) {
+      const dot = entry.met === false ? 'warn' : 'neutral';
       list.append(
         el(
           'div',
@@ -940,14 +1228,20 @@ export function createAheadRenderer(ctx) {
           el(
             'div',
             { class: 'attn-body' },
-            el('div', { class: 'muted small' }, monthName(entry.month)),
+            el('div', { class: 'muted small' }, monthShort(entry.month)),
             el('div', {}, entry.headline)
           )
         )
       );
     }
     sec.append(list);
-    return sec;
+    return collapsibleCard(el, {
+      title: 'Monthly check-in',
+      icon: icon(iconGap()),
+      summary: `${shown.length} month${shown.length === 1 ? '' : 's'} recorded`,
+      body: sec,
+      name: 'plan-monthly-check-in',
+    });
   }
 
   /* ===========================================================================
@@ -1000,14 +1294,10 @@ export function createAheadRenderer(ctx) {
     const items = scenarioToggleItems();
     if (!items.length && monthlyOutflow <= 0) return null;
 
-    const sec = el('section', { class: 'card' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconChart()), 'Try a change')
-      )
-    );
+    // Opens closed: this is a what-if tool, and nobody arrives on the Plan tab
+    // needing a scenario already running. The body is assembled into `sec` as
+    // before and wrapped at the end of this function.
+    const sec = el('div', {});
     sec.append(
       el(
         'p',
@@ -1097,27 +1387,62 @@ export function createAheadRenderer(ctx) {
         )
       );
     }
-    sec.append(el('div', { class: 'pair-scroll pair-scroll-recurring' }, list));
+    // Chunked. Eight categories with three presets each is twenty-four
+    // controls asking for attention at once, before a person has decided what
+    // they are even testing. The three biggest levers - the only ones that
+    // move the answer much - are shown; the rest are one press away.
+    const PRIMARY = 3;
+    const primaryList = el('div', { class: 'recurring-list chk-list' });
+    const restList = el('div', { class: 'recurring-list chk-list' });
+    [...list.children].forEach((row, i) => (i < PRIMARY ? primaryList : restList).append(row));
+    sec.append(el('div', { class: 'pair-scroll pair-scroll-recurring' }, primaryList));
+    if (restList.children.length) {
+      const more = el('details', { class: 'disclosure explainer scenario-more' });
+      more.append(
+        el(
+          'summary',
+          { class: 'muted small' },
+          `${restList.children.length} more ${restList.children.length === 1 ? 'category' : 'categories'}`
+        )
+      );
+      more.append(el('div', { class: 'pair-scroll pair-scroll-recurring' }, restList));
+      sec.append(more);
+    }
 
     const costInput = el('input', {
       type: 'number',
       class: 'name-field',
       placeholder: 'Amount',
+      // Named, not just hinted: the placeholder vanishes the moment a figure is
+      // typed, taking the only description of the field with it.
+      'aria-label': 'Extra one-off cost to try',
       min: '0',
+      step: '0.01',
       value: _scenarioExtraCost || '',
     });
-    sec.append(
+    selectOnFocus(costInput);
+    // A second, unrelated question ("what if something new came up?"). Folded
+    // away so the card asks one thing at a time.
+    const costBlock = el('details', { class: 'disclosure explainer scenario-cost' });
+    costBlock.append(el('summary', { class: 'muted small' }, 'Add a cost you have not paid yet'));
+    costBlock.append(
       el(
         'div',
-        { class: 'manage-actions', style: 'margin-top:10px;align-items:center' },
-        el('span', { class: 'muted small' }, 'Add a cost you have not paid yet:'),
+        { class: 'manage-actions', style: 'margin-top:8px;align-items:center' },
         costInput,
         el(
           'button',
           {
             class: 'btn sm ghost',
             onclick: () => {
-              _scenarioExtraCost = Number(costInput.value) || 0;
+              const raw = costInput.value.trim();
+              const value = raw ? Number(raw) : 0;
+              if (!Number.isFinite(value) || value < 0) {
+                toast('Enter a cost of zero or more.');
+                costInput.focus();
+                return;
+              }
+              _scenarioExtraCost = Math.round(value * 100) / 100;
               recompute();
             },
           },
@@ -1125,6 +1450,7 @@ export function createAheadRenderer(ctx) {
         )
       )
     );
+    sec.append(costBlock);
 
     // Rewrites ONLY resultHost, in place, so every preset press / cost apply
     // updates the number live without re-rendering the whole tab.
@@ -1148,6 +1474,7 @@ export function createAheadRenderer(ctx) {
         return;
       }
       const changed = result.scenarioRunwayDays !== result.baselineRunwayDays;
+      const direction = result.scenarioRunwayDays > result.baselineRunwayDays ? 'up' : 'down';
       // The number always answered "if your income stopped, how long would
       // your cash last" (runwayDays' own documented meaning) - naming that
       // assumption is what makes it honest, especially for a surplus person
@@ -1157,7 +1484,7 @@ export function createAheadRenderer(ctx) {
           'p',
           { class: 'strong' },
           changed
-            ? `If your income stopped, your cash would last about ${result.scenarioRunwayDays} days - up from about ${result.baselineRunwayDays} today.`
+            ? `If your income stopped, your cash would last about ${result.scenarioRunwayDays} days - ${direction} from about ${result.baselineRunwayDays} today.`
             : `If your income stopped, your cash would last about ${result.scenarioRunwayDays} days.`
         )
       );
@@ -1178,7 +1505,12 @@ export function createAheadRenderer(ctx) {
 
     sec.append(resultHost);
     recompute();
-    return sec;
+    return collapsibleCard(el, {
+      title: 'Try a change',
+      icon: icon(iconChart()),
+      summary: 'See how long your cash could last',
+      body: sec,
+    });
   }
 
   function renderAhead() {
@@ -1186,46 +1518,40 @@ export function createAheadRenderer(ctx) {
     const cfg = Object.assign({ minMonthsForForecast: 2, horizonDays: 21 }, state.cfg.ahead || {});
     const months = bankMonthsList();
     let goalPlaced = false;
-    // Computed once, unconditionally: "Test a decision" needs no forecast
-    // history to work (see the scenario tool's own comment block below), so
-    // it must still appear even when the readiness gate has not passed. When
-    // the forecast IS ready it pairs with "What's expected before then";
-    // otherwise it appends on its own, full-width.
     const scenario = renderScenarioCard();
-    // The statement-cadence nudge accepts card statements and bank statements
-    // as two independent inputs and can compute a cadence from EITHER one
-    // alone (nextStatementNudge, reporting.js) - it never needed a readable
-    // cash position or a forecast-ready bank history. Previously nested
-    // inside the innermost forecast-ready branch below, which meant a
-    // card-only person (or anyone below the bank-months threshold) could
-    // never see it even though it would have worked correctly for them.
-    // Computed once here, independent of forecast readiness, so it appears
-    // whenever there is anything for it to compare.
-    const nudge = nextStatementNudge(
+    const nudges = staleStatementNudges(
       state._cardStatements || [],
       state._bankStatements || [],
-      { toleranceDays: cfg.statementToleranceDays },
+      { toleranceDays: cfg.statementToleranceDays, includeOnTrack: true },
       new Date()
     );
-    const nudgeCard = renderStatementNudge(nudge);
-    // 6.1 Coming Up - gated on its own readiness (enough history, a readable
-    // balance). 6.2 Where you're headed, below, is deliberately NOT inside
-    // either early-return: the plan is explicit that Ahead as a whole is
-    // reachable even before enough data exists to power its forecast.
-    if (months.length < cfg.minMonthsForForecast) {
-      wrap.append(renderNotReady(months.length, cfg.minMonthsForForecast));
-      if (nudgeCard) wrap.append(nudgeCard);
+    const nudgeCard = renderStatementNudges(nudges);
+    const planHero = renderPlanHero();
+    const planLever = planHero ? renderPlanLever() : null;
+    let followUp = renderMonthlyFollowUp();
+    const expectedWithoutForecast = renderUpcoming();
+    if (planHero) {
+      const basis = balanceUpdates.historyBasisNote();
+      if (basis) planHero.append(basis);
+      wrap.append(planHero);
+    }
+    if (nudgeCard) wrap.append(nudgeCard);
+    if (planLever) wrap.append(planLever);
+    const readiness = projectionReadiness({
+      bankMonths: months,
+      minMonths: cfg.minMonthsForForecast,
+      coverage: state.coverage,
+    });
+    if (!readiness.ready) {
+      wrap.append(renderNotReady(readiness));
+      if (expectedWithoutForecast) wrap.append(expectedWithoutForecast);
       if (scenario) wrap.append(scenario);
     } else {
       const cb = classifiedBank();
-      // The SAME base-currency-only closing balance every other cash-position
-      // figure in this app reads (analyseRollup's own cashPosition), so a
-      // foreign (e.g. USD) account can never be silently mixed into the JMD
-      // figure this forecast projects forward.
       const cashPosition = analyseBankActivity(cb).closingBalance;
       if (cashPosition == null) {
         wrap.append(renderNoBalance());
-        if (nudgeCard) wrap.append(nudgeCard);
+        if (expectedWithoutForecast) wrap.append(expectedWithoutForecast);
         if (scenario) wrap.append(scenario);
       } else {
         const income = analyseIncomePattern(cb, state.cfg, new Date());
@@ -1237,71 +1563,22 @@ export function createAheadRenderer(ctx) {
           horizonDays: cfg.horizonDays,
           now: new Date(),
         });
-
-
-        // Resolve the SAME safe-line boundary the goal card reads
-        // (state._goalBoundary, loaded goal-independently at boot - see
-        // app.js's own comment on why), from data already computed in this
-        // scope, so the forecast chart can compare its trough against it
-        // without depending on buildNewEngineProgressCtx or any goal being
-        // set. The same typicalMonthlyOutflow/ymToday reference point
-        // renderScenarioCard uses below, converted to a daily figure with
-        // the same days-per-month arithmetic runwayDays (reporting.js)
-        // uses internally, so this daily-burn figure can never quietly
-        // drift from the one that function computes.
-        const { rollAllTrend: rollAllTrendForBoundary } = overviewModel();
-        const monthlyOutflowForBoundary = typicalMonthlyOutflow(
-          rollAllTrendForBoundary,
-          ymToday()
-        );
-        const dailyBurnForBoundary = monthlyOutflowForBoundary / (365.25 / 12);
-        const safetyBoundary = resolveSafetyBoundary(state._goalBoundary, {
-          typicalDailyOutflow: dailyBurnForBoundary,
-          commitmentsMonthly: combined.total,
-        });
-        // ONE days-of-cover figure, computed here and shared by BOTH the
-        // forecast hero (passed in below) and the decision tester (which
-        // computes its baseline the identical way via computeScenario ->
-        // runwayDays). Same cash position and same typical outflow as the
-        // tester's baseline, so the number in the hero and the number in the
-        // tester can never diverge - the brief's hard requirement.
-        const baselineRunway = runwayDays(cashPosition, monthlyOutflowForBoundary);
-        wrap.append(renderForecastChart(30, safetyBoundary, baselineRunway));
-        // Goal setting sits directly beneath the Cash forecast, full-width -
-        // its "what am I aiming for" framing reads best right under the
-        // forecast it is judged against, and its height swings the most of
-        // any card here, so full-width is its honest home (it never has to
-        // match a neighbour and so never strands a void or gets dragged
-        // tall). Placed here in the forecast-ready branch, before the paired
-        // tools below; goalPlaced stops the shared tail appending it twice.
         const goalCardTop = renderGoalCard();
-        if (goalCardTop) wrap.append(goalCardTop);
+        pairCards(wrap, goalCardTop, followUp);
+        followUp = null;
         goalPlaced = true;
-        // Now that "Payments expected" is a VERTICAL timeline (tall and
-        // narrow), it no longer needs a full-width row - it pairs cleanly
-        // beside "Test a decision" as two similarly-shaped, list-tall
-        // columns, which is more compact. Both hold a scrolling list, so the
-        // shared-height + fill rule balances them: neither strands a void,
-        // and a genuinely long run of payments scrolls within its own window
-        // (Now stays anchored at the top; the far-future payments are a
-        // scroll away, the imminent ones always in view).
         const upcoming = renderUpcoming(proj);
         pairCards(wrap, upcoming, scenario);
-        pairCards(wrap, nudgeCard, null);
       }
     }
 
-    // Goal setting for the not-ready / no-balance branches (no forecast shown
-    // there, so it is appended full-width here so a person can still set a
-    // goal). goalPlaced is true only when the forecast-ready branch above
-    // already placed it beneath the Cash forecast, so it is never rendered
-    // twice.
     if (!goalPlaced) {
       const goalCard = renderGoalCard();
-      if (goalCard) wrap.append(goalCard);
+      pairCards(wrap, goalCard, followUp);
+      followUp = null;
     }
-    const followUp = renderMonthlyFollowUp();
     if (followUp) wrap.append(followUp);
+    placeFoldAll(el, wrap);
     return wrap;
   }
 
