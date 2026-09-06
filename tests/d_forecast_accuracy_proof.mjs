@@ -25,7 +25,7 @@ const TODAY = '2026-07-01';
 const BANKMAX = '2026-07-01'; // ledger reaches today
 
 // helper: a snapshot with a given asOf/horizon/predicted, horizonEnd derived
-const H = (days) => days;
+const _H = (days) => days;
 function snap({ asOf, horizonDays, predictedEnding, predictedLow = predictedEnding }) {
   // horizonEnd = asOf + horizonDays
   const end = new Date(new Date(asOf + 'T00:00:00Z').getTime() + horizonDays * 86400000)

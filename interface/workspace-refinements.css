@@ -1,3 +1,4 @@
+@layer pfa-app {
 /* ===========================================================================
  * UNIFIED MESSAGING MODEL + Overview close  (consumer-first redesign)
  *
@@ -16,7 +17,7 @@
  *   Tier 2  .offer         - a genuine take-it-or-leave-it offer (install,
  *                           back up). One floating card, low and thumb-reachable,
  *                           clearly dismissible, shown ONE AT A TIME.
- *   Tier 3  .toast         - immediate feedback after an action (+ undo). Already
+ *   Tier 3  Sonner toast   - immediate feedback after an action (+ undo). Already
  *                           lived at the bottom centre; now shares the voice.
  *
  * All three use .msg-dismiss for a single, comfortably sized close control, and
@@ -31,25 +32,6 @@
    the narrative, so they now close the story card itself, under a quiet
    lead-in, separated by a hairline so they read as "here is where to go next"
    rather than orphaned controls. */
-/* Overview's compact action pair: no top divider or extra padding - it holds a
-   label + two buttons, so the card should be tight, not a hollow panel. */
-
-
-.overview-next-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s3);
-}
-@media (max-width: 639px) {
-  .overview-next-actions {
-    flex-direction: column;
-  }
-  .overview-next-actions .btn {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
 /* ---- Shared dismiss control (all tiers) ----
    One clear, comfortably sized close gesture the person learns once. Replaces
    the tiny bespoke circle the old greeting used. */
@@ -104,13 +86,13 @@
   flex: none;
   display: inline-flex;
   margin-top: 1px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .status-line.tone-good .status-line-ic {
-  color: var(--good);
+  color: var(--good-ink);
 }
 .status-line.tone-watch .status-line-ic {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .status-line-body {
   flex: 1;
@@ -162,7 +144,7 @@
 .offer-ic {
   flex: none;
   display: inline-flex;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .offer-body {
   flex: 1;
@@ -175,7 +157,7 @@
   gap: 8px;
 }
 /* When a toast is on screen with an offer, lift the offer clear of it. */
-#toast.show ~ .offer.show {
+body:has([data-sonner-toast]) .offer.show {
   bottom: calc(var(--dock-toast) + env(safe-area-inset-bottom));
 }
 @media (max-width: 639px) {
@@ -196,26 +178,19 @@
   body.has-bottom-nav .offer.show {
     bottom: calc(var(--dock-nav) + env(safe-area-inset-bottom));
   }
+  body.has-bottom-nav:has([data-sonner-toast]) .offer.show {
+    bottom: calc(var(--dock-nav-toast) + env(safe-area-inset-bottom));
+  }
 }
 
 /* ---- Retrofit the surfaces the app still emits today onto the shared voice,
    so unification is visible immediately even before the emit-side is routed
    through the new tiers. The install banner IS an offer; give it the offer's
    entrance so the two are indistinguishable. */
-.install-banner {
-  border-radius: 16px;
-}
-.install-banner.show {
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease;
-}
-
 /* ---- Accessibility + motion contracts for the messaging model ----
    Reduced motion: keep the state change, drop the slide. */
 @media (prefers-reduced-motion: reduce) {
-  .offer,
-  .install-banner.show {
+  .offer {
     transition: none !important;
   }
   .offer.show {
@@ -267,14 +242,7 @@
   padding-top: clamp(18px, 2.4vw, 30px);
   padding-bottom: 56px;
 }
-.accounts-wrap {
-  gap: var(--section-gap);
-}
-.card > p.muted,
-.overview-story,
-.explainer-body,
-.vm-detail-body,
-.vm-reconcile {
+.overview-story {
   max-width: 76ch;
 }
 
@@ -283,82 +251,49 @@
    in-flow greeting inside .topbar-stack are left exactly as shipped, so the
    greeting keeps pushing the page down on show and never overlaps the tabs. --- */
 .topbar {
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-bottom: 0;
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
 }
 .period-bar {
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-bottom: 1px solid var(--hairline-soft);
-}
-.period-icon {
-  opacity: 0.72;
 }
 .period-showing {
   opacity: 0.78;
 }
-.brand-mark {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 8px 24px -16px var(--accent);
-}
 
-/* --- Plan 9: one compact control family + one focus language --- */
-.btn,
 .period-select,
 .mini,
 .filters input,
 .filters select,
-.tx-quick select,
-.tx-more-body select,
-.tx-more-body .f-num,
 .name-field,
 .pass,
 .picker-filter {
   border-color: var(--hairline);
 }
-.btn {
-  font-weight: 650;
-}
 .btn:not(.primary):not(.danger) {
   background: color-mix(in srgb, var(--panel) 78%, transparent);
-}
-.btn:hover,
-.btn.ghost:hover {
-  background: var(--soft-hover);
-  border-color: color-mix(in srgb, var(--accent) 24%, var(--edge));
 }
 .btn:focus-visible,
 .period-select:focus-visible,
 .mini:focus-visible,
 .filters input:focus-visible,
 .filters select:focus-visible,
-.tx-quick select:focus-visible,
-.tx-more-body select:focus-visible,
-.tx-more-body .f-num:focus-visible,
 .name-field:focus-visible,
 .pass:focus-visible,
 .picker-filter:focus-visible,
-.acct-mine-input:focus-visible,
 .tx-filters .f-search:focus {
   outline: 0;
   box-shadow: var(--focus-soft);
 }
-.btn.primary {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 92%, #fff),
-    var(--accent-dark)
-  );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 10px 26px -18px var(--accent);
-}
-.btn.primary:hover {
-  filter: brightness(1.03) saturate(1.02);
-}
 
 /* --- Plan 2/4: destination tabs - quiet shell, obvious current tab --- */
 .ledger-tabs {
-  gap: 2px;
   padding: 3px;
   border-color: var(--hairline);
 }
@@ -389,143 +324,22 @@
 body {
   letter-spacing: -0.005em;
 }
-.hero-title {
-  font-size: clamp(21px, 1.8vw, 25px);
-  letter-spacing: -0.025em;
-}
-.hero-amount,
-.vm-number,
-.fact-value,
-.sec-value,
-.cat-amt,
-.num,
-.amt,
-.recent-amt,
-.foreign-amt,
-.share-bar-total,
-.commit-amt,
-.recurring-amt,
-.overview-beat-lead {
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.hero-amount,
 .vm-number {
+  font-variant-numeric: tabular-nums lining-nums;
   text-wrap: balance;
 }
-.muted {
-  color: color-mix(in srgb, var(--dim) 92%, var(--fg));
-}
-.small {
-  line-height: 1.45;
-}
-.card-head {
-  margin-bottom: 18px;
-}
-.card-title {
-  font-size: 15.5px;
-}
-
-/* --- Plan 7: Overview pacing --- */
-.overview-story {
-  gap: 10px;
-  margin-top: 18px;
-}
-.overview-beat {
-  color: var(--dim);
-  line-height: 1.6;
-}
-.overview-beat-lead {
-  max-width: 34ch;
-  margin: 12px 0;
-  font-size: clamp(25px, 2.6vw, 34px);
-  line-height: 1.22;
-  letter-spacing: -0.035em;
-  text-wrap: balance;
-}
-.overview-next {
-  margin-top: 24px;
-  padding-top: 18px;
-  border-top-color: var(--hairline-soft);
-}
-.overview-next-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-
-/* --- Plan 5: repeated content scans as one list, not nested cards --- */
-.insight,
-.catrow,
-.recurring-row,
-.commit-row,
-.acct-row,
-.foreign-row,
 .recent-item {
   border-color: transparent;
   box-shadow: none;
-}
-.insight {
-  background: transparent;
-  padding-inline: 10px;
 }
 .insight + .insight,
 .recent-item + .recent-item {
   border-top: 1px solid var(--hairline-soft);
 }
-.insight:hover,
-.catrow:hover,
-button.recurring-row:hover,
-button.commit-row:hover,
-.acct-row:hover,
-.foreign-row:hover {
-  transform: none;
-  background: var(--soft-hover);
-  border-color: transparent;
-}
-.insight-icon {
-  width: 28px;
-  height: 28px;
-  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
-  border-color: var(--hairline-soft);
-}
-.insight-go {
-  transition:
-    transform 0.16s ease,
-    color 0.16s ease;
-}
-.insight:hover .insight-go {
-  transform: translateX(2px);
-  color: var(--accent);
-  opacity: 1;
-}
-
 /* --- Plan 12: tables - clearer header, quieter rules --- */
 table.grid th {
   padding-top: 8px;
-  padding-bottom: 9px;
-  color: var(--dim);
-  background: color-mix(in srgb, var(--panel-2) 52%, transparent);
-  border-bottom-color: var(--hairline);
-}
-table.grid td {
-  border-bottom-color: var(--hairline-soft);
-}
-.table-wrap.sticky table.grid thead th {
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-.grid tbody tr.clickable:hover,
-.grid tbody tr.selected {
-  background: var(--soft-hover);
-}
-
-/* --- Plan 8: chart scaffolding that lives in this file recedes --- */
-.trend-avg {
-  border-top-color: color-mix(in srgb, var(--accent) 38%, transparent);
-}
-.share-bar-track,
-.commit-bar {
-  background: color-mix(in srgb, var(--panel-2) 78%, transparent);
+  padding-bottom: var(--s2);
 }
 
 /* --- Plan 11: Data & settings truly recedes and never leads --- */
@@ -540,9 +354,10 @@ table.grid td {
   box-shadow: none;
 }
 .card.secondary > summary {
-  min-height: 52px;
+  min-height: 44px;
   color: color-mix(in srgb, var(--dim) 92%, var(--fg));
 }
+
 .card.secondary:hover {
   border-color: var(--hairline);
 }
@@ -550,25 +365,12 @@ table.grid td {
   border-bottom-color: var(--hairline-soft);
 }
 
-/* --- Plan 13: floating menus/messages share one calm elevation --- */
-.menu {
-  padding: 7px;
-  border-radius: 14px;
-}
-.menu-item {
-  border-radius: 10px;
-}
-.menu-item:hover,
-.picker-item:hover {
-  background: var(--soft-hover);
-}
-
 /* --- Plan 14: page ending --- */
 .footer {
   margin-top: 4px;
   padding-bottom: 24px;
   color: color-mix(in srgb, var(--dim) 82%, transparent);
-  font-size: 11.5px;
+  font-size: var(--t-label);
 }
 
 /* --- Plan 10: the greeting is intentionally left to the original in-flow
@@ -583,13 +385,6 @@ table.grid td {
     column-gap: 18px;
     row-gap: 18px;
   }
-  #app.wrap > .hero,
-  .accounts-wrap.accounts-grid > .hero {
-    min-height: 250px;
-  }
-  .hero-body {
-    gap: 20px clamp(44px, 6vw, 86px);
-  }
 }
 
 /* --- Plan 13/16: mobile - content first, stable reachable navigation --- */
@@ -603,43 +398,23 @@ table.grid td {
   .wrap {
     padding-top: 12px;
   }
-  .period-showing {
-    display: none;
-  }
-  .hero-title {
-    font-size: 20px;
-  }
-  .overview-beat {
-    font-size: 14px;
-  }
-  .overview-beat-lead {
-    font-size: 24px;
-    max-width: none;
-  }
   .ledger-tab {
     min-height: 50px;
     padding: 8px 6px;
     font-size: 12px;
   }
-  .to-top {
+  .to-top:not(.to-back) {
     width: 42px;
     height: 42px;
   }
 }
 
-/* --- Plan 15: touch comfort --- */
-@media (pointer: coarse) {
-  .menu-item,
-  .picker-item,
-  .catrow,
-  button.recurring-row,
-  button.commit-row,
-  .acct-row {
-    min-height: 44px;
+@media (max-width: 340px) {
+  #add-btn .btn-ic {
+    display: none;
   }
 }
 
-/* --- Plan 15: reduced motion (mirrors the app's contract) --- */
 @media (prefers-reduced-motion: reduce) {
   .ledger-tab,
   .insight-go {
@@ -650,18 +425,7 @@ table.grid td {
 /* --- Plan 14: light mode calibrated on its own, not dark values on white.
    Softer background pools, near-neutral hairlines, gentler control fills. --- */
 [data-theme='light'] body {
-  background:
-    radial-gradient(
-      1100px 720px at 74% -12%,
-      color-mix(in srgb, var(--accent) 8%, transparent),
-      transparent
-    ),
-    radial-gradient(
-      900px 640px at 8% 24%,
-      color-mix(in srgb, var(--accent-deep) 6%, transparent),
-      transparent
-    ),
-    var(--bg);
+  background: color-mix(in srgb, var(--panel-2) 42%, var(--bg));
   background-attachment: fixed;
 }
 [data-theme='light'] {
@@ -670,23 +434,24 @@ table.grid td {
 }
 @media (prefers-color-scheme: light) {
   [data-theme='auto'] body {
-    background:
-      radial-gradient(
-        1100px 720px at 74% -12%,
-        color-mix(in srgb, var(--accent) 8%, transparent),
-        transparent
-      ),
-      radial-gradient(
-        900px 640px at 8% 24%,
-        color-mix(in srgb, var(--accent-deep) 6%, transparent),
-        transparent
-      ),
-      var(--bg);
+    background: color-mix(in srgb, var(--panel-2) 42%, var(--bg));
     background-attachment: fixed;
   }
   [data-theme='auto'] {
     --hairline: color-mix(in srgb, var(--fg) 11%, transparent);
     --hairline-soft: color-mix(in srgb, var(--fg) 7%, transparent);
+  }
+}
+
+[data-theme='light'] .btn.primary,
+[data-theme='light'] .brand-mark {
+  background: var(--accent);
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme='auto'] .btn.primary,
+  [data-theme='auto'] .brand-mark {
+    background: var(--accent);
   }
 }
 
@@ -708,7 +473,7 @@ table.grid td {
   opacity: 1;
 }
 :root[data-privacy="on"] #privacy-btn {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: color-mix(in srgb, var(--accent) 48%, var(--edge));
   background: color-mix(in srgb, var(--accent) 10%, var(--panel));
 }
@@ -772,40 +537,123 @@ table.grid td {
     transform: translateY(0);
   }
 }
+/* No longer a card: a single quiet line under the headline, with its caveat
+   behind the (i) that follows it. */
 .coverage-note {
-  padding-block: 14px;
-  border-style: dashed;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 0;
+  padding-inline: 2px;
 }
-.overview-actions,
+.coverage-note > .chart-info > summary {
+  line-height: 0;
+}
+/* The fact itself is the way into the coverage card, so it wears the app's
+   one inline-link affordance - at the line's own size, with the button
+   padding removed so the row still reads as one quiet sentence. */
+.coverage-note > .linkbtn {
+  padding: 0;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: left;
+}
+@media (max-width: 639px) {
+  .coverage-note > .linkbtn {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap-lg);
+  }
+}
 .overview-attention {
   min-height: 0;
 }
-.overview-next-actions .btn {
-  flex: 1 1 150px;
-  justify-content: center;
-}
 .activity-tabs {
-  width: fit-content;
+  width: 100%;
+  margin-bottom: var(--s4);
+}
+.activity-tabs .ledger-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: var(--s2);
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--hairline);
   border-radius: 0;
   background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
-.activity-tabs .ledger-tab {
-  min-width: 132px;
-  border-bottom: 2px solid transparent;
-  border-radius: 10px 10px 0 0;
+.activity-tabs .ledger-tabs .ledger-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  min-height: 66px;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-inner);
+  background: var(--surface-card);
+  text-align: left;
   box-shadow: none;
 }
-.activity-tabs .ledger-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  box-shadow: none;
+.activity-tabs .ledger-tabs .ledger-tab.active {
+  border-color: var(--hairline-lead);
+  background: var(--surface-lead);
+  box-shadow: inset 3px 0 0 var(--accent), var(--lift-1);
+}
+.activity-tabs .activity-tab-title {
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.activity-tabs .activity-tab-detail {
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.activity-tabs .ledger-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .activity-analysis > .activity-primary {
   order: -2;
+}
+.activity-primary .dh-secondary-metric {
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+}
+.activity-primary .dh-secondary-metric strong {
+  font-size: var(--metric-minor);
+}
+.activity-primary .dh-support .metric-open {
+  width: fit-content;
+  max-width: 100%;
+}
+@media screen and (min-width: 1000px) {
+  .activity-primary .dh-aside {
+    width: 280px;
+  }
+  .activity-primary .dh-aside .donut {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s2);
+    margin: 0;
+  }
+  .activity-primary .dh-aside .donut-figure {
+    width: 150px;
+    align-self: center;
+  }
+  .activity-primary .dh-aside .donut-legend {
+    flex: none;
+    max-width: none;
+  }
+  .activity-primary .dh-aside .donut-legend-label {
+    white-space: normal;
+  }
 }
 .activity-analysis > .card.insights {
   order: -1;
@@ -816,13 +664,25 @@ table.grid td {
   gap: 8px;
   margin-bottom: 4px;
 }
+/* A label is never smaller than the field it labels.
+
+   Every input in the app is 16px - deliberately, because anything smaller makes
+   iOS zoom the page on focus. The labels were 12px, so "Search transactions"
+   rendered visibly smaller than its own placeholder "Name, category, amount, or
+   custom label" directly beneath it, and the same inversion applied to Type,
+   Name and Amount on Position. Thirteen label/field pairs app-wide read
+   backwards.
+
+   14px keeps the label quieter than the value a person types (weight and colour
+   still do that) without printing it smaller than the field's own placeholder.
+   Helper captions under a field are NOT labels and keep .muted.small. */
 .field-label {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
   color: var(--dim);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 650;
 }
 .tx-search-field {
@@ -833,11 +693,10 @@ table.grid td {
 }
 .position-add-fields {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(130px, 0.8fr) auto;
+  grid-template-columns: minmax(150px, 1fr) minmax(130px, 0.8fr) auto;
   align-items: end;
-  gap: 10px;
+  gap: var(--s2);
 }
-.position-add-fields .mini,
 .position-add-fields .name-field {
   width: 100%;
   min-height: 40px;
@@ -846,13 +705,12 @@ table.grid td {
   min-width: 72px;
   justify-content: center;
 }
-.goal-intro {
-  margin-top: 0;
-}
 .goal-draft-step {
   align-items: end;
   gap: 8px;
-  margin: 4px 0 10px;
+  margin: 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline-soft);
 }
 .goal-draft-step .field-label {
   flex: 1 1 180px;
@@ -860,86 +718,36 @@ table.grid td {
 .goal-draft-step .name-field {
   width: 100%;
 }
-.goal-choice[aria-pressed="true"] {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
-}
 .view-forecast .card.empty,
 .view-position .card.empty {
   grid-column: 1 / -1;
 }
 @media (max-width: 639px) {
-  .topbar {
-    flex-wrap: wrap;
-    row-gap: 10px;
-  }
-  .brand {
-    flex: 1 0 100%;
-  }
-  .top-actions {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    width: 100%;
-    gap: 6px;
-  }
-  .top-actions .menu-wrap {
-    position: static;
-  }
-  .top-actions .menu {
-    left: 0;
-    right: 0;
-    width: 100%;
-    min-width: 0;
-    max-height: calc(100vh - 150px);
-    overflow-y: auto;
-  }
-  .top-actions .btn,
-  #theme-btn.icon-btn {
-    width: 100%;
-    min-width: 0;
-    min-height: 44px;
-    padding-inline: 7px;
-    justify-content: center;
-  }
-  .top-actions .btn .btn-label,
-  .top-actions .btn.primary .btn-label {
-    display: inline;
-    overflow: hidden;
-    font-size: 11.5px;
-    text-overflow: ellipsis;
-  }
-  #export-btn .caret {
-    display: none;
-  }
   .period-bar {
     min-height: 54px;
   }
+  /* The label naming what you are looking at was capped 3px below what it
+     needs: "Where things stand now" wants 153px and got 150, so every live view
+     title read as "Where things stand n…" - and "Plan for a normal month"
+     fared worse. The row is 375px wide and only uses 174 of it, so the cap was
+     buying nothing. Allowed to wrap instead of clip: two short lines say more
+     than one truncated one. */
   .period-live-title {
-    max-width: 150px;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .empty-drop-desktop {
     display: none;
   }
-  .overview-next-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .overview-next-actions .btn {
-    width: 100%;
-    min-width: 0;
-  }
   .activity-tabs {
     width: 100%;
   }
-  .activity-tabs .ledger-tab {
-    min-width: 0;
-    min-height: 44px;
+  .activity-tabs .ledger-tabs .ledger-tab {
+    min-height: 68px;
   }
   .tx-filters {
     align-items: end;
-  }
-  .tx-search-field .f-search {
-    min-height: 44px;
   }
   .position-add-fields {
     grid-template-columns: 1fr;
@@ -953,10 +761,7 @@ table.grid td {
   .position-remove {
     min-height: 44px;
   }
-  .goal-choice {
-    min-height: 72px;
-    padding: 11px 12px;
-  }
+  .position-line-edit .btn { min-height: 44px; }
   .goal-draft-step {
     align-items: stretch;
   }
@@ -981,4 +786,5 @@ table.grid td {
   .field-label .mini {
     min-height: 44px;
   }
+}
 }

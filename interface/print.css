@@ -1,3 +1,4 @@
+@layer pfa-app {
 /* ---------- Printable report ----------
    A dedicated report (#print-report), built on demand, replaces the interactive
    dashboard for print / PDF. It always prints on a light, high-contrast scheme
@@ -19,9 +20,13 @@
   #ledger-switch,
   #app,
   #footer,
-  #toast,
+  #backup-banner,
+  #first-run-banner,
+  [data-sonner-toaster],
   #busy,
   #install,
+  #to-top,
+  #go-back,
   .overlay,
   .tip {
     display: none !important;
@@ -53,7 +58,15 @@ html.printing .period-bar,
 html.printing #ledger-switch,
 html.printing #app,
 html.printing #footer,
-html.printing #install {
+html.printing #backup-banner,
+html.printing #first-run-banner,
+html.printing #install,
+html.printing #busy,
+html.printing #to-top,
+html.printing #go-back,
+html.printing [data-sonner-toaster],
+html.printing .overlay,
+html.printing .tip {
   display: none !important;
 }
 html.printing .print-only {
@@ -252,13 +265,6 @@ html.printing .print-only {
   color: #5a6675;
   margin-top: 3px;
 }
-.rp-sum-sub.tone-up {
-  color: #b3421a;
-}
-.rp-sum-sub.tone-down {
-  color: #1f7a4d;
-}
-
 /* Trend chart - the SVG scales to its container width (it keeps its own
    preserveAspectRatio); nothing beside it forces a minimum width. */
 .rp-chart-wrap {
@@ -510,10 +516,6 @@ html.printing .print-only {
   html[data-report-theme='dark'] .rp-table td {
     border-bottom-color: var(--edge);
   }
-  html[data-report-theme='dark'] .rp-sum-sub.tone-up {
-    color: var(--up);
-  }
-  html[data-report-theme='dark'] .rp-sum-sub.tone-down,
   html[data-report-theme='dark'] .rp-credit {
     color: var(--down);
   }
@@ -532,6 +534,9 @@ html.printing .print-only {
    instead of a jarring light slab. This whole block is scoped to @media screen,
    so it never touches the printed output. */
 @media screen {
+  html.printing .rp-table-wrap {
+    overflow-x: auto;
+  }
   html.printing #print-report {
     padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 24px
       calc(12px + env(safe-area-inset-left));
@@ -608,10 +613,6 @@ html.printing .print-only {
   html.printing .rp-table td {
     border-bottom-color: var(--edge);
   }
-  html.printing .rp-sum-sub.tone-up {
-    color: var(--up);
-  }
-  html.printing .rp-sum-sub.tone-down,
   html.printing .rp-credit {
     color: var(--down);
   }
@@ -619,6 +620,16 @@ html.printing .print-only {
     color: var(--dim);
     border-top-color: var(--edge);
   }
+}
+@media screen and (max-width: 320px) {
+  html.printing .rp-cat {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+  }
+  html.printing .rp-cat-name { grid-column: 1; grid-row: 1; }
+  html.printing .rp-cat-amt { grid-column: 2; grid-row: 1; }
+  html.printing .rp-cat-bar { grid-column: 1; grid-row: 2; }
+  html.printing .rp-cat-pct { grid-column: 2; grid-row: 2; }
 }
 
 /* Output follows the resolved report theme. When the app resolves to light
@@ -676,3 +687,15 @@ html.printing .print-only {
   }
 }
 
+
+/* Plan section in the printed report: a table of what a normal month does
+   against what it is meant to do. Uses the report's own table idiom. */
+.rp-plan-table td.rp-num,
+.rp-plan-table th {
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-plan-table td:first-child {
+  font-weight: 600;
+}
+}

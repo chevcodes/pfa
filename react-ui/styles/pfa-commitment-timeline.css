@@ -1,0 +1,30 @@
+@layer pfa-app {
+.commit-when-chart {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 150px;
+}
+
+.commit-when-chart .recharts-cartesian-axis-tick text {
+  fill: var(--dim);
+  font-size: 10px;
+}
+
+.commit-when-chart .recharts-cartesian-axis-tick-line {
+  display: none;
+}
+
+.commit-when-chart .recharts-reference-line line {
+  stroke: var(--flow-in);
+  stroke-opacity: 0.55;
+  stroke-dasharray: 4 4;
+}
+
+.commit-when-tooltip {
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+}
+}

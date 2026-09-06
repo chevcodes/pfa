@@ -22,7 +22,7 @@
  * root location.
  */
 
-const VERSION = 'pfa-v0.3';
+const VERSION = 'pfa-v0.198';
 
 const CODE = [
   './',
@@ -40,6 +40,8 @@ const CODE = [
   './interface/treemap.css',
   './interface/income-chart.css',
   './interface/flow-chart.css',
+  './interface/premium.css',
+  './interface/layout.css',
 
   // Application entry point
   './application/app-controller.js',
@@ -49,6 +51,8 @@ const CODE = [
 
   // application/core/
   './application/core/icons.js',
+  './application/core/privacy.js',
+  './application/core/money-format.js',
   './application/core/shared-helpers.js',
   './application/core/storage.js',
 
@@ -56,47 +60,93 @@ const CODE = [
   './application/statements/categorise.js',
   './application/statements/merchant-resolver.js',
   './application/statements/read-statements.js',
+  './application/statements/read-investments.js',
 
   // application/analysis/ (the pure, corpus-proven modules)
   './application/analysis/available-now.js',
+  './application/analysis/balance-updates.js',
   './application/analysis/bank-analysis.js',
+  './application/analysis/bank-categorise.js',
+  './application/analysis/category-contributions.js',
+  './application/analysis/category-flow.js',
+  './application/analysis/credit-classifier.js',
   './application/analysis/category-intentions.js',
+  './application/analysis/category-budget.js',
+  './application/analysis/treemap-categories.js',
   './application/analysis/commitment-income.js',
+  './application/analysis/coverage-map.js',
   './application/analysis/committed-flexible.js',
+  './application/analysis/confirmations.js',
   './application/analysis/custom-categories.js',
   './application/analysis/forecast-accuracy.js',
-  './application/analysis/forecast-chart-model.js',
   './application/analysis/forecast.js',
+  './application/analysis/goal-cascade.js',
+  './application/analysis/goal-constraints.js',
+  './application/analysis/cushion.js',
   './application/analysis/goal-migrate.js',
   './application/analysis/goal-progress-ctx.js',
   './application/analysis/goals.js',
+  './application/analysis/investments.js',
+  './application/analysis/income-model.js',
+  './application/analysis/label-suggestions.js',
+  './application/analysis/plan-autoassign.js',
+  './application/analysis/plan-draft.js',
+  './application/analysis/plan-print.js',
+  './application/analysis/plan.js',
+  './application/analysis/own-accounts.js',
+  './application/analysis/payment-obligations.js',
   './application/analysis/position.js',
   './application/analysis/proven-models.js',
   './application/analysis/reporting-core.js',
   './application/analysis/reporting-periods.js',
   './application/analysis/reporting-insights.js',
   './application/analysis/reporting-print.js',
+  './application/analysis/review-causes.js',
+  './application/analysis/set-aside.js',
+  './application/analysis/spend-allocation.js',
   './application/analysis/spend-breakdown.js',
   './application/analysis/spendable-categories.js',
+  './application/analysis/statement-cascade.js',
   './application/analysis/tag-totals.js',
   './application/analysis/transaction-splits.js',
   './application/analysis/treemap-layout.js',
 
   // application/ui/ (render factories)
+  './application/ui/account-rename.js',
   './application/ui/accounts-render.js',
   './application/ui/activity-render.js',
+  './application/ui/category-tag-model.js',
   './application/ui/ahead-render.js',
   './application/ui/available-now-preview.js',
+  './application/ui/balance-updates-render.js',
   './application/ui/cards-render.js',
   './application/ui/category-picker.js',
+  './application/ui/confirm-control.js',
+  './application/ui/own-accounts-section.js',
   './application/ui/chart-helpers.js',
-  './application/ui/forecast-chart-render.js',
+  './application/ui/chart-surface.js',
+  './application/ui/coverage-strip.js',
+  './application/ui/decision-header.js',
+  './application/ui/collapsible-card-state.js',
+  './application/ui/react-bridge.js',
+  './application/ui/react-dist/pfa-react.js',
+  './application/ui/react-dist/pfa-react.css',
   './application/ui/intentions-section.js',
+  './application/ui/category-limit-actions.js',
+  './application/ui/investments-render.js',
   './application/ui/manage-data.js',
+  './application/ui/reversible.js',
+  './application/ui/motion.js',
   './application/ui/overview-render.js',
+  './application/ui/payment-obligations-render.js',
+  './application/ui/plan-render.js',
+  './application/ui/plan-wizard.js',
   './application/ui/position-render.js',
   './application/ui/treemap-render.js',
+  './application/ui/treemap-labels.js',
   './application/ui/income-chart-render.js',
+  './application/ui/income-sources.js',
+  './application/ui/label-suggestion.js',
   './application/ui/flow-chart-render.js',
 
   // application/output/
@@ -124,7 +174,6 @@ const CODE = [
 // STATIC ASSETS: served cache-first. Every icon the manifest and the page
 // reference is listed so an installed app has all of them offline.
 const ASSETS = [
-  './favicon.ico',
   './interface/manifest.json',
   './interface/icons/icon-192.png',
   './interface/icons/icon-512.png',

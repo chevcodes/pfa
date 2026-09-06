@@ -14,6 +14,8 @@
  *
  *  PURE. No DOM, no mutation.
  * ======================================================================== */
+import { spendCategoryNames, sortCategoryNames } from './category-flow.js';
+
 export function spendableCategoryNames(cfg) {
   const sp = (cfg && cfg.special) || {};
   const exclude = new Set(
@@ -26,7 +28,6 @@ export function spendableCategoryNames(cfg) {
       .filter(Boolean)
       .map((n) => String(n).toLowerCase())
   );
-  return (cfg && cfg.categories ? cfg.categories : [])
-    .map((c) => c.name)
-    .filter((name) => name && !exclude.has(String(name).toLowerCase()));
+  return sortCategoryNames(spendCategoryNames(cfg)
+    .filter((name) => name && !exclude.has(String(name).toLowerCase())), cfg);
 }

@@ -6,7 +6,7 @@
  *  a READ-ONLY file. Custom categories therefore live in their own persisted
  *  meta array ('customCategories') and are MERGED on top of the shipped list at
  *  boot, so the one register every reader consumes (the category picker, the
- *  colour map buildCategoryColours, every dropdown, orderCategoriesForPicker) is
+ *  colour map buildCategoryColours, every dropdown) is
  *  shipped + custom, indistinguishable downstream.
  *
  *  A custom category is assign-only: it carries EMPTY patterns, so it never
@@ -56,8 +56,12 @@ function sameName(a, b) {
 }
 
 /* Is `name` already a category (shipped or custom)? Rejects duplicate creation. */
+function namesOf(category) {
+  return [category && category.name, ...((category && category.aliases) || [])];
+}
+
 export function categoryNameExists(name, categories) {
-  return (categories || []).some((c) => sameName(c.name, name));
+  return (categories || []).some((c) => namesOf(c).some((candidate) => sameName(candidate, name)));
 }
 
 /* The boot merge: shipped list + custom list, with shipped winning any name
@@ -65,13 +69,18 @@ export function categoryNameExists(name, categories) {
  * shipped first (their configured order preserved), then custom by creation. */
 export function mergeCategories(shipped, custom) {
   const out = (shipped || []).slice();
-  const shippedNames = new Set(out.map((c) => String(c.name).toLowerCase()));
+  const shippedNames = new Set(out.flatMap(namesOf).map((name) => String(name).toLowerCase()));
   for (const c of custom || []) {
     if (!c || !c.name) continue;
     if (shippedNames.has(String(c.name).toLowerCase())) continue; // shipped wins
     out.push(c);
   }
   return out;
+}
+
+export function migrateCustomCategories(shipped, custom) {
+  const names = new Set((shipped || []).flatMap(namesOf).map((name) => String(name || '').trim().toLowerCase()));
+  return (custom || []).filter((category) => category && !names.has(String(category.name || '').trim().toLowerCase()));
 }
 
 /* Usage of a category by NAME across the resolved rows and the personal rules -

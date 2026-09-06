@@ -4,6 +4,7 @@
  * resolver, read identically" promise: a future edit that silently changed
  * what one screen shows would change this fixture's output and fail here. */
 import { buildAttentionItems } from '../application/analysis/reporting-periods.js';
+import { makeProseMoney } from '../application/core/money-format.js';
 
 let pass = 0,
   fail = 0;
@@ -19,8 +20,10 @@ console.log(' ATTENTION ITEMS - one resolver, both screens');
 console.log('='.repeat(72));
 
 const money0 = (n) => '$' + Number(n || 0).toLocaleString('en-US');
+const proseMoney = makeProseMoney({ currency: { code: 'JMD', symbol: '$', locale: 'en-US' } });
 const formatDisplayDate = (d) => String(d);
 const noop = () => {};
+let rulesOpened = 0;
 
 // Stub detectors with deterministic output so the proof asserts the
 // resolver's ORDERING and SHAPING, independent of detector internals.
@@ -64,12 +67,16 @@ const deps = {
   fallback: 'Uncategorised',
   availableNow: { lead: { amount: -25000 }, confidence: 'complete' },
   money0,
+  proseMoney,
   formatDisplayDate,
   isUnrecognised,
   detectPossibleDuplicates,
   detectCategorySpikes,
   dismissReview: noop,
   pickStatements: noop,
+  openRulesSection: () => {
+    rulesOpened++;
+  },
   drillToTransactions: noop,
 };
 
@@ -89,7 +96,7 @@ note(
 const shortfall = items.find((i) => /run short/i.test(i.title));
 note(!!shortfall && shortfall.tone === 'blocking', 'shortfall before income is a BLOCKING item');
 note(
-  shortfall && /\$25,000/.test(shortfall.title),
+  shortfall && /\$25k/.test(shortfall.title),
   'shortfall names the amount from availableNow.lead'
 );
 
@@ -99,12 +106,32 @@ note(
   'both unreconciled statements (card + bank) are blocking'
 );
 
-// 3) review purchases folded into ONE optional item, counting both rows
-const review = optional.find((i) => /second look/i.test(i.title));
+const review = optional.find((i) => /to categorise/i.test(i.title));
 note(
-  !!review && /2 purchases/.test(review.title),
-  'unrecognised + needs-review rows fold into one optional item counting both'
+  !!review && review.title === 'Transactions to categorise' && !/2 purchases/.test(review.title),
+  'unrecognised + needs-review rows fold into one neutral optional item'
 );
+note(review.actions[0].label === 'Dismiss', 'optional review actions do not ask the app to judge a purchase as fine');
+review.onClick();
+note(rulesOpened === 1 && review.destination === 'rules', 'a review item opens Rules and categories directly when that destination is available');
+
+const compactItems = buildAttentionItems({
+  ...deps,
+  cardRows: [
+    { kind: 'spend', category: 'Uncategorised', confidence: 0, amount: 30000, reviewDismissed: false },
+    { kind: 'spend', category: 'Groceries', confidence: 1, needsReview: true, amount: 25000, reviewDismissed: false },
+  ],
+  availableNow: { lead: { amount: -25000 }, confidence: 'complete' },
+  detectPossibleDuplicates: () => [{ label: 'Test Merchant', amount: 40000, dates: ['2026-06-01', '2026-06-02'], ids: ['c', 'd'] }],
+  detectCategorySpikes: () => [{ category: 'Dining', amount: 60000, typical: 15000 }],
+  openRulesSection: null,
+});
+note(/\$25k/.test(compactItems.find((item) => /run short/i.test(item.title)).title), 'the shortfall row title uses prose money');
+const categorisation = compactItems.find((item) => /to categorise/i.test(item.title));
+note(categorisation.title === 'Transactions to categorise', 'the categorisation row title does not imply a count from another screen');
+note(categorisation.detail === 'Choose a category when you are ready.' && categorisation.actions[0].label === 'Dismiss' && categorisation.actions[1].label === 'Refine', 'the categorisation row keeps its detail and actions');
+note(/\$40k/.test(compactItems.find((item) => /duplicate/i.test(item.title)).title), 'the duplicate row title uses prose money');
+note(/\$60k vs a typical \$15k/.test(compactItems.find((item) => /higher than usual/i.test(item.title)).title), 'the category row title uses prose money for both amounts');
 
 // 4) duplicate + spike are optional
 note(
@@ -163,6 +190,26 @@ note(
     calm.filter((i) => i.tone === 'blocking').length === 0,
     'calm inputs produce zero blocking items (Overview would show its calm confirmation)'
   );
+}
+
+{
+  let nudgeOpened = 0;
+  const nudged = buildAttentionItems({
+    ...deps,
+    cardStatements: [{ reconciled: true }],
+    bankStatements: [{ reconciled: true }],
+    cardRows: [],
+    availableNow: null,
+    detectPossibleDuplicates: () => [],
+    detectCategorySpikes: () => [],
+    statementNudges: [{ ledger: 'bank', status: 'due' }],
+    openStatementNudge: () => {
+      nudgeOpened++;
+    },
+  });
+  const nudge = nudged.find((i) => /add your next account statement/i.test(i.title));
+  nudge.onClick();
+  note(!!nudge && nudge.destination === 'statement-nudge' && nudgeOpened === 1, 'a due statement opens its next-statement card directly');
 }
 
 console.log(`\n checks: ${pass} passed, ${fail} failed`);

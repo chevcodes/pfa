@@ -1,0 +1,104 @@
+@layer pfa-app {
+.pfa-proportion-track {
+  position: relative;
+}
+
+.pfa-proportion-chart {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 34px;
+  aspect-ratio: auto;
+  z-index: 0;
+}
+
+.pfa-proportion-cell.is-committed,
+.pfa-proportion-cell.is-fixed {
+  fill: var(--band-committed);
+}
+
+.pfa-proportion-cell.is-setAside {
+  fill: var(--band-setaside);
+}
+
+.pfa-proportion-cell.is-free {
+  fill: var(--band-free);
+}
+
+.pfa-proportion-cell.is-fund {
+  fill: var(--chart-in);
+}
+
+.pfa-proportion-cell.is-equity {
+  fill: var(--accent);
+}
+
+.pfa-proportion-target {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent !important;
+  cursor: default;
+}
+
+.pfa-proportion-target:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pfa-proportion-tooltip {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+}
+
+.pfa-proportion-legend-button {
+  width: 100%;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pfa-proportion-legend-button:hover {
+  background: var(--soft-hover);
+}
+
+.pfa-proportion-legend-button::after {
+  content: '›';
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pfa-proportion-legend-button[aria-expanded='true']::after {
+  transform: rotate(90deg);
+}
+
+.pfa-proportion-legend-button:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.pfa-proportion-legend-button + .proportion-legend-meaning {
+  margin: 0 0 4px 18px;
+}
+
+@media (max-width: 639px) {
+  .pfa-proportion-legend-button {
+    min-height: calc(var(--tap-lg) + var(--s2));
+    padding-block: var(--s2);
+    margin-block: calc(-1 * var(--s1));
+  }
+}
+}

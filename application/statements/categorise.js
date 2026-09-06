@@ -58,7 +58,12 @@ export function categorise(
   compiled,
   fallback = 'Uncategorised',
   resolver = null,
-  refundHint = null
+  refundHint = null,
+  // The resolver's card-vs-bank switch. Defaults to 'card' so every existing
+  // caller behaves exactly as before; the bank ledger passes 'bank' so a bank
+  // narrative gets the institution-strip and cleanup chain the resolver
+  // already defines for it, instead of being read as a card descriptor.
+  profile = 'card'
 ) {
   if (!description) return { category: fallback, confidence: 0 };
   // 1) Researched merchant identity first, via the ONE shared resolver
@@ -66,7 +71,7 @@ export function categorise(
   //    category wins; low-confidence merchants are flagged. This replaces the
   //    former direct resolveMerchant import so card and bank share one door.
   if (resolver) {
-    const r = resolver.resolve(description, { profile: 'card' });
+    const r = resolver.resolve(description, { profile });
     if (r.merchant) {
       const level = r.confidence;
       // Faithful to the previous rule: an explicit reviewRequired wins; otherwise

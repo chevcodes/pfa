@@ -1,3 +1,15 @@
+import { figuresHidden } from '../core/privacy.js';
+
+export const PROPORTION_PARTS = Object.freeze({
+  track: 'proportion-track',
+  segment: 'proportion-seg',
+  legend: 'proportion-legend',
+  legendRow: 'proportion-legend-row',
+  legendLabel: 'proportion-legend-label',
+  legendAmount: 'proportion-legend-amt',
+  legendShare: 'proportion-legend-share',
+});
+
 /* chart-helpers.js - the small, genuinely-shared building blocks the income
  * and flow charts both use. Deliberately NOT a "bar chart primitive": the two
  * charts differ for honest reasons (income is single-series on a zoomed band
@@ -5,20 +17,41 @@
  * out), so only the low-level scaffolding is shared, never the scale or
  * geometry. Each chart owns its own model. */
 
-// A month-label row aligned 1:1 under a bar strip. months: string[] 'YYYY-MM'.
-// missingSet: optional Set of months to render dimmed. el/shortMonth injected.
-export function monthLabelRow(el, months, shortMonth, missingSet) {
-  const row = el('div', { class: 'ch-months' });
-  for (const m of months) {
-    const dim = missingSet && missingSet.has(m);
-    row.append(el('span', { class: 'ch-month' + (dim ? ' is-dim' : '') }, shortMonth(m)));
-  }
-  return row;
-}
-
-// 'YYYY-MM' -> short month name, using the injected MONTHS_SHORT array.
-export function shortMonthOf(MONTHS_SHORT) {
-  return (ym) => MONTHS_SHORT[+String(ym).slice(5, 7) - 1] || ym;
+/* THE month-tick rule for every month-by-month chart.
+ *
+ * A bare "Jan" is unreadable once statements cross a year boundary: with two
+ * Januaries on one axis, the only way to tell them apart was to hover each
+ * point, and a chart you have to interrogate one point at a time is not a
+ * chart. The overall range printed elsewhere ("January 2025 - August 2026")
+ * confirms coverage but says nothing about which year any given column is.
+ *
+ * The year is printed under the first month, under the latest month (the end
+ * a scrollable chart opens at) and under every January, whether the series
+ * spans one calendar year or several. Pass the months being plotted; the
+ * returned formatter decides once for the whole axis, so ticks never disagree
+ * with each other about their own format.
+ *
+ * Used by every month chart. Nothing strips the year back off afterwards.
+ */
+export function monthTickOf(MONTHS_SHORT, months) {
+  const list = (months || []).map((m) => String(m && m.month ? m.month : m));
+  const years = new Set(list.map((m) => m.slice(0, 4)).filter(Boolean));
+  const multiYear = years.size > 1;
+  const first = list[0];
+  const last = list[list.length - 1];
+  const tick = (ym) => {
+    const key = String(ym);
+    const name = MONTHS_SHORT[+key.slice(5, 7) - 1];
+    if (!name) return key;
+    return multiYear ? `${name} ${key.slice(2, 4)}` : name;
+  };
+  tick.month = (ym) => MONTHS_SHORT[+String(ym).slice(5, 7) - 1] || String(ym);
+  tick.year = (ym) => {
+    const key = String(ym);
+    if (!MONTHS_SHORT[+key.slice(5, 7) - 1]) return '';
+    return key === first || key === last || key.slice(5, 7) === '01' ? key.slice(0, 4) : '';
+  };
+  return tick;
 }
 
 // Ordinal suffix for a day-of-month (1st, 2nd, 3rd...). Shared by both charts'
@@ -55,4 +88,46 @@ export function pairCards(wrap, a, b) {
     wrap.append(a, b);
   } else if (a) wrap.append(a);
   else if (b) wrap.append(b);
+}
+
+/* ---------------------------------------------------------------------
+ * THE private-view state for charts.
+ *
+ * A chart encodes a figure TWICE: once as printed text and once as shape.
+ * Masking only the text leaves the shape saying "this category dwarfs the
+ * rest" or "this month was the big one" - relative wealth, still perfectly
+ * legible with every number hidden. The old approach flattened a couple of
+ * known bar classes to one equal height, which fixed those two charts and
+ * left the treemap, the forecast area and every list bar untouched.
+ *
+ * So every chart in the app asks chartIsHidden() first and, when it is,
+ * returns this ONE placeholder instead of drawing. It is uniform across the
+ * treemap, the flow bars, the income bars and the forecast area, so the
+ * private view reads as a deliberate product state rather than as several
+ * charts failing in different ways. The card, its heading and its meaning
+ * line all stay - only the comparison goes.
+ * ------------------------------------------------------------------- */
+export function chartIsHidden() {
+  return figuresHidden();
+}
+
+export function targetBarGeometry(actual, target, scaleMax = 0) {
+  const spent = Math.max(0, Number(actual) || 0);
+  const planned = Math.max(0, Number(target) || 0);
+  const extent = Math.max(spent, planned, Number(scaleMax) || 0) || 1;
+  return {
+    fill: spent / extent * 100,
+    marker: planned / extent * 100,
+    over: spent > planned,
+  };
+}
+
+export function proportionShares(bands) {
+  const kept = (bands || []).filter((b) => Number(b.amount) >= 0);
+  const total = kept.reduce((sum, b) => sum + Number(b.amount), 0);
+  return {
+    bands: kept,
+    total,
+    shareOf: (b) => (total > 0 ? Math.round((Number(b.amount) / total) * 100) : 0),
+  };
 }

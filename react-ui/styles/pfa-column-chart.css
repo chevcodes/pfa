@@ -1,0 +1,32 @@
+@layer pfa-app {
+.pfa-column-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.pfa-column-tooltip {
+  top: 8px;
+  z-index: 2;
+  width: min(280px, 100%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.pfa-column-tooltip.is-leading {
+  transform: none;
+}
+
+.pfa-column-tooltip.is-trailing {
+  transform: translateX(-100%);
+}
+
+.pfa-column-chart .recharts-cartesian-grid-horizontal line {
+  stroke: var(--dim);
+  stroke-opacity: 0.12;
+}
+
+.pfa-column-chart .recharts-reference-line line {
+  stroke: var(--dim);
+  stroke-opacity: 0.6;
+}
+}

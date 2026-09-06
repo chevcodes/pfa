@@ -159,7 +159,8 @@ function rpTrendChart(doc, trend) {
   ]);
   kids.push(defs);
 
-  const short = trend.moneyShort || ((v) => String(Math.round(v)));
+  // Exact figures only - a printed/exported report never shortens money.
+  const short = trend.formatAxisMoney || ((v) => String(Math.round(v)));
   [0, max / 2, max].forEach((gv) => {
     const y = yOf(gv);
     kids.push(
@@ -194,7 +195,7 @@ function rpTrendChart(doc, trend) {
     );
     kids.push(
       rpSvg(doc, 'text', { x: W - padR, y: ay - 5, 'text-anchor': 'end', class: 'rp-axis-avg' }, [
-        doc.createTextNode(`avg ${trend.avgLabel || ''}`),
+        doc.createTextNode(`avg ${trend.avgMoney || ''}`),
       ])
     );
   }
@@ -318,10 +319,7 @@ export function renderReport(doc, model) {
           : value
       )
     );
-    if (sub)
-      b.appendChild(
-        rp(doc, 'div', { class: 'rp-sum-sub' + (opts.tone ? ' tone-' + opts.tone : '') }, sub)
-      );
+    if (sub) b.appendChild(rp(doc, 'div', { class: 'rp-sum-sub' }, sub));
     return b;
   };
   grid.appendChild(
@@ -329,7 +327,7 @@ export function renderReport(doc, model) {
       'Total spend',
       s.totalSpend,
       s.vsPrev ? `${s.vsPrev.text} (was ${s.vsPrev.prevMoney})` : 'No comparable period yet',
-      { lead: true, tone: s.vsPrev ? s.vsPrev.dir : null }
+      { lead: true }
     )
   );
   grid.appendChild(block('Purchases', s.nPurchases, s.vsAvg || null));
@@ -389,7 +387,7 @@ export function renderReport(doc, model) {
       );
     }
     tbl.appendChild(tb);
-    trendSec.appendChild(tbl);
+    trendSec.appendChild(rp(doc, 'div', { class: 'rp-table-wrap', tabindex: '0', 'aria-label': 'Spending history table' }, tbl));
   } else {
     trendSec.appendChild(
       rp(doc, 'p', { class: 'rp-empty' }, 'No monthly spending to chart for this period.')
@@ -512,7 +510,7 @@ export function renderReport(doc, model) {
         doc,
         'p',
         { class: 'rp-empty' },
-        `A calm ${String(model.period).toLowerCase()} - nothing stands out against the usual pattern.`
+        `No material change was detected against the usual pattern for ${String(model.period).toLowerCase()}.`
       )
     );
   }
@@ -592,7 +590,7 @@ export function renderReport(doc, model) {
  * every .rp-* print style, so it prints light-on-white, paginates, and repeats
  * table headers exactly like the card report. Same DOM-standard, escape-safe
  * construction: every dynamic value is inserted as text, never markup. */
-export function renderBankReport(doc, model) {
+export function renderBankReport(doc, model, title = 'Account activity report') {
   const root = rp(doc, 'div', { class: 'rp' });
   const heading = (iconName, text) =>
     rp(doc, 'h2', { class: 'rp-h' }, reportIconEl(doc, iconName, 18), rp(doc, 'span', {}, text));
@@ -610,7 +608,7 @@ export function renderBankReport(doc, model) {
         reportIconEl(doc, 'card', 22),
         rp(doc, 'span', { class: 'rp-brand-name' }, model.app)
       ),
-      rp(doc, 'h1', { class: 'rp-title' }, 'Account activity report'),
+      rp(doc, 'h1', { class: 'rp-title' }, title),
       rp(
         doc,
         'div',
@@ -779,6 +777,7 @@ export function renderBankReport(doc, model) {
           rp(doc, 'th', { class: 'nowrap' }, 'Date'),
           rp(doc, 'th', {}, 'Account'),
           rp(doc, 'th', {}, 'Counterparty'),
+          rp(doc, 'th', {}, 'Category'),
           rp(doc, 'th', {}, 'Flow'),
           rp(doc, 'th', { class: 'num' }, `Amount (${model.currencyCode})`),
           rp(doc, 'th', { class: 'num' }, 'Balance')
@@ -795,6 +794,7 @@ export function renderBankReport(doc, model) {
           rp(doc, 'td', { class: 'nowrap' }, r.date),
           rp(doc, 'td', { class: 'nowrap' }, r.account),
           rp(doc, 'td', { class: 'rp-wrap' }, r.description),
+          rp(doc, 'td', { class: 'rp-wrap' }, r.category),
           rp(doc, 'td', {}, r.flow),
           rp(doc, 'td', { class: 'num' + (r.credit ? ' rp-credit' : '') }, r.amount),
           rp(doc, 'td', { class: 'num' }, r.balance)
@@ -893,7 +893,7 @@ export function renderOverviewReport(doc, model) {
   };
   grid.appendChild(block('Net cash flow', s.netCashFlow, s.netSub, true));
   grid.appendChild(
-    block('Cash inflow', s.moneyIn, 'External income; transfers between your own accounts excluded')
+    block('Cash inflow', s.moneyIn, 'Money in from others; transfers between your own accounts excluded')
   );
   grid.appendChild(block('Cash outflow', s.moneyOut, s.moneyOutSub));
   grid.appendChild(block('Cash on hand', s.cashOnHand, model.hasCard ? s.cardOwedSub : null));
@@ -911,7 +911,7 @@ export function renderOverviewReport(doc, model) {
     doc,
     'section',
     { class: 'rp-block rp-avoid' },
-    heading('chart', model.hasCard ? 'Income and spending over time' : 'Cash flow over time')
+    heading('chart', model.hasCard ? 'Money in and spending over time' : 'Cash flow over time')
   );
   if (model.trend.length) {
     const t = rp(doc, 'table', { class: 'rp-mini' });
@@ -946,7 +946,7 @@ export function renderOverviewReport(doc, model) {
       );
     }
     t.appendChild(tb);
-    trendSec.appendChild(t);
+    trendSec.appendChild(rp(doc, 'div', { class: 'rp-table-wrap', tabindex: '0', 'aria-label': 'Cash flow history table' }, t));
     trendSec.appendChild(rp(doc, 'p', { class: 'rp-note' }, model.trendNote));
   } else {
     trendSec.appendChild(
@@ -1019,4 +1019,66 @@ export function renderOverviewReport(doc, model) {
   );
 
   return root;
+}
+
+export function renderPlanSection(doc, model) {
+  if (!model) return null;
+  const wrap = rp(doc, 'section', { class: 'rp-sec rp-plan' });
+  wrap.appendChild(
+    rp(doc, 'h2', { class: 'rp-h' }, reportIconEl(doc, 'chart', 18), rp(doc, 'span', {}, model.title))
+  );
+  wrap.appendChild(
+    rp(
+      doc,
+      'p',
+      { class: 'rp-note' },
+      `Take-home ${model.takeHome} in a normal month, from ${model.basis}.` +
+        (model.usingDefault ? ' Shares are the starting 60/20/20 split; no plan has been saved yet.' : '')
+    )
+  );
+
+  const table = rp(doc, 'table', { class: 'rp-table rp-plan-table' });
+  const thead = rp(doc, 'thead');
+  const hrow = rp(doc, 'tr');
+  for (const h of ['Group', 'Typical month', 'Share', 'Plan', 'Target', 'Tracking']) {
+    hrow.appendChild(rp(doc, 'th', {}, h));
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+  const tbody = rp(doc, 'tbody');
+  for (const g of model.groups) {
+    const row = rp(doc, 'tr');
+    row.appendChild(rp(doc, 'td', {}, g.label));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.actual));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.share));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.target));
+    row.appendChild(rp(doc, 'td', { class: 'rp-num' }, g.targetShare));
+    row.appendChild(rp(doc, 'td', {}, g.tracking));
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(rp(doc, 'div', { class: 'rp-table-wrap', tabindex: '0', 'aria-label': 'Monthly plan table' }, table));
+
+  wrap.appendChild(
+    rp(
+      doc,
+      'p',
+      { class: 'rp-note' },
+      `${model.free.amount} ${model.free.label}. ${model.free.note}`
+    )
+  );
+  if (model.unaccounted) {
+    wrap.appendChild(
+      rp(doc, 'p', { class: 'rp-note' }, `${model.unaccounted} a month did not go out at all.`)
+    );
+  }
+  if (model.drawdown) wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, model.drawdown));
+  for (const f of model.foreign) wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, f));
+  if (model.savedOn) {
+    wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, `Plan saved ${model.savedOn}.`));
+  }
+  if (model.gaps.length) {
+    wrap.appendChild(rp(doc, 'p', { class: 'rp-note' }, `Thin on data: ${model.gaps.join('; ')}.`));
+  }
+  return wrap;
 }

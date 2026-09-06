@@ -1,0 +1,58 @@
+@layer pfa-app {
+.tm-react-chart {
+  position: absolute;
+  inset: 0;
+}
+
+.tm-react-tooltip {
+  top: 8px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+}
+
+.tm-react-chart .tm-tile {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tm-react-chart .tm-tile:hover {
+  filter: brightness(1.12) saturate(1.05);
+}
+
+.tm-react-chart .tm-tile:focus-visible .tm-rect {
+  stroke: var(--accent);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.tm-react-chart .tm-label,
+.tm-react-chart .tm-value,
+.tm-react-chart .tm-share {
+  pointer-events: none;
+  user-select: none;
+  font-family: inherit;
+}
+
+.tm-react-chart .tm-label {
+  font-weight: 650;
+}
+
+.tm-react-chart .tm-value,
+.tm-react-chart .tm-share {
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-category-row[data-active='true'] {
+  border-color: var(--accent);
+  background: var(--soft-hover);
+}
+
+.tm-react-chart .tm-tile[data-active='true'] {
+  filter: brightness(1.12) saturate(1.05);
+}
+
+.tm-react-chart:has(.tm-tile[data-active='true']) .tm-tile:not([data-active='true']) {
+  opacity: 0.55;
+}
+}

@@ -1,6 +1,5 @@
 /* Copies the pdf.js browser build into ./vendor, so the app loads pdf.js
- * locally on every platform (Electron, the web version, the installed PWA)
- * with no CDN dependency and no bundler step.
+ * locally in the installed PWA with no CDN dependency.
  *
  * Runs as the project's postinstall script; safe to run again at any time -
  * it always overwrites the two vendored files with whatever pdfjs-dist

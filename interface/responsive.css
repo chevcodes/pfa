@@ -1,42 +1,11 @@
+@layer pfa-app {
 /* ---------- Responsive tiers ---------- */
 @media (max-width: 639px) {
-  /* Single-row header: brand truncates, Add stays labelled, Export and theme
-     collapse to icons (their labels are hidden, glyphs shown via .nav-ic). */
-  :root {
-    --card-pad-x: 18px;
-    --card-pad-y: 16px;
-  }
-  .topbar {
-    gap: 8px;
-    padding-top: calc(10px + env(safe-area-inset-top));
-    padding-bottom: 10px;
-  }
-  .brand {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .top-actions {
-    flex: 0 0 auto;
-    gap: 8px;
-  }
   .nav-ic {
     display: inline-flex;
   }
   #export-btn .caret {
     display: none;
-  }
-  #export-btn {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-  #theme-btn.icon-btn {
-    min-width: 44px;
-  }
-  .menu {
-    min-width: min(
-      280px,
-      calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right))
-    );
   }
   .btn .btn-label {
     display: none;
@@ -46,7 +15,6 @@
   }
   .btn,
   .btn.sm,
-  .menu-item,
   .cat-tag-btn,
   .chip,
   .f-check,
@@ -63,10 +31,6 @@
   .btn.sm {
     padding-top: 10px;
     padding-bottom: 10px;
-  }
-  .menu-item {
-    padding-top: 11px;
-    padding-bottom: 11px;
   }
   .cat-tag-btn {
     padding-top: 10px;
@@ -144,16 +108,13 @@
   .f-range .muted {
     flex: 0 0 auto;
   }
-  /* 16px text on every focusable field stops iOS Safari auto-zooming (and the
-     layout jump) when a field is tapped. Padding, height and chevrons unchanged. */
-  .filters input:not([type='checkbox']):not([type='radio']),
-  .filters select,
-  .period-select,
-  .mini,
-  .mobile-sort-field,
-  .pass {
-    font-size: 16px;
-  }
+  /* The 16px-at-narrow-widths rule that used to live here is gone. It existed
+     to stop iOS Safari zoom-jumping on a field under 16px, which is an ENGINE
+     problem, not a width one - and it was also making every field in a narrow
+     desktop window a third larger than the same kind of field two screens
+     away. That one exception now lives on --t-field itself, under
+     `@supports (-webkit-touch-callout: none)`, and reaches every field
+     through the single element rule in controls.css. */
   .f-check {
     width: 100%;
     justify-content: flex-start;
@@ -190,7 +151,6 @@
     border-radius: 9px;
     background: var(--panel);
     color: var(--fg);
-    font-size: 16px; /* 16px avoids iOS focus-zoom */
     -webkit-appearance: none;
     appearance: none;
     background-image: var(--select-chevron);
@@ -201,38 +161,15 @@
     min-width: 96px;
     justify-content: center;
   }
-  .mobile-context {
-    display: block;
-    margin: 4px 0 0;
-  }
   .wrap {
     padding-top: 14px;
     gap: 14px;
   }
-  .hero {
-    padding: var(--card-pad-y) var(--card-pad-x);
-  }
-  .hero-head {
-    flex-direction: column;
-  }
-  .hero-title {
-    font-size: 20px;
-  }
   .hero-figure {
     min-width: 0;
   }
-  .hero-amount {
-    font-size: 30px;
-  }
-  .hero-body {
-    gap: 14px 24px;
-  }
   .row2 {
     grid-template-columns: 1fr;
-  }
-  .trend-bars {
-    gap: 6px;
-    height: 132px;
   }
   .table-wrap.sticky table.grid thead th {
     position: static;
@@ -253,14 +190,14 @@
     grid-template-areas:
       'name amount'
       'ledger date';
-    column-gap: 12px;
-    row-gap: 3px;
+    column-gap: var(--s3);
+    row-gap: var(--s0);
     align-items: baseline;
     border: 0;
     border-top: 1px solid var(--edge);
     border-radius: 0;
     margin: 0;
-    padding: 12px 0;
+    padding: var(--s3) 0;
     min-height: var(--tap-lg);
   }
   table.grid.tx tbody tr.tx-row:first-child {
@@ -270,9 +207,6 @@
     border: 0;
     padding: 0;
   }
-  /* Cell order in the merged ledger table: 1 date, 2 description (rich -
-     name, category/tag line, review reason all nested inside), 3 ledger,
-     4 amount. */
   table.grid.tx tr.tx-row td:nth-child(2) {
     grid-area: name;
     min-width: 0;
@@ -306,212 +240,13 @@
   table.grid.tx td[data-label]::before {
     content: none;
   }
-  /* The category on the row stays tappable (it opens the picker), but it must
-     not reclaim the height the coarse-pointer 44px target would add here; the
-     whole row is already a large tap target that opens the detail panel. */
   table.grid.tx tr.tx-row button.cat-tag-btn {
-    min-height: 0;
     padding: 0;
-  }
-  /* Top places: same cohesive-rows treatment as the transaction list - a
-     hairline divider between rows inside the one parent card, matching spacing
-     and type scale, rather than nested cards. */
-  .merch thead {
-    display: none;
-  }
-  table.grid.merch,
-  table.grid.merch tbody,
-  table.grid.merch td {
-    display: block;
-    width: 100%;
-  }
-  .merch tbody tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'name  total'
-      'cat   times'
-      'avg   share';
-    column-gap: 12px;
-    row-gap: 2px;
-    align-items: baseline;
-    border: 0;
-    border-top: 1px solid var(--edge);
-    border-radius: 0;
-    margin: 0;
-    padding: 12px 0;
-    min-height: var(--tap-lg);
-  }
-  .merch tbody tr:first-child {
-    border-top: 0;
-  }
-  .merch tbody tr:has(.show-more) {
-    display: block;
-    border-top: 0;
-    padding: 10px 0 0;
-    min-height: 0;
-  }
-  .merch tbody tr td {
-    border: 0;
-    padding: 0;
-  }
-  /* Row 1: place name (wraps on word boundaries) + prominent total, right. */
-  .merch td:nth-child(1) {
-    grid-area: name;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    font-weight: 600;
-  }
-  .merch td:nth-child(4) {
-    grid-area: total;
-    text-align: right;
-    white-space: nowrap;
-    font-weight: 680;
-    font-size: 14px;
-  }
-  /* Row 2: category + times count. */
-  .merch td:nth-child(2) {
-    grid-area: cat;
-    color: var(--dim);
-    font-size: 12px;
-    overflow-wrap: anywhere;
-  }
-  .merch td:nth-child(3) {
-    grid-area: times;
-    text-align: right;
-    white-space: nowrap;
-    color: var(--dim);
-    font-size: 12px;
-  }
-  .merch td:nth-child(3)::before {
-    content: 'Times ';
-  }
-  /* Row 3: average and share as one small muted secondary line. */
-  .merch td:nth-child(5),
-  .merch td:nth-child(6) {
-    color: var(--dim);
-    font-size: 11.5px;
-    white-space: nowrap;
-  }
-  .merch td:nth-child(5) {
-    grid-area: avg;
-    text-align: left;
-  }
-  .merch td:nth-child(6) {
-    grid-area: share;
-    text-align: right;
-  }
-  .merch td:nth-child(5)::before {
-    content: 'Avg ';
-  }
-  .merch td:nth-child(6)::before {
-    content: 'Share ';
-  }
-  table.grid.banktx thead {
-    display: none;
-  }
-  table.grid.banktx,
-  table.grid.banktx tbody,
-  table.grid.banktx tr,
-  table.grid.banktx td {
-    display: block;
-    width: 100%;
-  }
-  table.grid.banktx tbody tr {
-    display: grid;
-    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      'name  name     name  name  amount'
-      'flow  account  pair  .     date';
-    column-gap: 8px;
-    row-gap: 1px;
-    align-items: baseline;
-    border: 0;
-    border-top: 1px solid var(--edge);
-    border-radius: 0;
-    margin: 0;
-    padding: 9px 0;
-    min-height: 0;
-  }
-  table.grid.banktx tbody tr:first-child {
-    border-top: 0;
-  }
-  table.grid.banktx td {
-    border: 0;
-    padding: 0;
-  }
-  table.grid.banktx td:has(.desc) {
-    display: contents;
-  }
-  table.grid.banktx .desc {
-    grid-area: name;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    font-weight: 600;
-    font-size: 13.5px;
-  }
-  table.grid.banktx td.num.amt {
-    grid-area: amount;
-    position: static;
-    top: auto;
-    right: auto;
-    text-align: right;
-    white-space: nowrap;
-    font-weight: 700;
-    font-size: 14px;
-  }
-  table.grid.banktx td:has(.ktag) {
-    grid-area: flow;
-    min-width: 0;
-    color: var(--dim);
-    font-size: 11px;
-  }
-  table.grid.banktx td.muted.nowrap {
-    grid-area: account;
-    justify-self: start;
-    text-align: left;
-    color: var(--dim);
-    font-size: 11px;
-  }
-  table.grid.banktx td.num.muted {
-    grid-area: account;
-    justify-self: start;
-    text-align: left;
-    color: var(--dim);
-    font-size: 11px;
-  }
-  table.grid.banktx .linkbtn.small {
-    grid-area: pair;
-    justify-self: start;
-    align-self: baseline;
-    font-size: 11px;
-    padding: 0;
-    min-height: 0;
-  }
-  table.grid.banktx td:first-child {
-    grid-area: date;
-    text-align: right;
-    white-space: nowrap;
-    color: var(--dim);
-    font-size: 11px;
-  }
-  table.grid.banktx tbody tr:has(.show-more) {
-    display: block;
-    border-top: 0;
-    padding: 10px 0 0;
-    min-height: 0;
-  }
-  table.grid.banktx tbody tr.tx-detail {
-    display: block;
-    border-top: 0;
   }
   .tx-detail td {
     display: block;
   }
-  .toast,
-  .install-banner {
+  .pfa-sonner [data-sonner-toast] {
     max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
   }
 }
@@ -550,10 +285,9 @@
   }
 }
 
-@media (pointer: fine) {
+@media (pointer: fine) and (min-width: 640px) {
   .btn,
   .btn.sm,
-  .menu-item,
   .cat-tag-btn,
   .chip,
   .f-check,
@@ -566,10 +300,6 @@
   .btn.sm {
     padding-top: 6px;
     padding-bottom: 6px;
-  }
-  .menu-item {
-    padding-top: 9px;
-    padding-bottom: 9px;
   }
   .cat-tag-btn {
     padding-top: 4px;
@@ -591,11 +321,14 @@
   }
 }
 
+/* Tablets: coarse AND wide. This is the one case the width axis genuinely
+   cannot distinguish from a desktop, so the pointer query earns its place here
+   - unlike the phone-width rules, which were moved off it. .cat-tag-btn is gone
+   with the element: catTag() only produces a button when passed an onclick, and
+   no call site does. */
 @media (pointer: coarse) and (min-width: 640px) {
   .btn,
   .btn.sm,
-  .menu-item,
-  .cat-tag-btn,
   .chip,
   .f-check,
   .period-select,
@@ -605,4 +338,4 @@
     min-height: var(--tap-lg);
   }
 }
-
+}

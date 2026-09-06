@@ -10,23 +10,31 @@
  * live overlay through getPickerEl() instead of the bare pickerEl variable.
  *
  * setCategory stays internal (only openCategoryPicker calls it); the factory
- * returns just openCategoryPicker and dismissReview, the two names app.js
- * still calls from txTable and renderAttention.
+ * returns openCategoryPicker and openTagPicker, the names app.js still calls
+ * from txTable. Marking something reviewed is an answer about an inference, so
+ * it lives with every other answer in ui/confirm-control.js.
  */
 
 import {
-  orderCategoriesForPicker,
 } from '../analysis/reporting-core.js';
 import {
   merchantRuleKeyFromDescription,
   upsertCategoryRule,
+  listCategoryRules,
 } from '../../settings/category-rules.js';
-import { requireCtx } from '../core/shared-helpers.js';
+import { dirOf, isInternal, requireCtx, transactionName } from '../core/shared-helpers.js';
 import { transactionIdentity } from '../statements/read-statements.js';
+import { bankRuleMatch } from '../analysis/bank-categorise.js';
 import { Store } from '../core/storage.js';
 import { makeSplit, validateSplit, balanceParts } from '../analysis/transaction-splits.js';
+import { categoryNameExists } from '../analysis/custom-categories.js';
+import { groupForCategory, planGroups, resolveGroupMap } from '../analysis/plan.js';
 import { spendableCategoryNames } from '../analysis/spendable-categories.js';
+import { categoryMeta, categoryConfirmation, pickerCategoryNames, sortCategoryNames } from '../analysis/category-flow.js';
 import { tagAdd, tagRemove } from '../analysis/tag-totals.js';
+import { makeMoney } from '../core/money-format.js';
+import { commitAndRender } from './reversible.js';
+import { categoryPickerReact, transactionSplitEditorReact, transactionTagPickerReact } from './react-bridge.js';
 
 export function createCategoryPicker(ctx) {
   requireCtx(
@@ -45,6 +53,15 @@ export function createCategoryPicker(ctx) {
       'catColour',
       'isReview',
       'trackUsage',
+      'confirmSections',
+      'openRulesSection',
+      'createTag',
+      'createCategory',
+      'openPaymentEditor',
+      'setCategoryBand',
+      'classifiedBank',
+      'confirmAnswer',
+      'dropCategoryRule',
     ],
     'createCategoryPicker'
   );
@@ -62,93 +79,255 @@ export function createCategoryPicker(ctx) {
     catColour,
     isReview,
     trackUsage,
+    confirmSections,
+    openRulesSection,
+    createTag,
+    createCategory,
+    openPaymentEditor,
+    setCategoryBand,
+    classifiedBank,
+    confirmAnswer,
+    dropCategoryRule,
   } = ctx;
 
-  function openCategoryPicker(row) {
-    closePicker();
-    const cats = state.cfg.categories.map((c) => c.name);
-    // Categories already present in the current data, most-used first, so the
-    // most likely corrections sit near the top (ordering only, no stored state).
-    const counts = {};
-    for (const r of state.rows) counts[r.category] = (counts[r.category] || 0) + 1;
-    const present = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    const ordered = orderCategoriesForPicker(cats, row.category, present);
-    // Show the SAME canonical clean name the transaction list shows, so the
-    // picker title and scope line read "Amazon", not "Www.Amazon* 113-217508".
-    // Matching still keys on row.raw_description below, so behaviour is unchanged.
-    const place = row.displayName || row.description.split(',')[0].replace(/\s+/g, ' ').trim();
-    const list = el('div', { class: 'picker-list' });
-    for (const c of ordered) {
-      const label = isReview(c) ? 'To review' : c;
-      list.append(
-        el(
-          'button',
-          {
-            class: 'picker-item' + (c === row.category ? ' current' : ''),
-            dataset: { name: label.toLowerCase() },
-            onclick: () => setCategory(row, c),
-          },
-          el('span', { class: 'cat-dot', style: `background:${catColour(c)}` }),
-          label,
-          c === row.category ? el('span', { class: 'muted small' }, ' current') : null
-        )
-      );
-    }
-    // Type-to-filter: correcting a category is the most repeated action, and the
-    // list is long on a phone. Filtering is case-insensitive on the shown name.
-    const noMatch = el(
-      'div',
-      { class: 'picker-empty muted small', hidden: '' },
-      'No matching category.'
-    );
-    const filter = el('input', {
-      type: 'text',
-      class: 'picker-filter',
-      placeholder: 'Filter categories…',
-      'aria-label': 'Filter categories',
-      oninput: (e) => {
-        const q = e.target.value.trim().toLowerCase();
-        let visible = 0;
-        for (const item of list.children) {
-          const hit = !q || item.dataset.name.includes(q);
-          item.hidden = !hit;
-          if (hit) visible++;
-        }
-        noMatch.hidden = visible > 0;
+  // Categorised bank rows, for ordering only - never for a total.
+  const bankRowsForOrdering = () => classifiedBank() || [];
+
+  /* ONE door for "how is this transaction treated". The category tag on a row
+   * is the control a person already reaches for to change that, so every
+   * answer about this transaction is behind it rather than beside it.
+   *
+   * A bank row has no category to choose - its category comes from the rules
+   * engine, which is stated here rather than left to be discovered - but it
+   * does have the answers that move its figures, so the same tag now opens
+   * this dialog on both ledgers instead of being inert on one of them. */
+
+  function bandInfo(row) {
+    const name = row.category;
+    if (!name || isReview(name) || categoryMeta(state.cfg, name)?.flow !== 'out') return null;
+    const groups = planGroups(state.cfg);
+    const map = resolveGroupMap(state.cfg, state._planGroups || null);
+    return { name, groups, current: groupForCategory(name, map) };
+  }
+
+  function governingRule(matchText) {
+    const key = matchText ? merchantRuleKeyFromDescription(matchText) : '';
+    if (!key) return null;
+    return listCategoryRules(state.rules, state.brandRules, state.merchants).find((r) => r.key === key) || null;
+  }
+
+  function stopRuleButton(matchText) {
+    const rule = governingRule(matchText);
+    if (!rule) return { visible: true, removable: false, focusKey: merchantRuleKeyFromDescription(matchText) };
+    return {
+      visible: true,
+      removable: true,
+      focusKey: rule.key,
+      title: `Stop filing every "${rule.label}" as ${rule.category}`,
+      ariaLabel: `Remove the rule filing ${rule.label} as ${rule.category}`,
+      onclick: () => {
+        closePicker();
+        dropCategoryRule(rule);
       },
+    };
+  }
+
+  function openCategoryPicker(row, ledger = 'card') {
+    closePicker();
+    if (ledger === 'bank') return openBankClassification(row);
+    const cats = pickerCategoryNames(state.cfg, 'card');
+    const ordered = cats;
+    const place = row.displayName || row.description.split(',')[0].replace(/\s+/g, ' ').trim();
+    const rules = stopRuleButton(row.raw_description);
+    const manageRulesLabel = 'Manage rules';
+    const box = el('div', { class: 'picker', role: 'dialog', 'aria-label': 'Change category' });
+    categoryPickerReact(box, {
+      place,
+      categories: ordered.map((value) => ({ value, label: isReview(value) ? 'To review' : value, color: catColour(value) })),
+      currentCategory: row.category,
+      reviewCategory: isReview,
+      bank: false,
+      band: bandInfo(row),
+      rules,
+      splitEnabled: row.kind === 'spend',
+      manageRulesLabel,
+      makerAvailable: (name) => !categoryNameExists(name, state.cfg.categories),
+      onAssign: (category, applyAll) => setCategory(row, category, { applyAll }),
+      onMake: async (name, applyAll) => {
+        closePicker();
+        const made = await createCategory(name);
+        if (made) await setCategory(row, name, { applyAll });
+      },
+      onBand: (key) => {
+        const picked = planGroups(state.cfg).find((group) => group.key === key);
+        closePicker();
+        setCategoryBand(row.category, key, picked ? picked.label : key);
+      },
+      onDecisionOpen: (decision) => { decision.open = true; },
+      onSplit: () => {
+        closePicker();
+        openSplitEditor(row);
+      },
+      onStopRule: rules.onclick,
+      onManageRules: () => {
+        closePicker();
+        openRulesSection(rules.focusKey);
+      },
+      onCancel: closePicker,
     });
-    const scopeOnly = el(
-      'label',
-      { class: 'scope' },
-      el('input', { type: 'radio', name: 'scope', value: 'one', checked: '' }),
-      ' Only this transaction'
-    );
-    const scopeAll = el(
-      'label',
-      { class: 'scope' },
-      el('input', { type: 'radio', name: 'scope', value: 'all' }),
-      ` Every “${place}” charge, now and in future`
-    );
-    const box = el(
-      'div',
-      { class: 'picker', role: 'dialog', 'aria-label': 'Change category' },
-      el('div', { class: 'picker-head' }, `File “${place}” as`),
-      filter,
-      list,
-      noMatch,
-      el('div', { class: 'picker-scope' }, scopeOnly, scopeAll),
-      el(
-        'div',
-        { class: 'picker-actions' },
-        el(
-          'button',
-          { class: 'btn sm ghost', onclick: () => openSplitEditor(row) },
-          'Split across categories'
-        ),
-        el('button', { class: 'btn sm ghost', onclick: closePicker }, 'Cancel')
-      )
-    );
     openModal(box);
+  }
+
+  /* The bank half of the same door. A bank row has no per-row category store -
+   * its category is worked out from the rules at render time - so filing one
+   * writes the rule, which is why the scope line states it plainly instead of
+   * offering a choice that does not exist here. Everything else is identical:
+   * the same list, the same filter, the same tap.
+   *
+   * This is what makes a transfer a first-class transaction. Rent, an
+   * allowance, child support and money sent to family are paid this way, and
+   * until now they could be given no category at all - so they could never
+   * reach the Fixed expenses band, and sat in the figures as unexplained
+   * movement. */
+  function openBankClassification(row) {
+    const place = transactionName(row) || 'this transaction';
+    const credit = dirOf(row) === 'in';
+    const cats = pickerCategoryNames(state.cfg, 'bank', dirOf(row));
+    const currentCategory = categoryMeta(state.cfg, row.category);
+    const ordered = credit && currentCategory && currentCategory.selectable !== false && !cats.includes(row.category)
+      ? sortCategoryNames([...cats, row.category], state.cfg)
+      : cats;
+    const rules = stopRuleButton(bankRuleMatch(row));
+    const manageRulesLabel = 'Manage rules';
+    const box = el('div', { class: 'picker', role: 'dialog', 'aria-label': 'Change category' });
+    categoryPickerReact(box, {
+      place,
+      categories: ordered.map((value) => ({ value, label: isReview(value) ? 'To review' : value, color: catColour(value) })),
+      currentCategory: row.category,
+      reviewCategory: isReview,
+      bank: true,
+      band: credit ? null : bandInfo(row),
+      newCategoryBands: credit ? null : planGroups(state.cfg),
+      paymentAvailable: dirOf(row) === 'out' && !isInternal(row),
+      rules,
+      splitEnabled: false,
+      manageRulesLabel,
+      makerAvailable: (name) => !credit && !categoryNameExists(name, state.cfg.categories),
+      onAssign: (category, applyAll) => setBankCategory(row, category, { applyAll }),
+      onMake: async (name, applyAll, newBand, makePayment) => {
+        closePicker();
+        const made = await createCategory(name, newBand);
+        if (made) {
+          await setBankCategory(row, name, { applyAll });
+          if (makePayment) openPaymentEditor({ row: { ...row, category: name } });
+        }
+      },
+      onPayment: (category) => { closePicker(); openPaymentEditor({ row: { ...row, category } }); },
+      onBand: (key) => {
+        const picked = planGroups(state.cfg).find((group) => group.key === key);
+        closePicker();
+        setCategoryBand(row.category, key, picked ? picked.label : key);
+      },
+      onDecisionOpen: (decision) => { decision.open = true; },
+      onStopRule: rules.onclick,
+      onManageRules: () => {
+        closePicker();
+        openRulesSection(rules.focusKey);
+      },
+      onCancel: closePicker,
+    });
+    openModal(box);
+  }
+
+  /* The rule keys on whatever actually identifies the row - the same expression
+   * the bank categoriser reads it back with (bankRuleMatch). Reading
+   * row.description here on its own quietly wrote nothing for every row whose
+   * identity is its statement TYPE rather than a payee line, which is a tenth
+   * of a real bank ledger: interest, withholding tax, government tax, memos.
+   *
+   * And a rule that cannot be written is never announced as written. cleanRule
+   * drops an unusable one silently, so the result is checked rather than
+   * assumed - the old code said "Filed every X" over a store it had not
+   * changed. */
+  async function setBankCategory(row, category, { applyAll = false } = {}) {
+    closePicker();
+    if (category !== row.category && !pickerCategoryNames(state.cfg, 'bank', dirOf(row)).includes(category)) return;
+    const place = transactionName(row) || 'this transaction';
+    const match = bankRuleMatch(row);
+    const matchKey = merchantRuleKeyFromDescription(match);
+    const beforeRules = state.rules.map((r) => ({ ...r }));
+    const beforeRecords = state.bankRecords;
+    let changed = false;
+    const nextRecords = beforeRecords.map((record) => {
+      const isTarget = applyAll
+        ? !!matchKey && merchantRuleKeyFromDescription(bankRuleMatch(record)) === matchKey
+        : record.id === row.id;
+      if (!isTarget) return record;
+      changed = true;
+      return { ...record, categoryOverride: applyAll ? null : category };
+    });
+    if (!changed) {
+      toast(applyAll ? `No transactions matched “${place}”.` : 'This transaction could not be found.');
+      return;
+    }
+    let merged = null;
+    if (applyAll) {
+      if (!match) {
+        toast(`This transaction has nothing to match on, so no rule was written for “${place}”.`);
+        return;
+      }
+      merged = upsertCategoryRule(state.rules, { match, category }, new Date());
+      if (!merged.inserted && !merged.updated) {
+        toast(`“${place}” is already filed as ${category}.`);
+        return;
+      }
+    }
+    const commitCategory = async () => {
+        state.bankRecords = nextRecords;
+        await Store.replaceBankTransactions(nextRecords);
+        if (applyAll) {
+          state.rules = merged.rules;
+          await persistRules();
+        }
+        trackUsage(applyAll ? 'activity-file-bank-transactions' : 'activity-file-bank-transaction');
+    };
+    const undoCategory = async () => {
+      state.bankRecords = beforeRecords;
+      await Store.replaceBankTransactions(beforeRecords);
+      if (applyAll) {
+        state.rules = beforeRules.map((r) => ({ ...r }));
+        await persistRules();
+      }
+    };
+    const targets = applyAll
+      ? bankRowsForOrdering().filter((record) => merchantRuleKeyFromDescription(bankRuleMatch(record)) === matchKey)
+      : [row];
+    const answers = targets.map((record) => categoryConfirmation(state.cfg, category, record)).filter(Boolean);
+    if (answers.length) {
+      const { inference, answer, scope } = answers[0];
+      await confirmAnswer({
+        inference,
+        subjects: [...new Set(answers.filter((item) => item.inference === inference).map((item) => item.subject).filter(Boolean))],
+        answer,
+        scope,
+        commit: commitCategory,
+        undo: undoCategory,
+        describe: applyAll ? `Filed every “${place}” as ${category}.` : `Filed as ${category}.`,
+      });
+      return;
+    }
+    await commitAndRender({
+      commit: commitCategory,
+      render,
+      notify: () =>
+        toast(applyAll ? `Filed every “${place}” as ${category}.` : `Filed as ${category}.`, async () => {
+          await commitAndRender({
+            commit: undoCategory,
+            render,
+            notify: () => toast('Put back.'),
+          });
+        }),
+    });
   }
 
   /* ===========================================================================
@@ -167,8 +346,7 @@ export function createCategoryPicker(ctx) {
     const target = Math.round(Math.abs(Number(row.amount) || 0) * 100) / 100;
     const place = row.displayName || row.description.split(',')[0].replace(/\s+/g, ' ').trim();
     const spendable = spendableCategoryNames(state.cfg);
-    const sym = (state.cfg.currency && state.cfg.currency.symbol) || '$';
-    const money = (n) => sym + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+    const money = makeMoney(state.cfg);
     const existing = (state.transactionSplits || [])
       .filter((s) => s.txnId === row.id)
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0];
@@ -184,66 +362,7 @@ export function createCategoryPicker(ctx) {
             { category: '', amount: 0 },
           ];
 
-    const body = el('div', { class: 'picker-list' });
-    const remainderLine = el('div', {
-      class: 'muted small',
-      style: 'padding:6px 0',
-    });
-    const sumOf = () =>
-      Math.round(parts.reduce((s, p) => s + Math.abs(Number(p.amount) || 0), 0) * 100) / 100;
-    const syncRemainder = () => {
-      const rem = Math.round((target - sumOf()) * 100) / 100;
-      remainderLine.textContent =
-        rem === 0
-          ? `Balanced - the parts add up to ${money(target)}.`
-          : `Remainder: ${money(rem)} of ${money(target)} still to allocate.`;
-    };
-    const redraw = () => {
-      body.innerHTML = '';
-      parts.forEach((p, i) => {
-        const sel = el(
-          'select',
-          {
-            class: 'name-field',
-            onchange: (e) => {
-              parts[i].category = e.target.value;
-            },
-          },
-          el('option', { value: '' }, '- category -'),
-          ...spendable.map((c) =>
-            el('option', { value: c, selected: c === p.category ? '' : null }, c)
-          )
-        );
-        const amt = el('input', {
-          type: 'number',
-          class: 'name-field',
-          min: '0',
-          value: p.amount || '',
-          oninput: (e) => {
-            parts[i].amount = Number(e.target.value) || 0;
-            syncRemainder();
-          },
-        });
-        const rm =
-          parts.length > 2
-            ? el(
-                'button',
-                {
-                  class: 'btn sm ghost',
-                  onclick: () => {
-                    parts.splice(i, 1);
-                    redraw();
-                  },
-                },
-                '\u00d7'
-              )
-            : null;
-        body.append(el('div', { class: 'manage-actions' }, sel, amt, rm));
-      });
-      syncRemainder();
-    };
-
-    async function save() {
+    async function save(parts) {
       const clean = parts.filter((p) => p.category && Number(p.amount) > 0);
       const split = makeSplit({ txnId: row.id, parts: clean });
       const v = validateSplit(split, target);
@@ -261,66 +380,46 @@ export function createCategoryPicker(ctx) {
       }
       const previous = (state.transactionSplits || []).filter((s) => s.txnId === row.id);
 
-      // Write the replacement first. If this write fails, the existing split
-      // remains intact. Once the new record exists, remove only older records.
-      await Store.transactionSplits.put(split);
-      for (const old of previous) {
-        if (old.id !== split.id) await Store.transactionSplits.delete(old.id);
-      }
-
-      state.transactionSplits = await Store.transactionSplits.all();
-      closePicker();
-      render();
-      toast(`Split “${place}” across ${clean.length} categories.`);
+      await commitAndRender({
+        commit: async () => {
+          await Store.transactionSplits.put(split);
+          for (const old of previous) {
+            if (old.id !== split.id) await Store.transactionSplits.delete(old.id);
+          }
+          state.transactionSplits = await Store.transactionSplits.all();
+          closePicker();
+        },
+        render,
+        notify: () => toast(`Split “${place}” across ${clean.length} categories.`),
+      });
     }
     async function clearSplit() {
-      for (const s of (state.transactionSplits || []).filter((s) => s.txnId === row.id))
-        await Store.transactionSplits.delete(s.id);
-      state.transactionSplits = await Store.transactionSplits.all();
-      closePicker();
-      render();
-      toast('Split cleared.');
+      await commitAndRender({
+        commit: async () => {
+          for (const splitRecord of (state.transactionSplits || []).filter((item) => item.txnId === row.id))
+            await Store.transactionSplits.delete(splitRecord.id);
+          state.transactionSplits = await Store.transactionSplits.all();
+          closePicker();
+        },
+        render,
+        notify: () => toast('Split cleared.'),
+      });
     }
 
-    const box = el(
-      'div',
-      { class: 'picker', role: 'dialog', 'aria-label': 'Split transaction' },
-      el('div', { class: 'picker-head' }, `Split “${place}” (${money(target)})`),
-      body,
-      el(
-        'button',
-        {
-          class: 'btn sm ghost',
-          onclick: () => {
-            parts.push({ category: '', amount: 0 });
-            redraw();
-          },
-        },
-        '+ Add a category'
-      ),
-      el(
-        'button',
-        {
-          class: 'btn sm ghost',
-          onclick: () => {
-            parts = balanceParts(parts, target);
-            redraw();
-          },
-        },
-        'Fill remainder in the last part'
-      ),
-      remainderLine,
-      el(
-        'div',
-        { class: 'picker-actions' },
-        el('button', { class: 'btn sm', onclick: save }, 'Save split'),
-        existing
-          ? el('button', { class: 'btn sm ghost', onclick: clearSplit }, 'Clear split')
-          : null,
-        el('button', { class: 'btn sm ghost', onclick: closePicker }, 'Cancel')
-      )
-    );
-    redraw();
+    const box = el('div', { class: 'picker', role: 'dialog', 'aria-label': 'Split transaction' });
+    transactionSplitEditorReact(box, {
+      place,
+      target,
+      targetText: money(target),
+      spendable,
+      initialParts: parts,
+      existing: !!existing,
+      money,
+      balanceParts,
+      onSave: save,
+      onClear: clearSplit,
+      onCancel: closePicker,
+    });
     openModal(box);
   }
 
@@ -332,68 +431,32 @@ export function createCategoryPicker(ctx) {
    * tag record and never mutate - the SAME store (Store.tags) create/remove
    * already write to, so a tag's total (read by provenModels.tags via the
    * txnIds join) populates the moment a transaction is added, with no other
-   * change to the row, its category, or any total. When no tags exist yet, this
-   * points the person to the Analysis tab's Tags card to make one first.
+   * change to the row, its category, or any total. A new label is made here
+   * too, whatever the count, through the same writer the Custom labels card
+   * uses - so labelling never sends anyone to another tab mid-thought.
    * ======================================================================== */
   function openTagPicker(row) {
     closePicker();
-    const place =
-      row.displayName || (row.description || '').split(',')[0].replace(/\s+/g, ' ').trim();
+    // One reader for both ledgers (see transactionName). A bank row has no
+    // displayName and no description, so the old expression produced an empty
+    // string and the dialog was headed Custom label “” on every bank
+    // transaction in the app. The fallback means the quotes never wrap nothing.
+    const place = transactionName(row);
     const tags = state.tags || [];
 
-    if (!tags.length) {
-      const box = el(
-        'div',
-        { class: 'picker', role: 'dialog', 'aria-label': 'Custom label transaction' },
-        el('div', { class: 'picker-head' }, `Custom label “${place}”`),
-        el(
-          'p',
-          { class: 'muted small', style: 'padding:4px 0' },
-          'No custom labels yet. Create one first in the Custom labels card on the Analysis tab (for a renovation, a holiday, anything that spans categories and months), then add transactions to it.'
-        ),
-        el(
-          'div',
-          { class: 'picker-actions' },
-          el('button', { class: 'btn sm ghost', onclick: closePicker }, 'Close')
-        )
-      );
-      openModal(box);
-      return;
-    }
-
-    const list = el('div', { class: 'picker-list' });
-    for (const t of tags) {
-      const member = (t.txnIds || []).includes(row.id);
-      const cb = el('input', { type: 'checkbox', checked: member ? '' : null });
-      const rowEl = el(
-        'label',
-        {
-          class: 'scope',
-          style: 'display:flex;align-items:center;gap:8px;justify-content:space-between',
-        },
-        el('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, cb, t.name),
-        el('span', { class: 'muted small' }, `${(t.txnIds || []).length} labelled`)
-      );
-      cb.addEventListener('change', () => toggleTag(t.id, row.id, cb.checked));
-      list.append(rowEl);
-    }
-
-    const box = el(
-      'div',
-      { class: 'picker', role: 'dialog', 'aria-label': 'Custom label transaction' },
-      el('div', { class: 'picker-head' }, `Custom label “${place}”`),
-      el(
-        'p',
-        { class: 'muted small', style: 'padding:2px 0 6px' },
-        'Add this transaction to any of your custom labels. A transaction can belong to more than one.'
-      ),
-      list,
-      el(
-        'div',
-        { class: 'picker-actions' },
-        el('button', { class: 'btn sm', onclick: closePicker }, 'Done')
-      )
-    );
+    const box = el('div', { class: 'picker', role: 'dialog', 'aria-label': 'Custom label transaction' });
+    transactionTagPickerReact(box, {
+      place,
+      tags: tags.map((tag) => ({ id: tag.id, name: tag.name, count: (tag.txnIds || []).length, checked: (tag.txnIds || []).includes(row.id) })),
+      onCreate: async (name) => {
+        closePicker();
+        await createTag(name, null);
+        const made = (state.tags || []).find((t) => t.name === name);
+        if (made) await toggleTag(made.id, row.id, true);
+      },
+      onToggle: (tagId, on) => toggleTag(tagId, row.id, on),
+      onCancel: closePicker,
+    });
     openModal(box);
   }
 
@@ -401,29 +464,55 @@ export function createCategoryPicker(ctx) {
     const tag = (state.tags || []).find((t) => t.id === tagId);
     if (!tag) return;
     const next = on ? tagAdd(tag, txnId) : tagRemove(tag, txnId);
-    await Store.tags.put(next);
-    state.tags = await Store.tags.all();
-    trackUsage('activity-tag-toggle');
-    render();
-    toast(on ? `Added to “${tag.name}”.` : `Removed from “${tag.name}”.`);
+    await commitAndRender({
+      commit: async () => {
+        await Store.tags.put(next);
+        state.tags = await Store.tags.all();
+        trackUsage('activity-tag-toggle');
+      },
+      render,
+      notify: () => toast(on ? `Added to “${tag.name}”.` : `Removed from “${tag.name}”.`),
+    });
   }
 
-  async function setCategory(row, category) {
+  /* "Only this transaction" and "every one like this" are two different facts,
+   * so they are stored in two different places and never in both at once.
+   *
+   * One transaction is a stamp on that record. Every transaction like it is a
+   * RULE, and the rule already governs every row on both ledgers - buildRows
+   * reads it through merchantOverrides exactly as the bank ledger does. Writing
+   * the rule AND stamping every matching card record was the same decision
+   * recorded twice, and the stamp outranks the rule, so the rule could never
+   * afterwards be corrected, removed or even honestly listed: the rows would
+   * keep their old category and nothing on screen would say why. Applying to
+   * all now CLEARS those stamps, including any left by an earlier one-off
+   * answer, so the rule is the only thing saying where these transactions go
+   * and changing it changes them. */
+  async function setCategory(row, category, opts = {}) {
+    // Normally read from the live dialog. A caller that had to close the
+    // dialog first - making a category re-renders the app - passes what the
+    // person chose, so the scope is never silently downgraded to "only this
+    // transaction" because the radios are no longer on screen.
     const applyAll =
-      getPickerEl() &&
-      $('input[name="scope"]:checked', getPickerEl()) &&
-      $('input[name="scope"]:checked', getPickerEl()).value === 'all';
+      opts.applyAll !== undefined
+        ? !!opts.applyAll
+        : !!(
+            getPickerEl() &&
+            $('input[name="scope"]:checked', getPickerEl()) &&
+            $('input[name="scope"]:checked', getPickerEl()).value === 'all'
+          );
     closePicker();
     const before = [];
     const key = merchantRuleKeyFromDescription(row.raw_description);
     const beforeRules = state.rules.map((r) => ({ ...r }));
+    const stamp = new Date().toISOString();
     for (const rec of state.records) {
       const rkey = merchantRuleKeyFromDescription(rec.description);
       const match = applyAll ? rkey === key : (rec.id || transactionIdentity(rec)) === row.id;
       if (match) {
         before.push({ rec, prev: rec.categoryOverride || null });
-        rec.categoryOverride = category;
-        rec.lastChanged = new Date().toISOString();
+        rec.categoryOverride = applyAll ? null : category;
+        rec.lastChanged = stamp;
       }
     }
     state.records = state.records.slice();
@@ -454,32 +543,5 @@ export function createCategoryPicker(ctx) {
     );
   }
 
-  // Mark the given rows as reviewed without changing their category, so the
-  // "uncertain" items leave the attention list. Reversible, like corrections.
-  async function dismissReview(rows) {
-    const ids = new Set(rows.map((r) => r.id));
-    const before = [];
-    for (const rec of state.records) {
-      const id = rec.id || transactionIdentity(rec);
-      if (ids.has(id)) {
-        before.push({ rec, prev: !!rec.reviewDismissed });
-        rec.reviewDismissed = true;
-        rec.lastChanged = new Date().toISOString();
-      }
-    }
-    if (!before.length) return;
-    state.records = state.records.slice();
-    await persist();
-    render();
-    const n = before.length;
-    toast(`Marked ${n} item${n === 1 ? '' : 's'} as reviewed.`, async () => {
-      for (const b of before) b.rec.reviewDismissed = b.prev;
-      state.records = state.records.slice();
-      await persist();
-      render();
-      toast('Change undone.');
-    });
-  }
-
-  return { openCategoryPicker, dismissReview, openTagPicker };
+  return { openCategoryPicker, openTagPicker, setBankCategory };
 }

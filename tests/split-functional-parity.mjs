@@ -129,7 +129,7 @@ async function load(root) {
   });
   const classifiedBank = bank.applyLedgerRules(
     bank.classifyInternalTransfers(bankLedger.records, persona.accounts.map((a) => a.number), [persona.cardAccount], merchantResolver),
-    { confirmedIncomeIds: new Set(), roundTripIds: new Set(), sharedAccounts: [], householdPayees: [] }
+    { confirmations: [], sharedAccounts: [], householdPayees: [] }
   );
   const overviewModel = () => ({
     ov: bank.analyseCombinedOverview({ bankRecords: classifiedBank, cardStatements: card.statements, cardSummary: summary }),

@@ -58,6 +58,18 @@ function seedRuleMap(rules = []) {
   return byKey;
 }
 
+/* WHICH ROWS A RULE FILES, from the same expression the categorisers match on.
+ *
+ * A rule is announced as filing "every matching transaction on both your card
+ * and your accounts" and there was no way to see one of them. Counting or
+ * listing them with a second, hand-written notion of "matching" would be a
+ * count that drifts from the rule it describes, so the caller hands over
+ * whatever identifies its own row - the card's raw statement wording, the bank
+ * row's description-or-type - and the key comes from here either way. */
+export function rowMatchesRuleKey(match, key) {
+  return !!key && !!match && merchantRuleKeyFromMatch(match) === key;
+}
+
 export function rulesToMerchantOverrides(rules = []) {
   const overrides = {};
   for (const rule of seedRuleMap(rules).values())
@@ -113,6 +125,29 @@ export function mergeCategoryRules(existing = [], incoming = []) {
 
 export function upsertCategoryRule(rules = [], rule, updatedAt = new Date()) {
   return mergeCategoryRules(rules, [{ ...rule, updatedAt: updatedAt.toISOString() }]);
+}
+
+// Written rules have to be removable, or "applies to every transaction like
+// this" is a one-way door. Keyed the same way every other reader keys them, so
+// the rule a person sees listed is the rule that goes.
+export function removeCategoryRule(rules = [], match) {
+  const key = merchantRuleKeyFromMatch(match);
+  return (rules || []).filter((rule) => {
+    const clean = cleanRule(rule);
+    return clean ? merchantRuleKeyFromMatch(clean.match) !== key : false;
+  });
+}
+
+// The person's own rules, ready to show: newest first, each one already
+// carrying the display label every other surface would give its match.
+export function listCategoryRules(rules = [], brandRules = [], intel = null) {
+  return [...seedRuleMap(rules).values()]
+    .map((rule) => ({
+      ...rule,
+      key: merchantRuleKeyFromMatch(rule.match),
+      label: merchantDisplayLabel(rule.match, brandRules, intel),
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.label.localeCompare(b.label));
 }
 
 export function exportCategoryRulesFile(rules = [], exportedAt = new Date()) {

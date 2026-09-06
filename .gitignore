@@ -45,6 +45,7 @@ history-export*.json
 Thumbs.db
 *.log
 AGENTS.md
+.claude/
 
 # ---- Electron build artifacts ----
 *.exe

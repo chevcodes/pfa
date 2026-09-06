@@ -1,0 +1,18 @@
+import * as React from 'react';
+import { PfaSubhead } from './pfa-subhead.jsx';
+
+export function PfaSettingsRules({ unknown, needsExplain, builtinExplain, customExplain, rulesExplain, categories, groups, rules, onReview, onReapply, onReload, onAddCategory, onSaveRules, onImportRules }) {
+  const nameRef = React.useRef(null);
+  const bandRef = React.useRef(null);
+  const addCategory = async () => {
+    await onAddCategory(nameRef.current?.value.trim() || '', bandRef.current?.value || '');
+    if (nameRef.current) nameRef.current.value = '';
+  };
+
+  return <>
+    {unknown ? <div className="sec-section"><PfaSubhead title="Needs review" explain={needsExplain} actions={<button type="button" id="settings-review-action" className="btn sm" onClick={onReview}>Review</button>} /></div> : null}
+    <div className="sec-section"><PfaSubhead title="Built-in categories" explain={builtinExplain} actions={<div className="manage-actions"><button type="button" className="btn sm" onClick={onReapply}>Apply to statements</button><button type="button" className="btn sm ghost" onClick={onReload}>Restore built-in categories</button></div>} /></div>
+    <div className="sec-section"><PfaSubhead title="Custom categories" explain={customExplain} actions={<div className="manage-actions settings-category-form"><input ref={nameRef} type="text" className="name-field" placeholder="New category name" aria-label="New category name" maxLength={40} /><label className="settings-band-field"><span className="muted small">Counts toward</span><select ref={bandRef} className="name-field" aria-label="Where a new category counts">{groups.map((group) => <option key={group.key} value={group.key}>{group.label}</option>)}</select></label><button type="button" className="btn sm" onClick={addCategory}>Add category</button></div>} />{categories.length ? <div className="settings-category-list">{categories.map((category) => <div className="settings-category-row" key={category.name}><span>{category.name}</span><button type="button" className="btn sm ghost" disabled={!category.canRemove} title={category.canRemove ? undefined : `In use by ${category.usage} item${category.usage === 1 ? '' : 's'} - cannot remove`} onClick={category.onRemove}>{category.canRemove ? 'Remove' : `In use (${category.usage})`}</button></div>)}</div> : null}</div>
+    <div className="sec-section" data-rules-focus tabIndex={-1}><PfaSubhead title="Your rules" note={rules.length ? `${rules.length} rule${rules.length === 1 ? '' : 's'}` : 'None yet'} explain={rulesExplain} actions={<div className="manage-actions settings-actions">{rules.length ? <button type="button" className="btn sm ghost" onClick={onSaveRules}>Save to a file</button> : null}<label className="btn sm ghost file-trigger">Load from a file<input id="settings-rules-input" className="file-trigger-input" type="file" accept=".json,application/json" onChange={onImportRules} /></label></div>} /><div className="recurring-list">{rules.map((rule) => <div className="recurring-row" key={rule.key}><button type="button" id={`settings-rule-${rule.key}`} className="linkbtn recurring-name" data-rule-key={rule.key} title={`Show the ${rule.filed} transaction${rule.filed === 1 ? '' : 's'} this files`} onClick={rule.onDrill}>{rule.label}</button><span className="recurring-months muted small"><span className="cat-dot" style={{ background: rule.colour }} />{rule.categoryText}<span className="muted small">{` · ${rule.filed} filed`}</span></span><button type="button" className="btn sm ghost" title={`Stop filing every “${rule.label}” as ${rule.category}`} aria-label={`Remove the rule filing ${rule.label} as ${rule.category}`} onClick={rule.onRemove}>Remove</button></div>)}</div></div>
+  </>;
+}

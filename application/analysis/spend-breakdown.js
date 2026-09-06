@@ -24,13 +24,10 @@
  * ======================================================================== */
 import { resolveOpts } from './commitment-income.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
+import { makeMoney } from '../core/money-format.js';
+import { amtOf, dateOf } from '../core/shared-helpers.js';
+import { categoryMeta } from './category-flow.js';
 
-function dateOf(r) {
-  return String(r.date || r.Date || '');
-}
-function amtOf(r) {
-  return Math.abs(Number(r.amount != null ? r.amount : r.Amount) || 0);
-}
 function catOf(r) {
   return r.category || r.Category || 'Uncategorised';
 }
@@ -111,6 +108,7 @@ export function spendBreakdown({
   splits = [],
 }) {
   const opts = resolveOpts(cfg);
+  const spending = (name) => (categoryMeta(cfg, name)?.flow || 'out') === 'out';
   const { from, to } = period;
 
   const splitMap = splitsByTxnId(splits);
@@ -119,18 +117,18 @@ export function spendBreakdown({
   const contributionsFor = (r) => {
     const split = splitMap.get(r.id);
     if (split && validateSplit(split, r.amount).ok) {
-      return split.parts.map((p) => ({
+      return split.parts.filter((part) => spending(part.category)).map((p) => ({
         category: p.category,
         amount: Math.abs(Number(p.amount) || 0),
       }));
     }
-    return [{ category: catOf(r), amount: amtOf(r) }];
+    return spending(catOf(r)) ? [{ category: catOf(r), amount: amtOf(r) }] : [];
   };
 
   // index period spend rows so every total can point back to them
   const cur = [];
   cardRecords.forEach((r, i) => {
-    if (isSpend(r) && inPeriod(r, from, to)) cur.push({ r, i });
+    if (isSpend(r) && spending(catOf(r)) && inPeriod(r, from, to)) cur.push({ r, i });
   });
 
   // prior totals by category, for comparison (guarded)
@@ -178,7 +176,6 @@ export function spendBreakdown({
       if (!m.rowIdx.includes(i)) m.rowIdx.push(i);
     }
   }
-  ``;
 
   // assemble sorted output
   const categories = [...cats.entries()]
@@ -236,9 +233,9 @@ export function describeComparisonText(cmp, money) {
   if (cmp.kind === 'new') return 'new this period';
   if (cmp.kind === 'none') return '';
   if (cmp.kind === 'amount-only')
-    return `${cmp.direction === 'up' ? '+' : '−'}${money(Math.abs(cmp.absChange))} vs last`;
+    return `${cmp.direction === 'up' ? '+' : '-'}${money(Math.abs(cmp.absChange))} vs last`;
   if (cmp.kind === 'amount-only-partial')
-    return `${cmp.direction === 'up' ? '+' : '−'}${money(Math.abs(cmp.absChange))} (last period partial)`;
+    return `${cmp.direction === 'up' ? '+' : '-'}${money(Math.abs(cmp.absChange))} (last period partial)`;
   if (cmp.pct === 0) return 'same as last';
   return `${cmp.pct > 0 ? '▲' : '▼'} ${Math.abs(cmp.pct)}% vs last`; // direction + size + period
 }
@@ -252,19 +249,9 @@ export function comparisonTone(cmp) {
 }
 
 export function buildSpendBreakdownModel(result, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
+  // One formatter for the whole app (core/money-format.js): the same output
+  // this block produced, plus the privacy gate every figure must pass.
+  const money = makeMoney(cfg);
 
   const markerText = (cmp) => describeComparisonText(cmp, money);
   const markerTone = (cmp) => comparisonTone(cmp);
@@ -275,7 +262,12 @@ export function buildSpendBreakdownModel(result, cfg = {}) {
       label: 'Where it went',
       amount: result.grandTotal,
       amountText: money(result.grandTotal),
-      tag: `${result.txnCount} transaction${result.txnCount === 1 ? '' : 's'}`,
+      // Says WHICH transactions. This model reads the card ledger only, so
+      // its total is smaller than the same screen's discretionary-spending
+      // figure (which also counts cash and bank outflows) - two spending
+      // totals differing by thousands with nothing to explain the gap read
+      // as an error in one of them.
+      tag: `${result.txnCount} card transaction${result.txnCount === 1 ? '' : 's'}`,
       tone: 'neutral',
     },
     categories: result.categories.map((cat) => ({

@@ -3,13 +3,51 @@ import {
   monthIndex,
   recurringStatus,
   medianDayOfMonth,
-  isoDay,
   detectSustainedRise,
+  typicalMonthlyValue,
+  rowBalance,
+  bankAccountIdentity,
+  accountName,
+  parseTransferNarrative,
+  transferSentence,
+  median,
+  modifiedZ,
+  isCountedBankIncome,
 } from '../core/shared-helpers.js';
 import { smartTitle } from '../statements/categorise.js';
 import { bankTransactionIdentity, cleanBankCounterparty } from '../statements/read-statements.js';
+import { isSetAside } from './set-aside.js';
+import { buildIncomeModel } from './income-model.js';
+import {
+  answerFor,
+  isConfirmed,
+  declaredOwnAccounts,
+  ownSubject,
+  transferSubjects,
+} from './confirmations.js';
 
-const CP_LABEL_SET = new Set();
+/* The casing the app already declares for merchant names (config.keepUpper:
+ * GCT, NCB, FCIB, NWC, ATM...) was never handed to the bank side, so every bank
+ * counterparty was title-cased against an EMPTY set and read "Gct On Pos Tx
+ * Fee" while the card row beside it read correctly. Populated at boot from the
+ * same config the card side uses, exactly as setBankDescriptorCleanupRules
+ * already pushes the cleanup rules in.
+ *
+ * Only keepUpper is taken. The small-word list is deliberately NOT applied here:
+ * a bank narrative carries middle initials, and lower-casing a standalone "A"
+ * turns "Chevaughn A Johnson" into "Chevaughn a Johnson".
+ */
+let CP_LABEL_SET = new Set();
+export function setCounterpartyCasing(keepUpper) {
+  if (keepUpper && typeof keepUpper[Symbol.iterator] === 'function')
+    CP_LABEL_SET = new Set([...keepUpper, 'POS', 'ACH', 'LLC', 'LTD']);
+}
+const CP_SMALL_SET = new Set();
+// THE casing for a bank counterparty, exported so the Accounts list reads the
+// same set rather than keeping its own (it kept a second empty one, which is
+// why the same row could read "GCT" in one place and "Gct" in another).
+export const counterpartyTitle = (s) => smartTitle(s, CP_LABEL_SET, CP_SMALL_SET);
+const cpTitle = counterpartyTitle;
 
 export function counterpartyAccountTokens(desc) {
   const groups = String(desc || '').match(/\d{3,}/g) || [];
@@ -22,27 +60,88 @@ export function counterpartyAccountTokens(desc) {
   return tokens;
 }
 
-export function buildOwnAccountIndex(accounts = []) {
+/* Every account the person has: the ones their statements and cards carry
+ * (`accounts`, full numbers, strong evidence) and the ones they declared
+ * (`declared`, a four-digit identity, weak evidence). `numbers` holds every
+ * digit string seen per identity so a match can be checked against all of the
+ * digits both sides printed, and `strong` names the identities a statement
+ * vouches for. The Map itself stays token -> identity. */
+export function buildOwnAccountIndex(accounts = [], declared = []) {
   const idx = new Map();
-  for (const a of accounts) {
-    const digits = String(a == null ? '' : a).replace(/\D/g, '');
-    if (!digits) continue;
-    const canonical = digits.slice(-4);
+  const numbers = new Map();
+  const strong = new Set();
+  const add = (raw, vouched) => {
+    const digits = String(raw == null ? '' : raw).replace(/\D/g, '');
+    if (!digits) return;
+    const canonical = bankAccountIdentity(digits);
     idx.set(digits, canonical);
     if (digits.length >= 4) idx.set(digits.slice(-4), canonical);
     if (digits.length >= 5) idx.set(digits.slice(-5), canonical);
-  }
+    if (!numbers.has(canonical)) numbers.set(canonical, new Set());
+    numbers.get(canonical).add(digits);
+    if (vouched) strong.add(canonical);
+  };
+  for (const a of accounts) add(a, true);
+  for (const a of declared) add(a, false);
+  idx.numbers = numbers;
+  idx.strong = strong;
   return idx;
 }
 
-export function normaliseCounterparty(description, ownIndex = new Map(), resolver = null) {
-  const tokens = counterpartyAccountTokens(description);
-  for (const t of tokens) {
-    if (ownIndex.has(t)) {
-      const id = ownIndex.get(t);
+function digitsAgree(printed, own) {
+  const span = Math.min(printed.length, own.length, 6);
+  return span >= 4 && printed.slice(-span) === own.slice(-span);
+}
+
+function matchOwnAccount(description, ownIndex) {
+  const groups = String(description || '').match(/\d{4,}/g);
+  if (!groups || !ownIndex.numbers) return null;
+  let accountLike = null;
+  for (const group of groups) {
+    const id = group.slice(-4);
+    const known = ownIndex.numbers.get(id);
+    if (!known || ![...known].some((own) => digitsAgree(group, own))) continue;
+    if (!ownIndex.strong.has(id)) {
+      if (accountLike === null) accountLike = narrativeNamesAccount(description);
+      if (!accountLike) continue;
+    }
+    return id;
+  }
+  return null;
+}
+
+function narrativeNamesAccount(description) {
+  const parsed = parseTransferNarrative(description);
+  return parsed.isTransfer && parsed.channel !== 'bill payment';
+}
+
+function narrativeAccount(description) {
+  if (!narrativeNamesAccount(description)) return '';
+  const groups = String(description || '').match(/\d{4,}/g);
+  return groups ? groups[groups.length - 1].slice(-4) : '';
+}
+
+/* `stated` is the person's answer about whether this really is a movement
+ * between their own accounts (null when they have not said). It is applied
+ * here rather than after the fact because the answer changes WHO the other
+ * party is, not just a flag: a number that merely shares its last four digits
+ * with one of your accounts belongs to somebody else, and once you say so the
+ * row has to read as that person and be grouped with their other payments.
+ * Saying the opposite keeps the party as printed and only moves the row out of
+ * spending, which is the whole of what "it is my own account" means here. */
+export function normaliseCounterparty(
+  description,
+  ownIndex = buildOwnAccountIndex(),
+  resolver = null,
+  stated = null,
+  accountNames = null
+) {
+  if (stated !== false) {
+    const id = matchOwnAccount(description, ownIndex);
+    if (id) {
       return {
-        key: 'own:' + id,
-        label: 'Account ' + id,
+        key: ownSubject(id),
+        label: accountName(accountNames, 'bank', id) || 'Account ' + id,
         internal: true,
         account: id,
       };
@@ -54,35 +153,29 @@ export function normaliseCounterparty(description, ownIndex = new Map(), resolve
     if (r.merchant && r.incidentalInstitution) {
       return {
         key: r.groupKey ? 'ext:' + r.groupKey : 'ext:unknown',
-        label: r.payee ? smartTitle(r.payee, CP_LABEL_SET, CP_LABEL_SET) : 'Unknown',
-        internal: false,
+        label: r.payee ? cpTitle(r.payee) : 'Unknown',
+        internal: stated === true,
         account: null,
       };
     }
     if (r.merchant) {
       return {
         key: r.groupKey ? 'ext:' + r.groupKey : 'ext:unknown',
-        label: r.displayLabel || smartTitle(r.cleaned, CP_LABEL_SET, CP_LABEL_SET),
-        internal: false,
+        label: r.displayLabel || cpTitle(r.cleaned),
+        internal: stated === true,
         account: null,
       };
     }
   }
 
-  const cleaned = cleanBankCounterparty(description)
-    .replace(/^(?:[A-Z]{2,5}\s+)?transfer\s+(to|from)\s+/i, '')
-    .replace(/^trf\s+(to|from):?\s+/i, '')
-    .replace(/^\d{2,}[,\s-]+/, '')
-    .replace(/^\d{4,}-/, '')
-    .replace(/[\s,-]+\d{3,}\s*$/, '')
-    .replace(/[\s,-]+$/, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  // The same shared parser the resolver and the Accounts list read, so a
+  // channel code learned once is understood on every surface at once.
+  const cleaned = parseTransferNarrative(cleanBankCounterparty(description)).party;
   const key = cleaned.toUpperCase();
   return {
     key: key ? 'ext:' + key : 'ext:unknown',
-    label: cleaned ? smartTitle(cleaned, CP_LABEL_SET, CP_LABEL_SET) : 'Unknown',
-    internal: false,
+    label: cleaned ? cpTitle(cleaned) : 'Unknown',
+    internal: stated === true,
     account: null,
   };
 }
@@ -91,22 +184,61 @@ export function classifyInternalTransfers(
   records,
   myAccounts = [],
   cardAccounts = [],
-  resolver = null
+  resolver = null,
+  confirmations = [],
+  accountNames = null
 ) {
   const ownNumbers = [];
   for (const r of records) if (r.account) ownNumbers.push(String(r.account));
   for (const a of myAccounts) ownNumbers.push(String(a));
   for (const a of cardAccounts) ownNumbers.push(String(a));
-  const ownIndex = buildOwnAccountIndex(ownNumbers);
+  const ownIndex = buildOwnAccountIndex(ownNumbers, declaredOwnAccounts(confirmations));
   return records.map((r) => {
-    const cpText = r.description && r.description.trim() ? r.description : r.type || r.description;
-    const n = normaliseCounterparty(cpText, ownIndex, resolver);
-    return {
+    const own = r.description && r.description.trim() ? r.description : r.type || r.description;
+    const cpText = r.attachedTo || own;
+    // The answer is looked up against what the app WOULD have decided on its
+    // own, never against the result of applying it - otherwise the subject of
+    // an answer would change the moment it was given and the answer would stop
+    // matching its own row. transferKey carries that inferred key onto the row
+    // so every surface asks the question the same way.
+    const inferred = normaliseCounterparty(cpText, ownIndex, resolver, null, accountNames);
+    const transferAccount = inferred.account || narrativeAccount(cpText);
+    const stated = answerFor(
+      confirmations,
+      'transfer',
+      transferSubjects({ id: r.id, transferAccount, transferKey: inferred.key })
+    );
+    const n =
+      stated === null
+        ? inferred
+        : normaliseCounterparty(cpText, ownIndex, resolver, stated, accountNames);
+    const out = {
       ...r,
       internalTransfer: n.internal,
+      transferKey: inferred.key,
+      transferAccount,
       counterpartyKey: n.key,
       counterpartyLabel: n.label,
+      // What the transaction ROW says, which is a fuller thing than what the
+      // grouped lists say. counterpartyLabel stays the bare party name because
+      // a dozen surfaces group and total by it - a recurring-commitment list
+      // reading "Transfer to Senior (via ACH)" five times would be nonsense.
+      // The row can afford the whole sentence, and only the row uses this.
+      //
+      // Set ONLY for a row whose OWN narrative describes a transfer. Three
+      // reasons, each a rule that already existed: an own-account move already
+      // reads "Account 1234", which is clearer than any sentence; a fee or
+      // reversal attached to a purchase must keep reading as the statement
+      // printed it rather than being renamed to the merchant it hangs off
+      // (hence `own`, never `cpText`, which is the ATTACHED purchase); and a
+      // plain shop or employer is not a transfer, so transferSentence returns
+      // '' and the row keeps the name it already had.
+      narrative:
+        n.internal || r.attachedTo ? '' : transferSentence(own, r.direction, cpTitle),
     };
+    if (r.attachedTo && !out.displayName)
+      out.displayName = normaliseCounterparty(own, ownIndex, resolver).label;
+    return out;
   });
 }
 
@@ -124,7 +256,7 @@ export function isBankRefund(r) {
   if (!r || r.direction !== 'in') return false;
   const t = String(r.type || '').toUpperCase();
   const d = String(r.description || '').toUpperCase();
-  const re = /\b(REFUND|REVERSAL|CHARGE ?BACK|CREDIT NOTE)\b/;
+  const re = /\b(REFUND|REVERSAL|POSREV|CHARGE ?BACK|CREDIT NOTE)\b/;
   return re.test(t) || re.test(d);
 }
 
@@ -136,15 +268,12 @@ export function isStatutoryDeduction(r) {
   );
 }
 
+/* `confirmations` is the shared answer store (analysis/confirmations.js). A
+ * machine deposit or a reversal is only ever a guess about whose money it is;
+ * where the person has answered, the answer governs and the guess is not
+ * consulted. */
 export function applyLedgerRules(records, opts = {}) {
-  const confirmedIncome =
-    opts.confirmedIncomeIds instanceof Set
-      ? opts.confirmedIncomeIds
-      : new Set(opts.confirmedIncomeIds || []);
-  const refundIncome =
-    opts.refundIncomeIds instanceof Set
-      ? opts.refundIncomeIds
-      : new Set(opts.refundIncomeIds || []);
+  const confirmations = opts.confirmations || [];
   const sharedTails = new Set(
     (opts.sharedAccounts || []).map((a) => String(a).replace(/\D/g, '').slice(-4)).filter(Boolean)
   );
@@ -152,9 +281,20 @@ export function applyLedgerRules(records, opts = {}) {
   return records.map((r) => {
     const id = r.id != null ? r.id : bankTransactionIdentity(r);
     const cashDeposit = isCashSelfDeposit(r);
-    const excludedFromIncome = cashDeposit && !confirmedIncome.has(id);
+    const excludedFromIncome = cashDeposit && !isConfirmed(confirmations, 'income', [id]);
     const refundLike = !r.internalTransfer && isBankRefund(r);
-    const refund = refundLike && !refundIncome.has(id);
+    // The reversal wording is only the app's guess at the commonest case. What
+    // the answer really settles is "did I earn this, or is it money passing
+    // through", which is a question about any money coming in - a friend
+    // settling up, a cost reimbursed, a sum held for someone else. So the
+    // answer governs on any incoming row, not only one the detector flagged,
+    // and money the person says is not theirs to keep lands in the same
+    // returned-money total it always has rather than in income.
+    const statedReturn =
+      !r.internalTransfer && r.direction === 'in'
+        ? answerFor(confirmations, 'refund', [id])
+        : null;
+    const refund = statedReturn === null ? refundLike : !statedReturn;
     const acctTail = String(r.account || '').slice(-4);
     const cpUpper = String(r.counterpartyLabel || r.description || '').toUpperCase();
     const household =
@@ -174,14 +314,66 @@ export function applyLedgerRules(records, opts = {}) {
   });
 }
 
-export function accountClosingBalance(rows) {
+/* An account's latest recorded balance.
+ *
+ * Ordered by DATE THEN seq, the same key liquidBalance (commitment-income.js)
+ * uses for the identical question on the Position tab. It previously sorted on
+ * date alone; Array.prototype.sort is stable, so among several movements on the
+ * closing day it kept the order they happened to arrive in from the statement
+ * file, and read the balance off whichever of them landed last there. That is
+ * not necessarily the last movement of the day.
+ *
+ * The effect was a per-account balance on Activity's account filter that
+ * disagreed with the same account on Position - but only for accounts whose
+ * final day carried more than one transaction, which is why some accounts
+ * matched exactly and others were out by the size of one movement. Two
+ * functions answering "what is the latest balance" must not order the day
+ * differently.
+ *
+ * ORDERING WAS ONLY HALF OF IT. This also read the balance off `balanceAfter`
+ * alone, while liquidBalance also accepts a raw `Running Balance` column. An
+ * account whose most recent movement carried the column and not the field kept
+ * reporting an OLDER balance here while Position reported the current one -
+ * $944,106.45 against $1,052,352.71 on the same account. Both now read through
+ * rowBalance (shared-helpers), so there is one answer to "what balance does
+ * this row report".
+ *
+ * Rows in another currency are skipped rather than allowed to supply the
+ * closing figure: an account's balance must not be reported in a currency the
+ * caller never asked about. baseCurrency defaults to the account's own most
+ * common currency when not supplied.
+ */
+export function accountClosingBalance(rows, baseCurrency = null) {
   let closing = null;
-  const sorted = rows.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  for (const r of sorted) if (r.balanceAfter != null) closing = r.balanceAfter;
+  const seqOf = (r) => (r && r.seq != null ? Number(r.seq) : 0);
+  const ccy = (r) => r.currency || r.Currency || baseCurrency || null;
+  const want =
+    baseCurrency ||
+    (() => {
+      const counts = new Map();
+      for (const r of rows) {
+        const c = ccy(r);
+        if (c) counts.set(c, (counts.get(c) || 0) + 1);
+      }
+      let best = null;
+      for (const [c, n] of counts) if (!best || n > best[1]) best = [c, n];
+      return best ? best[0] : null;
+    })();
+  const sorted = rows.slice().sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return seqOf(a) - seqOf(b);
+  });
+  for (const r of sorted) {
+    if (want && ccy(r) && ccy(r) !== want) continue;
+    const b = rowBalance(r);
+    if (b != null) closing = b;
+  }
   return closing;
 }
 
 export function analyseBankActivity(records, baseCurrency = 'JMD') {
+  const countedCredits = new Set(buildIncomeModel({ bankRows: records, baseCurrency }).classifiedCredits
+    .filter((credit) => credit.counted).map((credit) => credit.row));
   const byAcct = new Map();
   for (const r of records) {
     const k = r.account || 'unknown';
@@ -216,15 +408,15 @@ export function analyseBankActivity(records, baseCurrency = 'JMD') {
         continue;
       }
       if (r.direction === 'in') {
-        if (r.refund) {
+        if (countedCredits.has(r)) {
+          aIn = roundMoney(aIn + r.amount);
+        } else if (r.refund) {
           aRefund = roundMoney(aRefund + r.amount);
           continue;
-        } // money returned, not income
-        if (r.excludedFromIncome) {
+        } else if (r.excludedFromIncome) {
           aCashDep = roundMoney(aCashDep + r.amount);
           continue;
-        } // not income by default
-        aIn = roundMoney(aIn + r.amount);
+        }
       } else {
         if (r.household) {
           aHouse = roundMoney(aHouse + r.amount);
@@ -233,7 +425,7 @@ export function analyseBankActivity(records, baseCurrency = 'JMD') {
         aOut = roundMoney(aOut + r.amount);
       }
     }
-    const close = accountClosingBalance(rows);
+    const close = accountClosingBalance(rows, acctCur);
     const acct = {
       account,
       currency: acctCur,
@@ -323,6 +515,7 @@ export function bankCounterpartyGroups(records, baseCurrency = 'JMD') {
 
 export function bankMovementKind(r, resolver = null, cfg = {}) {
   if (!r) return 'other';
+  if (isSetAside(r, cfg)) return 'set-aside';
   if (r.internalTransfer) return 'internal';
   if (r.refund) return 'refund';
   if (r.excludedFromIncome) return 'cash-deposit';
@@ -339,22 +532,6 @@ export function bankMovementKind(r, resolver = null, cfg = {}) {
     if (token && type.includes(token)) return rule.kind;
   }
   return r.direction === 'in' ? 'income' : 'payment';
-}
-
-export function bankKindBreakdown(records, resolver = null, cfg = {}, baseCurrency = 'JMD') {
-  const byKind = new Map();
-  for (const r of records || []) {
-    if ((r.currency || baseCurrency) !== baseCurrency) continue;
-    const kind = bankMovementKind(r, resolver, cfg);
-    if (!byKind.has(kind)) byKind.set(kind, { kind, moneyIn: 0, moneyOut: 0, count: 0 });
-    const g = byKind.get(kind);
-    if (r.direction === 'in') g.moneyIn = roundMoney(g.moneyIn + r.amount);
-    else g.moneyOut = roundMoney(g.moneyOut + r.amount);
-    g.count++;
-  }
-  return [...byKind.values()]
-    .map((g) => ({ ...g, total: roundMoney(g.moneyIn + g.moneyOut) }))
-    .sort((a, b) => b.total - a.total);
 }
 
 export function externalOutflowShortlist(groups, limit = 10) {
@@ -382,29 +559,35 @@ export function externalInflowShortlist(groups, limit = 10) {
     accounts: g.accounts,
   }));
 }
+export function bankCashFlowDirection(record, baseCurrency = 'JMD') {
+  if ((record.currency || baseCurrency) !== baseCurrency || record.internalTransfer) return null;
+  if (isCountedBankIncome(record)) return 'income';
+  if (record.direction === 'in') return null;
+  return record.household ? null : 'spending';
+}
+
 export function bankFlowOverTime(records, baseCurrency = 'JMD') {
+  const moneyIn = new Map(buildIncomeModel({ bankRows: records, baseCurrency }).monthlyMoneyIn
+    .map((row) => [row.month, row.amount]));
   const byMonth = new Map();
   for (const r of records) {
-    if ((r.currency || baseCurrency) !== baseCurrency) continue; // never mix USD into JMD bars
+    if ((r.currency || baseCurrency) !== baseCurrency) continue;
     const m = (r.date || '').slice(0, 7);
     if (!m) continue;
     if (!byMonth.has(m))
       byMonth.set(m, {
         month: m,
-        moneyIn: 0,
+        moneyIn: moneyIn.get(m) || 0,
         moneyOut: 0,
         internalIn: 0,
         internalOut: 0,
       });
     const row = byMonth.get(m);
+    const flow = bankCashFlowDirection(r, baseCurrency);
     if (r.internalTransfer) {
       if (r.direction === 'in') row.internalIn = roundMoney(row.internalIn + r.amount);
       else row.internalOut = roundMoney(row.internalOut + r.amount);
-    } else if (r.direction === 'in') {
-      if (r.refund || r.excludedFromIncome) continue;
-      row.moneyIn = roundMoney(row.moneyIn + r.amount);
-    } else {
-      if (r.household) continue;
+    } else if (flow === 'spending') {
       row.moneyOut = roundMoney(row.moneyOut + r.amount);
     }
   }
@@ -458,11 +641,14 @@ export function detectBankStandingDebits(
     if (amounts.length < minMonths) continue;
 
     if (standingDebitMonthGap([...g.byMonth.keys()]) > maxGapMonths) continue;
-    const sorted = amounts.slice().sort((a, b) => a - b);
-    const typical =
-      sorted.length % 2
-        ? sorted[(sorted.length - 1) / 2]
-        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+    // THE shared recurring-amount rule (shared-helpers' typicalMonthlyValue),
+    // not a third hand-rolled median. Plan's "Expected payments" resolves the
+    // same merchant through commitment-income.js, which already uses it; these
+    // two inline medians were why one recurring payment could read $9,935.82 on
+    // the Plan tab and $8,935.82 on Activity - same merchant, same cadence,
+    // exactly $1,000 apart, because a median picks a middle month while the
+    // shared rule averages the months that agree.
+    const typical = typicalMonthlyValue(amounts).amount;
     if (typical <= 0) continue;
     const consistent = amounts.filter((a) => Math.abs(a - typical) <= typical * tolerance).length;
     if (consistent >= minMonths) {
@@ -496,134 +682,7 @@ export function isCardPaymentTransfer(record, cardAccounts) {
 }
 
 export function analyseIncomePattern(records, cfg = {}, now = new Date(), baseCurrency = 'JMD') {
-  const t = Object.assign(
-    {
-      minMonths: 3,
-      tolerance: 0.15,
-      maxGapMonths: 2,
-      steadySpreadDays: 6,
-      lateGraceDays: 5,
-    },
-    cfg.ahead || {}
-  );
-  const byKey = new Map();
-  let latestMonth = '';
-  for (const r of records) {
-    const m = (r.date || '').slice(0, 7);
-    if (m > latestMonth) latestMonth = m;
-  }
-  for (const r of records) {
-    if ((r.currency || baseCurrency) !== baseCurrency) continue;
-    if (r.internalTransfer || r.direction !== 'in') continue;
-    if (r.refund || r.excludedFromIncome) continue;
-    const key = r.counterpartyKey || 'ext:' + String(r.description || '').toUpperCase();
-    if (!byKey.has(key))
-      byKey.set(key, {
-        key,
-        label: r.counterpartyLabel || r.description || key,
-        byMonth: new Map(),
-        dates: [],
-      });
-    const g = byKey.get(key);
-    const m = (r.date || '').slice(0, 7);
-    g.byMonth.set(m, roundMoney((g.byMonth.get(m) || 0) + r.amount));
-    if (r.date) g.dates.push(r.date);
-  }
-  const candidates = [];
-  for (const g of byKey.values()) {
-    const amounts = [...g.byMonth.values()];
-    if (amounts.length < t.minMonths) continue;
-    if (standingDebitMonthGap([...g.byMonth.keys()]) > t.maxGapMonths) continue;
-    const sorted = amounts.slice().sort((a, b) => a - b);
-    const typical =
-      sorted.length % 2
-        ? sorted[(sorted.length - 1) / 2]
-        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
-    if (typical <= 0) continue;
-    const consistent = amounts.filter((a) => Math.abs(a - typical) <= typical * t.tolerance).length;
-    if (consistent < t.minMonths) continue;
-    const lastMonth = [...g.byMonth.keys()].sort().pop();
-    const expectedDay = medianDayOfMonth(g.dates);
-    const dayDeviations = g.dates
-      .map((d) => isoDay(d))
-      .filter((d) => d > 0)
-      .map((d) => Math.abs(d - (expectedDay || d)));
-    const daySpread = dayDeviations.length ? Math.max(...dayDeviations) : 0;
-    candidates.push({
-      key: g.key,
-      label: g.label,
-      months: g.byMonth.size,
-      typical: roundMoney(typical),
-      lastMonth,
-      expectedDay,
-      daySpread,
-      status: recurringStatus(lastMonth, latestMonth, t.maxGapMonths),
-    });
-  }
-  const active = candidates.filter((c) => c.status !== 'lapsed');
-  if (!active.length) return null;
-  active.sort((a, b) => b.typical - a.typical);
-  const primary = active[0];
-  const primaryGroup = byKey.get(primary.key);
-  const primaryDates = primaryGroup.dates.slice().sort();
-  const lastDate = primaryDates[primaryDates.length - 1] || null;
-
-  const regularity = primary.daySpread <= t.steadySpreadDays ? 'Steady' : 'Uneven';
-
-  const [ly, lm] = primary.lastMonth.split('-').map(Number);
-  const dayGuess = Math.min(primary.expectedDay || 1, new Date(ly, lm, 0).getDate());
-  const nd = new Date(ly, lm, dayGuess);
-  const nextExpectedDate = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-${String(nd.getDate()).padStart(2, '0')}`;
-  const daysUntilNext = Math.round((nd.getTime() - now.getTime()) / 86400000);
-  const late = daysUntilNext < -t.lateGraceDays;
-
-  const recentMonths = [...primaryGroup.byMonth.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  const lastAmount = recentMonths.length
-    ? roundMoney(recentMonths[recentMonths.length - 1][1])
-    : primary.typical;
-  let stepChange = null;
-  if (recentMonths.length) {
-    const diff = lastAmount - primary.typical;
-    if (Math.abs(diff) > primary.typical * t.tolerance) stepChange = diff > 0 ? 'up' : 'down';
-  }
-
-  // The primary stream's month-by-month deposits, already computed above as
-  // primaryGroup.byMonth and previously discarded at the return. Exposed so a
-  // visual (the income bar row - Overview/Right Now/Ahead) can show the shape
-  // of income over time against typicalAmount as a marker line, WITHOUT any
-  // new analysis and WITHOUT a second income source that could disagree with
-  // this one's own "steady / stepped / late" verdict. Additive: every existing
-  // field is unchanged, so no current consumer is affected. Sorted oldest ->
-  // newest, amounts rounded exactly as every other figure this function emits.
-  const dayByMonth = new Map();
-  for (const d of primaryGroup.dates) {
-    const mo = String(d || '').slice(0, 7);
-    const day = isoDay(d);
-    if (mo && day > 0 && !dayByMonth.has(mo)) dayByMonth.set(mo, day);
-  }
-  const series = [...primaryGroup.byMonth.entries()]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([month, amount]) => ({
-      month,
-      amount: roundMoney(amount),
-      day: dayByMonth.get(month) || null,
-    }));
-
-  return {
-    key: primary.key,
-    label: primary.label,
-    typicalAmount: primary.typical,
-    lastDate,
-    lastAmount,
-    expectedDay: primary.expectedDay,
-    regularity,
-    late,
-    daysUntilNext,
-    nextExpectedDate,
-    stepChange,
-    monthsSeen: primary.months,
-    series,
-  };
+  return buildIncomeModel({ bankRows: records, cfg, asOf: now, baseCurrency }).incomePattern;
 }
 
 export function detectLargeBankOutflows(records, cfg = {}, baseCurrency = 'JMD') {
@@ -636,11 +695,6 @@ export function detectLargeBankOutflows(records, cfg = {}, baseCurrency = 'JMD')
     },
     cfg.insights || {}
   );
-  const med = (arr) => {
-    const s = arr.slice().sort((x, y) => x - y);
-    const m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  };
   const rows = (records || []).filter(
     (r) =>
       !r.internalTransfer &&
@@ -672,12 +726,12 @@ export function detectLargeBankOutflows(records, cfg = {}, baseCurrency = 'JMD')
     if (commitmentKeys.has(keyOf(r))) return; // recognised commitment: never "larger than usual"
     const others = amounts.filter((_, j) => j !== i);
     if (others.length < t.largeChargeMinPeers) return;
-    const centre = med(others);
-    const mad = med(others.map((x) => Math.abs(x - centre)));
-    const zOk = mad > 0 ? (0.6745 * (r.amount - centre)) / mad >= t.largeChargeZ : true;
+    const centre = median(others);
+    const mad = median(others.map((x) => Math.abs(x - centre)));
+    const z = modifiedZ(r.amount, centre, mad);
+    const zOk = z >= t.largeChargeZ;
     const multipleOk = centre > 0 && r.amount >= centre * t.largeChargeMultiple;
     if (zOk && multipleOk) {
-      const z = mad > 0 ? (0.6745 * (r.amount - centre)) / mad : Infinity;
       out.push({
         id: r.id,
         key: r.counterpartyKey,

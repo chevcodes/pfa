@@ -29,6 +29,13 @@
     <link rel="stylesheet" href="./interface/treemap.css" />
     <link rel="stylesheet" href="./interface/income-chart.css" />
     <link rel="stylesheet" href="./interface/flow-chart.css" />
+    <link rel="stylesheet" href="./interface/premium.css" />
+    <link rel="stylesheet" href="./interface/layout.css" />
+    <!-- The new React rendering layer's styles (react-ui/, built by
+         `npx vite build`). Only application/ui/react-bridge.js's
+         collapsibleCardReact call sites use this; every other screen is
+         unaffected. -->
+    <link rel="stylesheet" href="./application/ui/react-dist/pfa-react.css" />
     <link rel="modulepreload" href="./application/app-controller.js" />
   </head>
   <body>
@@ -73,7 +80,7 @@
               >
                 <path d="M12 5v14M5 12h14" /></svg
             ></span>
-            <span class="btn-label">Add statement</span>
+            <span class="btn-label">Add</span>
             <input
               id="add-input"
               class="file-trigger-input"
@@ -82,25 +89,6 @@
               multiple
             />
           </label>
-
-          <button id="folder-btn" class="btn" hidden>
-            <span class="btn-ic" aria-hidden="true"
-              ><svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.7"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path
-                  d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
-                /></svg
-            ></span>
-            <span class="btn-label">Watch folder</span>
-          </button>
 
           <div class="menu-wrap">
             <button
@@ -154,7 +142,7 @@
                   >
                     <path d="M12 15V3M8 7l4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" /></svg
                 ></span>
-                <span>Download transactions (CSV)&hellip;</span>
+                <span>Transactions (CSV)&hellip;</span>
               </button>
               <button id="exp-print" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
@@ -171,51 +159,10 @@
                     <rect x="6" y="9" width="12" height="7" rx="1" />
                     <path d="M6 9V4h12v5M8 16v4h8v-4" /></svg
                 ></span>
-                <span>Print / Save as PDF</span>
+                <span id="exp-print-label">Print / Save as PDF</span>
               </button>
               <div class="menu-sep"></div>
-              <div class="menu-label">Category setup</div>
-              <button id="exp-rules-export" class="menu-item">
-                <span class="menu-ic" aria-hidden="true"
-                  ><svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg
-                ></span>
-                <span>Download category rules</span>
-              </button>
-              <label id="exp-rules-import" class="menu-item file-trigger file-menu-item">
-                <span class="menu-ic" aria-hidden="true"
-                  ><svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <path d="M14 2v6h6" /></svg
-                ></span>
-                <span>Load category rules</span>
-                <input
-                  id="exp-rules-input"
-                  class="file-trigger-input"
-                  type="file"
-                  accept=".json,application/json"
-                />
-              </label>
-              <div class="menu-sep"></div>
-              <div class="menu-label">Private backup</div>
+              <div id="export-menu-backup-label" class="menu-label">Private backup</div>
               <button id="exp-export" class="menu-item">
                 <span class="menu-ic" aria-hidden="true"
                   ><svg
@@ -231,7 +178,7 @@
                     <rect x="5" y="11" width="14" height="9" rx="2" />
                     <path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg
                 ></span>
-                <span>Download encrypted backup</span>
+                <span>Save encrypted backup</span>
               </button>
               <label id="exp-import" class="menu-item file-trigger file-menu-item">
                 <span class="menu-ic" aria-hidden="true"
@@ -248,7 +195,7 @@
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <path d="M14 2v6h6" /></svg
                 ></span>
-                <span>Restore encrypted backup</span>
+                <span>Restore from backup</span>
                 <input
                   id="exp-import-input"
                   class="file-trigger-input"
@@ -282,7 +229,7 @@
                 <path class="privacy-slash" d="M4 4l16 16" />
               </svg></span
             >
-            <span class="btn-label" id="privacy-label">Hide</span>
+            <span class="btn-label" id="privacy-label">Hide figures</span>
           </button>
 
           <button id="theme-btn" class="btn icon-btn" title="Theme: Auto" aria-label="Theme: Auto">
@@ -298,7 +245,6 @@
                 <circle cx="12" cy="12" r="9" />
                 <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" /></svg
             ></span>
-            <span class="btn-label" id="theme-label">Auto</span>
           </button>
         </div>
       </header>
@@ -337,7 +283,7 @@
     </footer>
 
     <!-- Overlays -->
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="toast-root"></div>
 
     <div id="busy" class="busy" aria-hidden="true">
       <div class="busy-card" role="status" aria-live="polite">
@@ -348,6 +294,27 @@
         </span>
       </div>
     </div>
+
+    <!-- The way back, for a sentence that took you somewhere else. Same
+         floating affordance as back-to-top (same class, same reveal), sitting
+         one slot above it; the controller names it after where it returns to
+         and shows it only while there is somewhere to return to. -->
+    <button id="go-back" class="to-top to-back" type="button" aria-label="Go back" title="Go back" hidden>
+      <svg
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      <span class="to-back-label">Go back</span>
+    </button>
 
     <button id="to-top" class="to-top" type="button" aria-label="Back to top" hidden>
       <svg

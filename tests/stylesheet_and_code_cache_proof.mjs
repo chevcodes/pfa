@@ -50,7 +50,7 @@ note(CODE.length > 0, 'CODE array successfully parsed from service-worker.js');
 note(ASSETS.length > 0, 'ASSETS array successfully parsed from service-worker.js');
 
 const EXCLUDE_DIR_SEGMENTS = ['interface/archive', 'interface/icons'];
-const EXCLUDE_FILE_REGEX = /_proof\.mjs$/;
+const EXCLUDE_FILE_REGEX = /(?:^|\/)\.DS_Store$|_proof\.mjs$/;
 const EXCLUDE_FILES_EXACT = new Set([
   'tests/cross_screen_consistency.mjs',
   'third-party/pdf.worker.min.txt',

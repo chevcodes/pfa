@@ -60,7 +60,7 @@ function makeSpy() {
   const resetBankDrillFacets = makeSpy();
   const applyFilter = makeSpy();
   drillToTransactions(
-    { state, trackUsage, resetBankDrillFacets, applyFilter },
+    { state, trackUsage, resetBankDrillFacets, applyFilter, applyBankPatch: makeSpy() },
     { category: 'Subscriptions' }
   );
   note(state.view === 'activity', 'switches state.view to activity');
@@ -82,7 +82,7 @@ function makeSpy() {
   const trackUsage = makeSpy();
   const resetBankDrillFacets = makeSpy();
   const applyFilter = makeSpy();
-  drillToTransactions({ state, trackUsage, resetBankDrillFacets, applyFilter }, { category: 'X' });
+  drillToTransactions({ state, trackUsage, resetBankDrillFacets, applyFilter, applyBankPatch: makeSpy() }, { category: 'X' });
   note(trackUsage.calls.length === 0, 'no redundant view-switch tracking when already on activity');
   note(
     state.activityTab === 'transactions',
@@ -96,7 +96,7 @@ function makeSpy() {
   const trackUsage = makeSpy();
   const resetBankDrillFacets = makeSpy();
   const applyFilter = makeSpy();
-  drillToTransactions({ state, trackUsage, resetBankDrillFacets, applyFilter }, { category: 'X' });
+  drillToTransactions({ state, trackUsage, resetBankDrillFacets, applyFilter, applyBankPatch: makeSpy() }, { category: 'X' });
   note(
     resetBankDrillFacets.calls.length === 1,
     'resetBankDrillFacets is ALWAYS called - a stale bank facet can never linger'
@@ -113,6 +113,7 @@ function makeSpy() {
       trackUsage: makeSpy(),
       resetBankDrillFacets: makeSpy(),
       applyFilter,
+      applyBankPatch: makeSpy(),
     },
     { category: 'Groceries' }
   );
@@ -120,6 +121,18 @@ function makeSpy() {
   const [patch, opts] = applyFilter.calls[0];
   note(patch.category === 'Groceries', 'patch passed through unchanged');
   note(opts.expand === true && opts.scroll === true, 'defaults to expand:true, scroll:true');
+}
+
+{
+  const state = makeState({ period: { type: 'latest' } });
+  drillToTransactions(
+    { state, trackUsage: makeSpy(), resetBankDrillFacets: makeSpy(), applyFilter: makeSpy(), applyBankPatch: makeSpy() },
+    { category: 'Groceries', month: '2026-03', kind: 'spend' }
+  );
+  note(
+    state.period.type === 'custom' && state.period.from === '2026-03' && state.period.to === '2026-03',
+    'a dated category drill selects that month before rendering transactions'
+  );
 }
 
 // 5) scroll override honoured (the deselect-should-not-scroll nuance)
@@ -131,6 +144,7 @@ function makeSpy() {
       trackUsage: makeSpy(),
       resetBankDrillFacets: makeSpy(),
       applyFilter,
+      applyBankPatch: makeSpy(),
     },
     { category: 'all' },
     { scroll: false }
@@ -155,6 +169,58 @@ function makeSpy() {
   );
 }
 
+// 6b) a drill that is true of BOTH ledgers sets the bank side, after the reset
+{
+  const applyFilter = makeSpy();
+  const applyBankPatch = makeSpy();
+  const resetBankDrillFacets = makeSpy();
+  const order = [];
+  drillToTransactions(
+    {
+      state: makeState(),
+      trackUsage: makeSpy(),
+      resetBankDrillFacets: (...a) => {
+        order.push('reset');
+        resetBankDrillFacets(...a);
+      },
+      applyFilter: (...a) => {
+        order.push('card');
+        applyFilter(...a);
+      },
+      applyBankPatch: (...a) => {
+        order.push('bank');
+        applyBankPatch(...a);
+      },
+    },
+    { ruleKey: 'AMZN' },
+    { bankPatch: { ruleKey: 'AMZN' } }
+  );
+  note(
+    applyBankPatch.calls.length === 1 && applyBankPatch.calls[0][0].ruleKey === 'AMZN',
+    'a bankPatch reaches the bank registry'
+  );
+  note(
+    order.join(',') === 'reset,bank,card',
+    'it is applied AFTER the bank reset that would otherwise wipe it, and before the render'
+  );
+}
+
+// 6c) an ordinary drill still touches nothing on the bank side but the reset
+{
+  const applyBankPatch = makeSpy();
+  drillToTransactions(
+    {
+      state: makeState(),
+      trackUsage: makeSpy(),
+      resetBankDrillFacets: makeSpy(),
+      applyFilter: makeSpy(),
+      applyBankPatch,
+    },
+    { category: 'Groceries' }
+  );
+  note(applyBankPatch.calls.length === 0, 'a card-only drill leaves the bank registry alone');
+}
+
 // 7) ledgerIsNarrowed: honest on defaults, true when any real facet is set
 {
   note(ledgerIsNarrowed(makeState()) === false, 'defaults -> not narrowed');
@@ -176,8 +242,8 @@ function makeSpy() {
   note(
     bankRowsInapplicable(
       makeState({ filter: { ...makeState().filter, category: 'Groceries' } })
-    ) === true,
-    'a category filter -> bank rows inapplicable'
+    ) === false,
+    'bank categories remain applicable when a category filter is active'
   );
   note(cardRowsInapplicable(makeState()) === false, 'defaults -> card rows applicable');
   note(

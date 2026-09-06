@@ -1,7 +1,6 @@
 {
   "app": {
-    "name": "Personal Finance Analyser",
-    "shortName": "Finance Analyser"
+    "name": "Personal Finance Analyser"
   },
   "currency": {
     "code": "JMD",
@@ -114,47 +113,61 @@
       }
     ]
   },
-  "bankMovementKinds": {
-    "note": "Bank-native movement kinds for the Accounts tab. Not the card spending taxonomy: bank money is income, transfers, bills, fees, tax and cash. A row's kind is decided in read-statements.js bankMovementKind() - own-account/round-trip first, then cash deposit, then household, then a resolved merchant's category coarsened via categoryToKind, then the statement's own printed TYPE matched against typeRules (plain uppercase substrings, no regex), then direction. Adding a rule here changes the breakdown with no code change.",
-    "labels": {
-      "income": "Income",
-      "payment": "Payments to people",
-      "bill": "Bills & standing payments",
-      "fees": "Fees & charges",
-      "tax": "Government & tax",
-      "cash-withdrawal": "Cash withdrawals",
-      "cash-deposit": "Cash deposits",
-      "household": "Support to household",
-      "refund": "Refunds & reversals",
-      "internal": "Between your own accounts",
-      "other": "Other movements"
-    },
-    "order": [
-      "income",
-      "payment",
-      "bill",
-      "fees",
-      "tax",
-      "cash-withdrawal",
-      "cash-deposit",
-      "household",
-      "refund",
-      "internal",
-      "other"
+  "accountCategoryRoutes": {
+    "note": "Account-type routing for categories the shared register cannot get right for both ledgers. A term can mean different things depending on which statement it appears on: 'insurance premium' on a CARD is the card issuer's own insurance fee (Fees & Interest), while the same words on a BANK statement are the person paying their insurer (Insurance). Applied only AFTER the shared engine has produced `from`, and only for the named profile, so the card ledger is untouched and no rule is invented for a category the engine did not already choose. These change the LABEL a row carries, never the amount and never which plan group it lands in when both categories share one group.",
+    "bank": [
+      { "match": "INSURANCE PREMIUM", "from": "Fees & Interest", "to": "Insurance" }
+    ]
+  },
+  "planBands": {
+    "note": "The Plan tab's conscious-spending groups. Every spending category belongs to exactly one group, and each group carries a target share of a normal month's take-home. defaults are the starting split (60/20/20), a reference point a person tunes - never a pass mark and never a grade. seed places only the categories whose group is NOT a judgement call; everything in seed.ask is a real decision and is put to the person rather than guessed. A category's group is decided by OBLIGATION, not by rhythm: a bill you must pay is fixed, while dining or entertainment is discretionary spending however regularly it recurs. Recurrence is therefore never used to infer a group. Detected recurring standing debits count as fixed because a direct debit is a contractual obligation, not merely a repeated one.",
+    "groups": [
+      { "key": "fixed", "label": "Fixed expenses", "meaning": "money you are obliged to pay" },
+      { "key": "setAside", "label": "Savings & investments", "meaning": "money moving toward the future" },
+      { "key": "free", "label": "Discretionary spending", "meaning": "money you choose how to spend" }
     ],
-    "colours": {
-      "income": "#3f9d6b",
-      "payment": "#2f6fb0",
-      "bill": "#5a78c2",
-      "fees": "#b5642e",
-      "tax": "#c98a1b",
-      "cash-withdrawal": "#4aa3a3",
-      "cash-deposit": "#6b8e3d",
-      "household": "#9a5aa8",
-      "refund": "#3f9d6b",
-      "internal": "#8a8f99",
-      "other": "#557f9e"
-    },
+    "defaults": { "fixed": 60, "setAside": 20, "free": 20 },
+    "seed": {
+      "fixed": [
+        "Utilities",
+        "Telecom",
+        "Insurance",
+        "Loan Repayment",
+        "Government & Tax",
+        "Fees & Interest"
+      ],
+      "setAside": [],
+      "free": [
+        "Dining & Takeout",
+        "Entertainment & Recreation",
+        "Subscriptions",
+        "Online Shopping",
+        "Retail & Department",
+        "Hotels & Travel"
+      ],
+      "ask": [
+        "Groceries",
+        "Fuel & Transport",
+        "Auto & Vehicle",
+        "Pharmacy & Health",
+        "Home & Services",
+        "Courier & Shipping",
+        "Banking & Transfers"
+      ]
+    }
+  },
+  "bankMovementKinds": {
+    "note": "Bank-native movement rules used by the Plan tab to distinguish money set aside from neutral transfers and to coarsen bank categories. A row's kind is decided in bank-analysis.js bankMovementKind(): setAsideRules first, then own-account/round-trip, cash deposit, household, resolved category, statement type, and finally direction.",
+    "setAsideRules": [
+      { "match": "INVESTMENT", "label": "Investment account", "investment": true },
+      { "match": "BROKERAGE", "label": "Brokerage account", "investment": true },
+      { "match": "MUTUAL FUND", "label": "Mutual fund", "investment": true },
+      { "match": "UNIT TRUST", "label": "Unit trust", "investment": true },
+      { "match": "FIXED DEPOSIT", "label": "Fixed deposit" },
+      { "match": "PENSION", "label": "Pension" },
+      { "match": "RETIREMENT", "label": "Retirement account" },
+      { "match": "SINKING FUND", "label": "Sinking fund" }
+    ],
     "categoryToKind": {
       "Insurance": "bill",
       "Banking & Transfers": "bill",
@@ -182,15 +195,15 @@
       { "match": "PC-BILL PAYMENT", "kind": "bill" }
     ]
   },
-  "confidence": {
-    "confident": "high",
-    "review": "low",
-    "ruleConfidence": 0.9,
-    "unknownConfidence": 0
-  },
   "categories": [
     {
       "name": "Card Payment",
+      "flow": "internal",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Payments made to the card",
       "sector": "Internal - Card Payment",
       "ownership": "internal",
@@ -206,6 +219,14 @@
     },
     {
       "name": "Refund / Reversal",
+      "structuralRole": "refund",
+      "flow": "in",
+      "incomeClass": "returned",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Money returned to the card",
       "sector": "Internal - Refund",
       "ownership": "internal",
@@ -222,6 +243,12 @@
     },
     {
       "name": "Fees & Interest",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Bank charges, interest and card fees",
       "sector": "Financial - Fees",
       "ownership": "personal",
@@ -246,6 +273,12 @@
     },
     {
       "name": "Government & Tax",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "GCT, customs, taxes and government fees",
       "sector": "Government",
       "ownership": "personal",
@@ -265,6 +298,12 @@
     },
     {
       "name": "Subscriptions",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Recurring digital services",
       "sector": "Subscription - Digital",
       "ownership": "personal",
@@ -311,7 +350,7 @@
           "mcafee",
           "1password",
           "anthropic",
-          "claude",
+          "\\bclaude\\b",
           "perplexity",
           "midjourney",
           "streaming"
@@ -320,6 +359,12 @@
     },
     {
       "name": "Online Shopping",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Online marketplaces",
       "sector": "E-commerce",
       "ownership": "personal",
@@ -345,6 +390,12 @@
     },
     {
       "name": "Courier & Shipping",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Freight, courier and delivery",
       "sector": "Logistics - Courier",
       "ownership": "personal",
@@ -363,6 +414,12 @@
     },
     {
       "name": "Telecom",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Phone, data and airtime",
       "sector": "Telecom",
       "ownership": "personal",
@@ -381,6 +438,12 @@
     },
     {
       "name": "Utilities",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Electricity and water",
       "sector": "Utilities",
       "ownership": "household",
@@ -396,6 +459,12 @@
     },
     {
       "name": "Insurance",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Insurance premiums and cover",
       "sector": "Financial - Insurance",
       "ownership": "personal",
@@ -412,6 +481,12 @@
     },
     {
       "name": "Banking & Transfers",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Bank services and money transfers",
       "sector": "Financial - Bank",
       "ownership": "personal",
@@ -429,6 +504,12 @@
     },
     {
       "name": "Fuel & Transport",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Fuel, taxis, flights and travel movement",
       "sector": "Transport",
       "ownership": "personal",
@@ -464,6 +545,12 @@
     },
     {
       "name": "Auto & Vehicle",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Vehicle parts, service and repairs",
       "sector": "Automotive",
       "ownership": "personal",
@@ -486,6 +573,12 @@
     },
     {
       "name": "Groceries",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Supermarkets and food stores",
       "sector": "Retail - Grocery",
       "ownership": "household",
@@ -509,6 +602,12 @@
     },
     {
       "name": "Pharmacy & Health",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Pharmacies, doctors and dental",
       "sector": "Healthcare",
       "ownership": "personal",
@@ -516,6 +615,7 @@
         "universal": [
           "pharmac(y|ies)",
           "drug\\s*store",
+          "\\bdrugs?\\b",
           "hospital",
           "\\bclinic\\b",
           "dental",
@@ -526,11 +626,18 @@
           "medlab",
           "optical",
           "eye\\s*care"
-        ]
+        ],
+        "head": ["^dr\\.?\\s"]
       }
     },
     {
       "name": "Dining & Takeout",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Restaurants, takeout and bars",
       "sector": "Food Service",
       "ownership": "personal",
@@ -593,6 +700,12 @@
     },
     {
       "name": "Hotels & Travel",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Hotels, resorts and stays",
       "sector": "Travel",
       "ownership": "personal",
@@ -606,7 +719,7 @@
           "\\bresort\\b",
           "\\bhotel\\b",
           "guest\\s*house",
-          "villa",
+          "\\bvillas?\\b",
           "all-?suite",
           "\\binn\\b"
         ],
@@ -624,6 +737,12 @@
     },
     {
       "name": "Entertainment & Recreation",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Cinema, events, clubs and leisure",
       "sector": "Entertainment",
       "ownership": "personal",
@@ -653,6 +772,12 @@
     },
     {
       "name": "Education",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Schools, tuition and courses",
       "sector": "Education",
       "ownership": "personal",
@@ -680,6 +805,12 @@
     },
     {
       "name": "Loan Repayment",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Loan payments",
       "sector": "Financial - Loan",
       "ownership": "personal",
@@ -695,6 +826,12 @@
     },
     {
       "name": "Cash & ATM",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Cash advances and withdrawals",
       "sector": "Cash",
       "ownership": "personal",
@@ -704,6 +841,12 @@
     },
     {
       "name": "Betting & Gaming",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Lottery, betting and gaming",
       "sector": "Entertainment - Gaming",
       "ownership": "personal",
@@ -713,6 +856,12 @@
     },
     {
       "name": "Retail & Department",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Shops and department stores",
       "sector": "Retail",
       "ownership": "personal",
@@ -736,6 +885,12 @@
     },
     {
       "name": "Home & Services",
+      "flow": "out",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
       "description": "Household and personal services",
       "sector": "Personal Services",
       "ownership": "personal",
@@ -762,26 +917,317 @@
         ]
       }
     }
+  ,
+    {
+      "name": "Money in",
+      "structuralRole": "defaultIncome",
+      "flow": "in",
+      "incomeClass": "income",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [
+        "Income"
+      ],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Salary",
+      "flow": "in",
+      "incomeClass": "earned",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Bonus",
+      "flow": "in",
+      "incomeClass": "earned",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Self-employed & side income",
+      "flow": "in",
+      "incomeClass": "earned",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Rental income",
+      "flow": "in",
+      "incomeClass": "earned",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Government benefits",
+      "flow": "in",
+      "incomeClass": "benefit",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Pension",
+      "flow": "in",
+      "incomeClass": "retirement",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Interest",
+      "flow": "in",
+      "incomeClass": "investment",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Dividends",
+      "flow": "in",
+      "incomeClass": "investment",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": true,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Family & gifts",
+      "flow": "in",
+      "incomeClass": "support",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Expense reimbursement",
+      "flow": "in",
+      "incomeClass": "returned",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Tax refund",
+      "flow": "in",
+      "incomeClass": "returned",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Loan proceeds",
+      "flow": "in",
+      "incomeClass": "loan",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Own-account transfer",
+      "structuralRole": "internalTransfer",
+      "flow": "in",
+      "incomeClass": "transfer",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Investment withdrawal",
+      "flow": "in",
+      "incomeClass": "transfer",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Cash deposit",
+      "structuralRole": "cashDeposit",
+      "flow": "in",
+      "incomeClass": "pending",
+      "inIncomeTotal": false,
+      "inTakeHome": false,
+      "expectsRecurrence": false,
+      "aliases": [],
+      "selectable": false,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    },
+    {
+      "name": "Other deposits",
+      "flow": "in",
+      "incomeClass": "other",
+      "inIncomeTotal": true,
+      "inTakeHome": true,
+      "expectsRecurrence": false,
+      "aliases": [
+        "Other income"
+      ],
+      "selectable": true,
+      "description": "",
+      "sector": "Income",
+      "ownership": "personal",
+      "patterns": {
+        "universal": []
+      }
+    }
   ],
-  "locationTokens": [
-    "piarco",
-    "nmia",
-    "norman manley",
-    "maracas",
-    "caymanas",
-    "devon house",
-    "fort lauderda",
-    "west palm bea",
-    "lake wales",
-    "lakeland",
-    "okeechobee",
-    "montgomery",
-    "bellevue",
-    "plantation",
-    "george town",
-    "drax hall",
-    "trincity"
+  "incomeRules": [
+    { "category": "Salary", "field": "type", "words": ["SALARY"], "exclude": ["ADVANCE", "LOAN"], "active": true },
+    { "category": "Salary", "field": "description", "words": ["SALARY", "PAYROLL", "WAGES"], "prefix": ["PAYROLL"], "exclude": ["ADVANCE", "LOAN"], "active": true },
+    { "category": "Bonus", "field": "description", "words": ["BONUS"], "exclude": [], "active": true },
+    { "category": "Pension", "field": "description", "words": ["PENSION", "ANNUITY"], "exclude": [], "active": true },
+    { "category": "Interest", "field": "type", "words": ["INTEREST PAYMENT"], "exclude": [], "active": true },
+    { "category": "Interest", "field": "description", "words": ["INTEREST"], "exclude": [], "active": true },
+    { "category": "Dividends", "field": "description", "words": ["DIVIDEND"], "exclude": [], "active": true },
+    { "category": "Government benefits", "field": "description", "words": ["GOVERNMENT BENEFIT", "GOVERNMENT BENEFITS", "NIS BENEFIT"], "exclude": [], "active": true },
+    { "category": "Refund / Reversal", "field": "type", "words": ["REFUND", "REVERSAL", "POSREV", "CHARGEBACK", "CREDIT NOTE"], "exclude": [], "active": true },
+    { "category": "Refund / Reversal", "field": "description", "words": ["REFUND", "REVERSAL", "POSREV", "CHARGEBACK", "CREDIT NOTE"], "exclude": [], "active": true },
+    { "category": "Expense reimbursement", "field": "description", "words": ["REIMBURSEMENT", "EXPENSE CLAIM"], "exclude": [], "active": false },
+    { "category": "Tax refund", "field": "description", "words": ["TAX REFUND"], "exclude": [], "active": false },
+    { "category": "Loan proceeds", "field": "description", "words": ["LOAN DISBURSEMENT", "LOAN ADVANCE"], "exclude": [], "active": false },
+    { "category": "Investment withdrawal", "field": "description", "words": ["REDEMPTION", "ENCASHMENT"], "exclude": [], "active": false }
   ],
+  "channelWords": ["direct credit", "scotia direct credit", "ach", "electronic credit", "transfer", "funds", "payment", "credit"],
+  "labelSuggestions": [
+    { "category": "Salary", "from": "defaultIncome", "active": true }
+  ],
+  "incomeClassLabels": {
+    "income": "Money in",
+    "earned": "Earnings",
+    "benefit": "Government benefits",
+    "retirement": "Pension",
+    "investment": "Interest and dividends",
+    "support": "Family & gifts",
+    "loan": "Loan proceeds",
+    "other": "Other deposits"
+  },
   "keepUpper": [
     "KFC",
     "GCT",
@@ -849,13 +1295,11 @@
     "largeChargeMin": 10000,
     "largeChargeZ": 3.5,
     "largeChargeMinPeers": 2,
-    "minMonthsForComparison": 2,
     "maxInsights": 3,
     "newMerchantMin": 2000,
     "driverShare": 0.5,
     "incompleteDayMargin": 3,
     "incompleteSpendRatio": 0.6,
-    "minPaymentTrapRatio": 1.15,
     "categorySpikeZ": 3.5,
     "categorySpikeMin": 10000,
     "categorySpikeMinMonths": 3,

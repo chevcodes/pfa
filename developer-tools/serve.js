@@ -23,7 +23,8 @@ import { exec } from 'node:child_process';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const root = projectRoot;
-const port = Number(process.env.PORT) || 8000;
+const requestedPort = Number(process.env.PORT);
+const port = Number.isFinite(requestedPort) ? requestedPort : 8000;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -76,6 +77,13 @@ const server = http.createServer((req, res) => {
   const ext = path.extname(resolved).toLowerCase();
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',
+    // A development server must never let the browser hold on to a file. With
+    // no cache header at all the browser is free to apply its own heuristics,
+    // which is how an edit can be saved, the page reloaded, and the previous
+    // version still served. Explicit no-store removes the guesswork.
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    Pragma: 'no-cache',
+    Expires: '0',
   });
   createReadStream(resolved).pipe(res);
 });
@@ -92,10 +100,10 @@ server.on('error', (err) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  const url = `http://localhost:${port}`;
+  const url = `http://localhost:${server.address().port}`;
   console.log(`Serving the app at ${url}`);
   console.log('Press Ctrl+C to stop.');
-  openBrowser(url);
+  if (process.env.PFA_NO_BROWSER !== '1') openBrowser(url);
 });
 
 function openBrowser(url) {

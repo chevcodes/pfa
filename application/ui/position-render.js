@@ -1,3 +1,9 @@
+import { staggerIn } from './motion.js';
+import { commitAndRender } from './reversible.js';
+import { createDecisionHeader, placeFoldAll } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact, decisionSurfaceReact, positionSummaryReact, positionAssetFormReact, emptyStateReact, netWorthLineReact, positionCashAccountsReact, positionMixReact, positionNetWorthReact, positionViewReact } from './react-bridge.js';
+import { pairCards } from './chart-helpers.js';
+import { createAccountRename } from './account-rename.js';
 /*
  * PROVENANCE RULE (applies to every render surface, not just this file):
  * The reconciled default is SILENT - a figure from statements is just the
@@ -27,15 +33,31 @@
  * INTEGRITY, ENFORCED IN THE MARKUP (not just the model):
  *   - reconciled figures (cash, card, income stability) render as authoritative
  *     content-model cards;
- *   - the recorded net worth NEVER shows a bare "complete" total: its tag states
- *     coverage ("covers N of M classes") and its own note names the gaps;
+ *   - the recorded net worth NEVER shows a bare "complete" total: its own note
+ *     names the gaps;
  *   - self-reported lines are visually separated from reconciled ones and a
  *     stale entry is flagged;
  *   - the summary export keeps each figure's source, and is labelled a personal
  *     summary, not a lender-approved statement.
  */
-import { requireCtx, formatDisplayDate } from '../core/shared-helpers.js';
+import {
+  requireCtx,
+  formatDisplayDate,
+  formatMoney,
+  withExactFigures,
+  figuresHidden,
+  accountName,
+  accountNameKey,
+  accountShortLabel,
+  bankAccountIdentity,
+  daysBetweenIso,
+  isoToday,
+} from '../core/shared-helpers.js';
+import { currencyPrefix, makeProseMoney } from '../core/money-format.js';
+import { INVESTMENT_PROVIDER_LABELS, investmentSnapshot } from '../analysis/investments.js';
 import { renderShareBar } from '../analysis/reporting-core.js';
+import { balanceKey, NUDGE_AFTER_DAYS } from '../analysis/balance-updates.js';
+import { iconStore as storeGlyph } from '../core/icons.js';
 
 export function createPositionRenderer(ctx) {
   requireCtx(
@@ -45,16 +67,19 @@ export function createPositionRenderer(ctx) {
       'el',
       'icon',
       'provenModels',
-      'iconInfo',
       'trackUsage',
       'Store',
       'render',
       'makeManualAsset',
       'NET_WORTH_CLASSES',
       'toast',
-      'smoothScrollToEl',
       'drillToAccount',
       'pickStatements',
+      'renderInvestments',
+      'moneyShort',
+      'changeSetting',
+      'balanceUpdates',
+      'openEvidence',
     ],
     'createPositionRenderer'
   );
@@ -63,570 +88,476 @@ export function createPositionRenderer(ctx) {
     el,
     icon,
     provenModels,
-    iconInfo,
     trackUsage,
     Store,
     render,
     makeManualAsset,
     NET_WORTH_CLASSES,
-    smoothScrollToEl,
     drillToAccount,
     pickStatements,
-  } = ctx;  // Optional icons: used when present, degraded gracefully when not (so this
-  // renderer never crashes if the icon set lacks one of these names).
-  const iconStore = ctx.iconStore || iconInfo;
-  const iconList = ctx.iconList || iconInfo;
+    renderInvestments,
+    moneyShort,
+    changeSetting,
+    balanceUpdates,
+    openEvidence,
+  } = ctx;
+  const iconStore = ctx.iconStore || storeGlyph;
   const toast = ctx.toast || (() => {});
+  const { renderDecisionHeader } = createDecisionHeader({ el });
 
-  /* ---- the shared content-model component: number -> tag -> dropdown ----
-   * Emits the exact .vm / .vm-number / .vm-tag / .vm-detail markup glass.css
-   * styles. The number is plain content (never glassy); the tag is pronoun-free
-   * with the tone dot; the detail hides in a native <details>. */
-  function renderVM(m, opts = {}) {
-    if (!m) return null;
-    const kids = [
-      el(
-        'div',
-        { class: 'vm-lead' },
-        el(
-          'div',
-          { class: 'vm-number' + (opts.lead ? ' lg' : '') },
-          m.amountText != null ? m.amountText : m.leadText != null ? m.leadText : ''
-        ),
-        m.label ? el('div', { class: 'vm-label' }, m.label) : null
-      ),
-    ];
-    if (m.tag) kids.push(el('span', { class: 'vm-tag tone-' + (m.tone || 'neutral') }, m.tag));
-    if (m.detail) {
-      kids.push(
-        el(
-          'details',
-          { class: 'vm-detail' },
-          el('summary', {}, 'Why'),
-          el('div', { class: 'vm-detail-body' }, m.detail)
-        )
+  function cashAccounts(cashDebt) {
+    const perAccount = cashDebt && cashDebt.perAccount ? cashDebt.perAccount : {};
+    return Array.isArray(cashDebt && cashDebt.accounts)
+      ? cashDebt.accounts.slice()
+      : Object.entries(perAccount).map(([account, balance]) => ({
+          account,
+          currency: cashDebt.baseCurrency,
+          nativeBalance: Number(balance) || 0,
+          baseBalance: Number(balance) || 0,
+        }));
+  }
+
+  const { renameControl } = createAccountRename({ state, el, changeSetting, trackUsage, track: 'position-rename-account' });
+
+  function renderCashDebt(cashDebtModel, cashDebt, asProps = false) {
+    const accounts = cashAccounts(cashDebt);
+    // One account normally needs no per-account breakdown - but a balance the
+    // person typed lives on these rows (its date, and the way back to fix it),
+    // so the card stays reachable as soon as one exists.
+    if (accounts.length <= 1 && !accounts.some((account) => account.enteredAsOf)) return null;
+    const accountMoney = ctx.bankMoney || ctx.money0 || ((n) => String(n));
+    const base = cashDebt.baseCurrency || 'JMD';
+    const comparableAccounts = accounts.filter((account) => Number.isFinite(account.baseBalance));
+    const positiveAccounts = comparableAccounts.filter((account) => Number(account.baseBalance) > 0);
+    const representedCash = comparableAccounts.reduce(
+      (sum, account) => sum + Number(account.baseBalance),
+      0
+    );
+    const baseCash = comparableAccounts
+      .filter((account) => (account.currency || base) === base)
+      .reduce((sum, account) => sum + Number(account.baseBalance), 0);
+    const positiveCash = positiveAccounts.reduce(
+      (sum, account) => sum + Number(account.baseBalance),
+      0
+    );
+    const unconverted = accounts.filter((account) => account.baseBalance == null).length;
+
+    /* The rate the figures above were converted at, said here. */
+    function conversionNote() {
+      const rated = accounts.filter(
+        (account) => (account.currency || base) !== base && Number(account.rate) > 0
       );
+      if (!rated.length)
+        return 'Accounts held in another currency are converted to your base currency before they are added up.';
+      const seen = new Map();
+      for (const account of rated) seen.set(account.currency, account.rate);
+      return `Converted at ${[...seen].map(([ccy, rate]) => `${rate} ${base} to 1 ${ccy}`).join(', ')}.`;
     }
-    return el('div', { class: 'vm' }, ...kids);
-  }
 
-  /* ---- cash & debt: the reconciled half, authoritative, no upkeep ---- */
-  function renderCashDebt(cashDebtModel, cashDebt) {
-    const sec = el('section', { class: 'card lead', id: 'position-cashdebt' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconInfo()), 'Cash and debt')
-      )
-    );
-    // All of this card's figures now sit in ONE flexible row - cash on hand,
-    // owed on card AND income stability together - rather than the old split
-    // of cash/card as a 2-up pair with income stability full-width beneath.
-    // That split was reasoned as "currency peers vs a different kind of
-    // value", which is a real distinction, but it left the right two-thirds
-    // of the card empty whenever "Owed on card" and "Income stability" both
-    // rendered short, reading as an unfinished layout rather than a
-    // deliberate one. .vm-row (glass.css) is a genuine N-column grid, not a
-    // hardcoded 3-up rule, so this holds correctly whether one, two, three,
-    // or (if a figure is ever added here later) more cards exist, and still
-    // stacks fully below 1000px exactly like the old .vm-pair did.
-    const cardsToShow = cashDebtModel.cards;
-    if (cardsToShow.length) {
-      const row = el('div', {
-        class: 'vm-row' + (cardsToShow.length < 2 ? ' solo' : ''),
+    /* THE WAY IN, ON THE ROW THE FIGURE IS ON.
+     *
+     * A balance the person typed already carried "entered <date> · Fix". A
+     * balance read off a statement carried nothing - so the one figure that
+     * actually goes stale, and the one they would most want to correct, was the
+     * one with no way to correct it from here. On the real set that is the
+     * account holding 73% of the cash, showing a figure from a statement seven
+     * weeks old. Offered only once it IS stale, by the app's own freshness rule,
+     * and through openUpdater - the door that already exists. */
+    const balanceState = (account) => {
+      const model = provenModels.balances();
+      if (!model || !model.accounts) return null;
+      const key = balanceKey('bank', account.account, account.currency || base);
+      return model.accounts.find((item) => item.key === key) || null;
+    };
+    const staleSince = (account) => {
+      const found = balanceState(account);
+      if (!found || found.source !== 'statement' || !found.asOf) return null;
+      const age = daysBetweenIso(found.asOf, isoToday());
+      return age != null && age > NUDGE_AFTER_DAYS ? found.asOf : null;
+    };
+    const belowZero = comparableAccounts.filter((account) => Number(account.baseBalance) < 0).length;
+    const accountLabel = (account) => accountShortLabel(account, accounts);
+    const currencyMoney = (account) => {
+      if ((account.currency || base) === base) return accountMoney(account.nativeBalance);
+      return formatMoney(
+        Number(account.nativeBalance) || 0,
+        currencyPrefix(account.currency, state.cfg),
+        undefined,
+        2
+      );
+    };
+
+    const summaryNote = unconverted
+      ? `Plus ${unconverted} account${unconverted === 1 ? '' : 's'} kept in its own currency`
+      : belowZero
+        ? `${belowZero} account${belowZero === 1 ? ' is' : 's are'} below zero and shown separately`
+        : '';
+    const conversionInfoText = summaryNote ? null : conversionNote();
+    const conversionInfo = typeof window === 'undefined' && conversionInfoText ? chartInfoReact(el, 'How this is converted', conversionInfoText) : null;
+    let shareNode = null;
+    if (positiveAccounts.length > 1) {
+      shareNode = renderShareBar(el, {
+        palette: ['var(--accent)', 'var(--chart-in)', 'var(--good)', 'var(--warn)'],
+        segments: positiveAccounts
+          .slice()
+          .sort((a, b) => b.baseBalance - a.baseBalance)
+          .map((account) => ({
+            amount: Number(account.baseBalance),
+            label: `${accountName(state.accountNames, 'bank', account.account) || accountLabel(account.account)} · ${account.currency || base}`,
+          })),
       });
-      for (const c of cardsToShow) row.append(renderVM(c));
-      sec.append(row);
     }
 
-    const perAccount = cashDebt && cashDebt.perAccount ? cashDebt.perAccount : null;
-    const accounts = perAccount ? Object.keys(perAccount) : [];
-    if (accounts.length > 1) {
-      const formatMoney = ctx.bankMoney || ctx.money0 || ((n) => String(n));
-      // Last-four identifier, matching Activity's account chips, so the same
-      // account reads identically across the app. Full number kept as an
-      // unambiguous fallback when any two share a last-4.
-      const acctLabel = (acct) => {
-        const s = String(acct);
-        const last4 = s.slice(-4);
-        const collides = accounts.filter((x) => String(x).slice(-4) === last4).length > 1;
-        return collides || s.length <= 4 ? s : '\u2026' + last4;
+    const accountRows = accounts.slice().sort((a, b) => {
+      const av = a.baseBalance == null ? -Infinity : Number(a.baseBalance);
+      const bv = b.baseBalance == null ? -Infinity : Number(b.baseBalance);
+      return bv - av;
+    }).map((account, index) => {
+      const converted = (account.currency || base) !== base && account.baseBalance != null;
+      const share = positiveCash > 0 && Number(account.baseBalance) > 0
+        ? Math.max(0, Math.min(100, (Number(account.baseBalance) / positiveCash) * 100))
+        : null;
+      const name = accountName(state.accountNames, 'bank', account.account) || accountLabel(account.account);
+      const stale = account.enteredAsOf ? null : staleSince(account);
+      return {
+        key: balanceKey('bank', account.account, account.currency || base),
+        activityFocusId: `position-account-open-${index}`,
+        name,
+        currency: account.currency || base,
+        amount: currencyMoney(account),
+        convertedText: converted ? `≈ ${accountMoney(account.baseBalance)} ${base}` : (account.currency || base) === base ? base : 'Kept separate',
+        ...renameControl({
+          kind: 'bank',
+          account: account.account,
+          fallback: accountLabel(account.account),
+          about: `Account ending ${bankAccountIdentity(account.account)}`,
+          textClass: 'position-account-name',
+        }),
+        onOpen: () => {
+          trackUsage('position-drill-account');
+          drillToAccount(account.account);
+        },
+        shareText: share == null ? '' : figuresHidden() ? '••% of represented cash' : `${Math.round(share)}% of represented cash`,
+        shareWidth: share == null ? 0 : Math.max(2, Math.round(share)),
+        dateText: account.enteredAsOf
+          ? `entered ${formatDisplayDate(account.enteredAsOf)}`
+          : stale
+            ? `from your ${formatDisplayDate(stale)} statement`
+            : '',
+        updateLabel: account.enteredAsOf ? `Fix the balance entered for ${name}` : `Type today's balance for ${name}`,
+        updateText: account.enteredAsOf ? 'Fix' : 'Update',
+        onUpdate: () => balanceUpdates.openUpdater(balanceKey('bank', account.account, account.currency || base)),
       };
-      const list = el('div', { class: 'recurring-list' });
-      for (const acct of accounts.sort()) {
-        list.append(
-          el(
-            'button',
-            {
-              class: 'recurring-row',
-              onclick: () => {
-                trackUsage('position-drill-account');
-                drillToAccount(acct);
-              },
-            },
-            el('span', { class: 'recurring-name' }, acctLabel(acct)),
-            el('span', { class: 'recurring-amt num strong' }, formatMoney(perAccount[acct]))
-          )
-        );
-      }
-      // Collapsed by default, matching "Add an asset or debt" below: the
-      // headline reconciled figures above stay lean, and the per-account
-      // breakdown becomes something a person opens deliberately rather than a
-      // permanent fixture on the screen's single lead card. Reuses the same
-      // .secondary disclosure language as every other opt-in detail in this app.
-      const disclosure = el('details', { class: 'secondary', style: 'margin-top:12px' });
-      disclosure.append(el('summary', {}, icon(iconInfo()), ` By account (${accounts.length})`));
-      const body = el('div', { class: 'sec-section' });
-      // A proportion bar above the list. Only positive-balance accounts
-      // segment; the list beneath keeps exact figures. Shown only when the
-      // cash is GENUINELY split across accounts - when one account holds
-      // almost everything, the bar is a single dominant segment with
-      // invisible slivers that says nothing the list doesn't, so it is
-      // shown only when the top account holds under 85% of the total.
-      const positive = accounts.filter((a) => Number(perAccount[a]) > 0);
-      const posTotal = positive.reduce((s, a) => s + Number(perAccount[a]), 0);
-      const topShare = positive.length ? Math.max(...positive.map((a) => Number(perAccount[a]))) / (posTotal || 1) : 1;
-      if (positive.length > 1 && topShare < 0.85) {
-        const bar = renderShareBar(el, {
-          segments: positive
-            .sort((a, b) => perAccount[b] - perAccount[a])
-            .map((a) => ({
-              amount: Number(perAccount[a]),
-              label: acctLabel(a),
-            })),
-        });
-        if (bar) body.append(el('div', { style: 'width:100%;margin:0 0 10px' }, bar));
-      }
-      body.append(list);
-      disclosure.append(body);
-      sec.append(disclosure);
-    }
+    });
+    const investmentAccounts = investmentSnapshot(state._investmentStatements || [], { baseCurrency: base }).availableAccounts;
+    const namedInvestmentAccounts = investmentAccounts.map((item) => ({
+      key: accountNameKey('investment', item.accountKey),
+      ...renameControl({
+        kind: 'investment',
+        account: item.accountKey,
+        fallback: item.label,
+        about: `${INVESTMENT_PROVIDER_LABELS[item.provider] || item.provider} investment account ending ${bankAccountIdentity(item.account)}`,
+      }),
+    }));
 
-    return sec;
+    // ONE cash figure, whichever screen asks.
+    //
+    // This card summed every account converted into the base currency, while
+    // "Cash on hand" - Overview's lead working, and this screen's own
+    // supporting metric - counts the base currency alone and says so ("plus
+    // USD separate"). Two totals for one idea, one of them now the destination
+    // the other opens. The summary leads with the shared figure and names the
+    // foreign accounts beside it rather than folding them in silently; the
+    // rows below still show every account, in its own currency.
+    const foreignAccounts = accounts.filter((account) => (account.currency || base) !== base);
+    const cashProps = {
+      representedText: accountMoney(representedCash),
+      base,
+      summaryNote,
+      conversionInfo,
+      conversionInfoText,
+      shareNode,
+      accounts: accountRows,
+      investmentAccounts: namedInvestmentAccounts,
+    };
+    const reactActive = typeof window !== 'undefined';
+    const sec = reactActive ? null : positionCashAccountsReact(el, cashProps);
+    const summary = foreignAccounts.length
+      ? `${moneyShort(baseCash)} in ${base}, plus ${foreignAccounts.length} account${foreignAccounts.length === 1 ? '' : 's'} in another currency`
+      : `${moneyShort(representedCash)} in ${accounts.length} accounts`;
+    const explain = `Every everyday account, at its latest recorded balance. ${conversionNote()} The credit card is a debt, so it is not part of this figure.`;
+    if (asProps) return { summary, explain, cashProps };
+    return collapsibleCardReact(el, {
+      title: 'Where your cash sits',
+      summary,
+      // The one thing this card cannot say on its face: what the figure on it
+      // counts, and what it leaves out. Its glyph opens it now rather than
+      // being an info icon that opened nothing.
+      explain,
+      body: sec,
+      reactBody: reactActive ? { kind: 'positionCash', props: cashProps, rootClass: 'pfa-react-root' } : null,
+      name: 'position-cashdebt-card',
+    });
   }
 
-  /* ---- recorded net worth: the complete balance-sheet frame ----
-   * Every standard class is shown whether filled or empty. A filled class shows
-   * its figure(s) and where they came from; an empty class shows a quiet "not
-   * added yet" with an Add that opens a small inline form already set to that
-   * class - so the missing pieces are structural gaps a person fills in place,
-   * not a sentence to read. This IS the coverage honesty, shown as structure.
-   * Cash and card come from statements (not addable here); everything else is
-   * self-reported, dated, and ages visibly. The old worded "not included:" list
-   * is redundant against the frame and dropped from the card; the export
-   * summary keeps the worded version for a bank reading pasted plain text.
-   * An empty class is an INVITATION, never a nag - no warning tone, no "missing",
-   * since many classes (pension, mortgage) are legitimately empty forever. */
-  function renderNetWorth(nwModel, nw) {
-    const sec = el('section', { class: 'card', id: 'position-networth' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconStore()), 'Your recorded net worth')
-      )
-    );
-    sec.append(renderVM(nwModel.lead));
-    if (nwModel.staleWarning) {
-      sec.append(el('div', { class: 'vm-reconcile tone-watch' }, nwModel.staleWarning));
-    }
-
-    // Composition bar: what-you-own vs what-you-owe, so the net figure is SEEN,
-    // not just read. Assets in the calm/green money-in family, debts in the warm
-    // money-out family (renderShareBar's direction palette), matching the app's
-    // money-direction colour language. Only renders when both sides are non-zero.
+  function renderNetWorth(nwModel, nw, asProps = false) {
+    const reactActive = typeof document !== 'undefined' && typeof window !== 'undefined';
     const totA = Number(nw && nw.totalAssets) || 0;
     const totL = Number(nw && nw.totalLiabilities) || 0;
-    if (totA > 0 && totL > 0) {
-      const money = ctx.bankMoney || ctx.money0 || ((n) => String(n));
-      // OWN vs OWE, two opposing quantities compared on ONE shared scale - the
-      // same grammar as "Cash in and out" (green = holding, orange = obligation),
-      // not a single stacked track (which read backwards: debt-first, assets as
-      // "remainder"). Both bars scale against the larger value (assets), so the
-      // green "own" bar is full and the orange "owe" bar is a genuinely short
-      // proportion beside it - the shape of the net figure, seen at a glance.
-      // Colours are the app's money-direction families (MONEY_IN / MONEY_OUT).
-      const scale = Math.max(totA, totL) || 1;
-      const OWN = '#3aa06c';   // MONEY_IN family
-      const OWE = '#e5852f';   // MONEY_OUT family
-      const bar = (label, amount, colour) => el('div', { class: 'ownowe-row' },
-        el('span', { class: 'ownowe-label muted small' }, label),
-        el('span', { class: 'ownowe-track' },
-          el('span', { class: 'ownowe-fill', style: `width:${Math.max(2, (amount / scale) * 100)}%;background:${colour}` })),
-        el('span', { class: 'ownowe-amt num small' }, money(amount)));
-      sec.append(el('div', { class: 'ownowe', style: 'margin:8px 0 14px' },
-        bar('Own', totA, OWN),
-        bar('Owe', totL, OWE)));
-    }
-
-    // Coverage indicator: "covers N of M classes" shown as M small segments, N
-    // filled - so how complete the net-worth picture is reads at a glance, not
-    // just as the text tag on the lead. The named gaps stay in the lead's "Why"
-    // and the export; this is only the at-a-glance completeness signal.
-    const cov = nw && nw.coverage;
-    if (cov && cov.of > 0) {
-      const track = el('div', {
-        class: 'nw-coverage',
-        'aria-label': `Covers ${cov.covered} of ${cov.of} asset and debt classes`,
-      });
-      for (let i = 0; i < cov.of; i++) {
-        track.append(
-          el('span', {
-            class: 'nw-cov-seg' + (i < cov.covered ? ' filled' : ''),
-          })
-        );
-      }
-      sec.append(
-        el(
-          'div',
-          { class: 'nw-cov-row' },
-          track,
-          el('span', { class: 'muted small' }, `${cov.covered} of ${cov.of} classes recorded`)
-        )
-      );
-    }
+    const net = Number(nw && nw.recordedNetWorth);
+    const netWorth = Number.isFinite(net) ? net : totA - totL;
+    const money = ctx.bankMoney || ctx.money0 || ((n) => String(n));
+    const proseMoney = makeProseMoney(state.cfg || {});
+    const insight = figuresHidden()
+      ? 'Recorded net worth is the amount left after recorded debts.'
+      : netWorth >= 0 && totA > 0
+        ? `${Math.round((netWorth / totA) * 100)}% of recorded assets remain after recorded debts.`
+        : `Recorded debts exceed assets by ${proseMoney(Math.abs(netWorth))}.`;
 
     const lines = nw && nw.lines ? nw.lines : [];
-    const notIncluded = nwModel.notIncluded || { assets: [], liabilities: [] };
-
-    // Opens "Add an asset or debt" below with the given class pre-selected
-    // and scrolled into view - previously notIncluded was computed and
-    // named correctly in the model but never actually rendered anywhere on
-    // screen, so a person had no way to act on a gap without scrolling down
-    // and finding the right option themselves.
-    function openAddFor(kind, cls) {
-      trackUsage('position-add-gap');
-      const select = document.getElementById('position-add-class-select');
-      if (select) {
-        select.value = kind + ':' + cls;
-        select.dispatchEvent(new Event('change'));
-      }
-      const disclosure = document.getElementById('position-add-disclosure');
-      if (disclosure) disclosure.open = true;
-      smoothScrollToEl('#position-add-disclosure');
-      requestAnimationFrame(() => disclosure?.querySelector('input[type="number"]')?.focus());
-    }
-    const gapClasses = [
-      ...notIncluded.assets.map((c) => ({ cls: c, kind: 'asset' })),
-      ...notIncluded.liabilities.map((c) => ({ cls: c, kind: 'liability' })),
-    ];
-    if (gapClasses.length) {
-      // Collapsed by default, matching "Add an asset or debt" directly below -
-      // this list previously rendered as a permanently open, nine-row wall
-      // regardless of how many classes were genuinely missing, which made
-      // this the single heaviest block on the card even though the coverage
-      // dots one line up already give the at-a-glance "how much is missing"
-      // signal. An empty class is an invitation, never a nag (this card's own
-      // frozen rule, above) - defaulting this open would push a warning-like
-      // wall of "Add" rows in front of someone with little recorded yet,
-      // exactly what that rule forbids. Each row's behaviour is unchanged:
-      // still opens the real add form with that class pre-selected.
-      const gapBox = el('details', { class: 'secondary' });
-      gapBox.append(
-        el('summary', {}, icon(iconInfo()), ' Not included or not confirmed')
-      );
-      const gapBody = el('div', { class: 'sec-section' });
-      const gapList = el('div', { class: 'recurring-list' });
-      for (const g of gapClasses) {
-        gapList.append(
-          el(
-            'button',
-            { class: 'recurring-row', onclick: () => openAddFor(g.kind, g.cls) },
-            el('span', { class: 'recurring-name' }, g.cls),
-            el('span', { class: 'recurring-amt muted small' }, 'Add')
-          )
-        );
-      }
-      gapBody.append(gapList);
-      gapBox.append(gapBody);
-      sec.append(gapBox);
-    }
 
 
-    // One line, filled only. Reconciled lines (cash, card, converted foreign)
-    // carry their source; self-reported lines are dated, age visibly, and are
-    // removable. Empty classes are NEVER pre-listed here - adding lives behind
-    // the single collapsed disclosure below, so the card shows only what is
-    // actually held.
     function renderFilledLine(l) {
       const cls = l.class;
       const isConverted = l.rate != null && l.nativeAmount != null;
+      const investmentName = l.accountKey ? accountName(state.accountNames, 'investment', l.accountKey) : null;
       const label =
-        (l.label && l.label !== cls ? l.label : cls) + (l.currency ? ` (${l.currency})` : '');
-      // Silent default: a reconciled figure carries NO source text. Only real
-      // departures speak - a self-reported figure's age (actionable), a stale
-      // flag, or a stale rate. "from statements" / "converted" / "entered by
-      // you" are plumbing and are gone from the row.
+        (investmentName ? `${cls} · ${investmentName}` : l.label && l.label !== cls ? l.label : cls) +
+        (l.currency ? ` (${l.currency})` : '');
       const meta = [];
       if (l.source === 'reconciled') {
+        if (l.statementDate) meta.push(`as of ${formatDisplayDate(l.statementDate)}`);
+        if (l.rateStale) meta.push('rate may be out of date');
+      } else if (l.source === 'entered') {
+        meta.push(`entered ${formatDisplayDate(l.asOf)}`);
         if (l.rateStale) meta.push('rate may be out of date');
       } else {
         if (l.stale) meta.push('may be out of date');
         else if (l.lastReviewed) meta.push(formatDisplayDate(l.lastReviewed));
       }
       const amtText = (isConverted ? '\u2248 ' : '') + formatLineAmount(l);
-      const kids = [
-        el('span', { class: 'recurring-name' }, label),
-        meta.length
-          ? el('span', { class: 'recurring-months muted small' }, meta.join(' \u00b7 '))
-          : el('span', {}),
-        el('span', { class: 'recurring-amt num strong' }, amtText),
-      ];
-      if (l.source === 'self-reported' && l.id) {
-        kids.push(
-          el(
-            'button',
-            {
-              class: 'btn sm ghost position-remove',
-              title: 'Remove',
-              'aria-label': `Remove ${label}`,
-              onclick: () => removeAsset(l.id),
-            },
-            'Remove'
-          )
-        );
-      }
-      const frag = el('div', {});
-      frag.append(el('div', { class: 'recurring-row' + (l.stale ? ' lapsed' : '') }, ...kids));
-      if (isConverted) {
-        const nativeText =
-          (l.currency === 'USD' ? 'US$' : l.currency + ' ') +
-          Number(l.nativeAmount).toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          });
-        const d = el('details', {
-          class: 'vm-detail',
-          style: 'margin:2px 0 8px',
+      const rateText = isConverted
+        ? `${formatMoney(Number(l.nativeAmount), currencyPrefix(l.currency, state.cfg), undefined, 2)} \u00d7 ${l.rate}${l.rateAsOf ? ` \u00b7 ${l.rateAsOf}` : ''}`
+        : '';
+      return {
+        label,
+        meta: meta.join(' \u00b7 '),
+        amount: amtText,
+        rateText,
+        rateClass: 'position-rate-inline',
+        stale: l.stale,
+        editLabel: `Edit ${label}`,
+        inputLabel: l.label || cls,
+        inputAmount: Number(l.amount) || 0,
+        onSave: l.source === 'self-reported' && l.id ? (values) => saveAsset(l.id, values) : null,
+        removeLabel: `Remove ${label}`,
+        onRemove: l.source === 'self-reported' && l.id ? () => removeAsset(l.id) : null,
+      };
+    }
+
+    const assetLines = lines.filter((l) => l.kind === 'asset');
+    const debtLines = lines.filter((l) => l.kind === 'liability');
+
+    const lineAmount = (l) => Math.abs(Number(l.amount) || 0);
+    const weightedPanel = (title, group, tone) => {
+      if (!group.length) return null;
+      const total = group.reduce((sum, l) => sum + lineAmount(l), 0) || 1;
+      return {
+        title,
+        tone,
+        total: money(total),
+        rows: group.map((line, index) => {
+          const share = Math.max(0, Math.min(100, (lineAmount(line) / total) * 100));
+          const row = renderFilledLine(line);
+          return {
+            key: line.id || `${line.class}-${index}`,
+            line: row,
+            ...(reactActive ? {} : { node: netWorthLineReact(el, row) }),
+            width: Math.max(2, Math.round(share)),
+            shareText: figuresHidden() ? '\u2022\u2022%' : `${Math.round(share)}%`,
+          };
+        }),
+      };
+    };
+
+    const panels = [weightedPanel('Assets included', assetLines, 'own'), weightedPanel('Debts included', debtLines, 'owe')].filter(Boolean);
+    const onAnimate = (fills) => staggerIn(fills, () => [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], {
+      step: 40,
+      duration: 460,
+    });
+    const form = addDisclosureProps();
+    if (reactActive) {
+      const netWorthProps = {
+        insight: totA > 0 || totL > 0 ? insight : null,
+        panels,
+        onAnimate,
+        form,
+      };
+      if (asProps) return { summary: ((nw && nw.included) || []).join(', ') || 'Recorded details', iconMarkup: iconStore(), netWorthProps };
+      return collapsibleCardReact(el, {
+        title: 'Recorded assets and debts',
+        summary: ((nw && nw.included) || []).join(', ') || 'Recorded details',
+        iconMarkup: iconStore(),
+        reactBody: { kind: 'positionNetWorth', props: netWorthProps, rootClass: 'pfa-react-root' },
+        name: 'position-networth-card',
+      });
+    }
+    const sec = el('div', { id: 'position-networth' });
+    if (totA > 0 || totL > 0) sec.append(el('p', { class: 'position-networth-info muted small' }, insight));
+    if (panels.length) sec.append(positionMixReact(el, { panels, onAnimate }));
+    sec.append(renderAddDisclosure());
+    return collapsibleCardReact(el, {
+      title: 'Recorded assets and debts',
+      summary: ((nw && nw.included) || []).join(', ') || 'Recorded details',
+      icon: icon(iconStore()),
+      body: sec,
+      name: 'position-networth-card',
+    });
+  }
+
+  function addDisclosureProps() {
+    const assetClasses = NET_WORTH_CLASSES.assets.filter((c) => c !== 'Cash & bank');
+    const liabilityClasses = NET_WORTH_CLASSES.liabilities.filter((c) => c !== 'Credit card');
+    const counts = {};
+    for (const item of state.manualAssets || []) {
+      const key = `${item.kind === 'liability' ? 'liability' : 'asset'}:${item.class}`;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return {
+      classes: assetClasses,
+      liabilities: liabilityClasses,
+      counts,
+      iconNode: typeof window === 'undefined' ? icon(iconStore()) : null,
+      iconMarkup: typeof window !== 'undefined' ? iconStore() : null,
+      onGap: () => trackUsage('position-add-gap'),
+      onSave: async ({ kind, cls, name, amount }) => {
+        const value = Number(amount);
+        if (!(value > 0)) {
+          toast('Enter an amount first.');
+          return false;
+        }
+        const rec = makeManualAsset({ class: cls, label: (name || '').trim() || cls, amount: value, kind });
+        await commitAndRender({
+          commit: async () => {
+            await Store.manualAssets.put(rec);
+            state.manualAssets = await Store.manualAssets.all();
+            trackUsage('position-add-asset');
+          },
+          render,
+          notify: () => toast(`Added ${rec.label}.`),
         });
-        d.append(
-          el('summary', { class: 'muted small' }, 'Rate'),
-          el(
-            'div',
-            { class: 'vm-detail-body muted small' },
-            `${nativeText} \u00d7 ${l.rate}${l.rateAsOf ? ` \u00b7 ${l.rateAsOf}` : ''}`
-          )
-        );
-        frag.append(d);
-      }
-      return frag;
-    }
-
-    const ownLines = lines.filter((l) => l.kind === 'asset');
-    const oweLines = lines.filter((l) => l.kind === 'liability');
-
-    if (ownLines.length) {
-      sec.append(el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' What you own'));
-      const ownList = el('div', { class: 'recurring-list' });
-      for (const l of ownLines) ownList.append(renderFilledLine(l));
-      sec.append(ownList);
-    }
-    if (oweLines.length) {
-      sec.append(el('div', { class: 'sec-subhead' }, icon(iconInfo()), ' What you owe'));
-      const oweList = el('div', { class: 'recurring-list' });
-      for (const l of oweLines) oweList.append(renderFilledLine(l));
-      sec.append(oweList);
-    }
-
-    // The single, unobtrusive add mechanism - collapsed by default, so nothing
-    // is prompted until the person chooses to add. Picking a class from the
-    // "What you own / What you owe" groups pre-fills its kind and name, so the
-    // person supplies only the amount (the frame's classification intelligence,
-    // without the always-on empty rows).
-    sec.append(renderAddDisclosure(notIncluded));
-    return sec;
+      },
+    };
   }
 
   function renderAddDisclosure() {
-    const box = el('details', { class: 'secondary', id: 'position-add-disclosure' });
-    box.append(el('summary', {}, icon(iconInfo()), ' Add an asset or debt'));
-    const body = el('div', { class: 'sec-section' });
-    // Only classes not already fully represented are offered; a class can still
-    // be re-added (a second property) since manual classes hold many entries.
-    const assetClasses = NET_WORTH_CLASSES.assets.filter((c) => c !== 'Cash & bank');
-    const liabilityClasses = NET_WORTH_CLASSES.liabilities.filter((c) => c !== 'Credit card');
-
-    const classSel = el('select', {
-      class: 'mini',
-      id: 'position-add-class-select',
-      'aria-label': 'What is it',
-    });
-
-    const ownGroup = el('optgroup', { label: 'What you own' });
-    for (const c of assetClasses) ownGroup.append(el('option', { value: 'asset:' + c }, c));
-    const oweGroup = el('optgroup', { label: 'What you owe' });
-    for (const c of liabilityClasses) oweGroup.append(el('option', { value: 'liability:' + c }, c));
-    classSel.append(ownGroup, oweGroup);
-
-    const nameInput = el('input', {
-      type: 'text',
-      class: 'name-field',
-      maxlength: '40',
-      placeholder: 'Name (optional)',
-      'aria-label': 'Name (optional)',
-    });
-    const amountInput = el('input', {
-      type: 'number',
-      class: 'name-field',
-      min: '0',
-      step: '1',
-      inputmode: 'decimal',
-      placeholder: 'Amount',
-      'aria-label': 'Amount',
-    });
-
-    // "Other assets"/"Other debts" genuinely need a name; the standard classes
-    // read fine named after themselves, so the name field only signals required
-    // for the two catch-alls.
-    const syncName = () => {
-      const cls = classSel.value.split(':')[1] || '';
-      const needsName = cls === 'Other assets' || cls === 'Other debts';
-      nameInput.placeholder = needsName ? 'Name (e.g. what it is)' : 'Name (optional)';
-    };
-    classSel.addEventListener('change', syncName);
-    syncName();
-
-    const save = async () => {
-      const [kind, cls] = classSel.value.split(':');
-      const amount = Number(amountInput.value);
-      if (!(amount > 0)) {
-        toast('Enter an amount first.');
-        return;
-      }
-      const rec = makeManualAsset({
-        class: cls,
-        label: (nameInput.value || '').trim() || cls,
-        amount,
-        kind,
-      });
-      await Store.manualAssets.put(rec);
-      state.manualAssets = await Store.manualAssets.all();
-      trackUsage('position-add-asset');
-      render();
-      toast(`Added ${rec.label}.`);
-    };
-    amountInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        save();
-      }
-    });
-
-    body.append(
-      el(
-        'div',
-        { class: 'position-add-fields' },
-        el('label', { class: 'field-label' }, el('span', {}, 'Type'), classSel),
-        el('label', { class: 'field-label' }, el('span', {}, 'Name'), nameInput),
-        el('label', { class: 'field-label' }, el('span', {}, 'Amount'), amountInput),
-        el('button', { class: 'btn sm', onclick: save }, 'Add to position')
-      )
-    );
-    box.append(body);
-    return box;
+    return positionAssetFormReact(el, addDisclosureProps());
   }
 
   async function removeAsset(id) {
     if (!id) return;
     const prior = state.manualAssets.find((item) => item.id === id);
-    await Store.manualAssets.delete(id);
-    state.manualAssets = await Store.manualAssets.all();
-    trackUsage('position-remove-asset');
-    render();
-    toast(prior ? `Removed ${prior.label}.` : 'Removed.', prior ? async () => {
-      await Store.manualAssets.put(prior);
-      state.manualAssets = await Store.manualAssets.all();
-      render();
-      toast(`Restored ${prior.label}.`);
-    } : null);
+    await commitAndRender({
+      commit: async () => {
+        await Store.manualAssets.delete(id);
+        state.manualAssets = await Store.manualAssets.all();
+        trackUsage('position-remove-asset');
+      },
+      render,
+      notify: () => toast(prior ? `Removed ${prior.label}.` : 'Removed.', prior ? async () => {
+        await commitAndRender({
+          commit: async () => {
+            await Store.manualAssets.put(prior);
+            state.manualAssets = await Store.manualAssets.all();
+          },
+          render,
+          notify: () => toast(`Restored ${prior.label}.`),
+        });
+      } : null),
+    });
+  }
+
+  async function saveAsset(id, { label, amount }) {
+    const prior = state.manualAssets.find((item) => item.id === id);
+    const value = Number(amount);
+    if (!prior || !(value > 0)) {
+      toast('Enter an amount above zero.');
+      return false;
+    }
+    const next = { ...prior, label: label.trim() || prior.class, amount: value, lastReviewed: isoToday(), updatedAt: new Date().toISOString() };
+    await commitAndRender({
+      commit: async () => {
+        await Store.manualAssets.put(next);
+        state.manualAssets = await Store.manualAssets.all();
+        trackUsage('position-edit-asset');
+      },
+      render,
+      notify: () => toast(`Updated ${next.label}.`, async () => {
+        await commitAndRender({
+          commit: async () => {
+            await Store.manualAssets.put(prior);
+            state.manualAssets = await Store.manualAssets.all();
+          },
+          render,
+          notify: () => toast(`Restored ${prior.label}.`),
+        });
+      }),
+    });
+    return true;
   }
 
   function formatLineAmount(l) {
-    // The model already rounds; show the money via the app's formatter if we
-    // have a raw amount, else fall back to a plain figure. Liabilities carry a
-    // leading minus so the sign is unmistakable.
     const money = ctx.bankMoney || ctx.money0 || ((n) => String(n));
     const v = Number(l.amount) || 0;
-    return (l.kind === 'liability' ? '-' : '') + money(Math.abs(v));
+    return money(Math.abs(v));
   }
 
-  /* ---- financial-position summary: the lean on-screen PREVIEW of what gets
-   * copied. This card is interface, not the export - so it obeys the provenance
-   * rule at the top of this file: label + amount only, NO per-row source/period
-   * column (that was the cramped "reconciled from statements · as of ..." mess),
-   * and NO boxed coverage wall (the named gaps live in the net-worth card's
-   * "Why" above, and in the copied text below). It reads SECONDARY to the two
-   * authoritative cards above it - a "here is the bundle you'll hand a bank,
-   * ready to copy" footer. copySummary keeps EVERYTHING (per-row sources, the
-   * coverage note, the fuller exportDisclaimer): the screen is a lean view of
-   * the data, the clipboard the complete one. Same data, two fidelities. */
-  function renderSummary(summary) {
-    const sec = el('section', { class: 'card' });
-    sec.append(
-      el(
-        'div',
-        { class: 'card-head' },
-        el('h3', { class: 'card-title' }, icon(iconList()), 'Shareable financial summary')
-      )
-    );
-
+  function renderSummary(summary, balances, asProps = false) {
     const money = ctx.bankMoney || ctx.money0 || ((n) => String(n));
-    const list = el('div', { class: 'recurring-list summary-rows' });
-    for (const r of summary.rows) {
-      list.append(
-        el(
-          'div',
-          { class: 'recurring-row' },
-          el('span', { class: 'recurring-name' }, r.label),
-          el(
-            'span',
-            { class: 'recurring-amt num strong' },
-            typeof r.value === 'number' && /%$/.test(r.label)
-              ? String(r.value) + '%'
-              : money(r.value)
-          )
-        )
-      );
-    }
-    sec.append(list);
-
-    sec.append(el('p', { class: 'muted small' }, summary.disclaimer));
-    sec.append(
-      el(
-        'div',
-        { class: 'manage-actions' },
-        el(
-          'button',
-          {
-            class: 'btn sm',
-            onclick: () => {
-              copySummary(summary, money);
-              trackUsage('position-copy-summary');
-            },
-          },
-          'Copy financial summary'
-        )
-      )
-    );
-    return sec;
+    const props = {
+      summary,
+      explain: [summary.disclaimer, 'The copied version also includes dates, sources, and coverage.'].filter(Boolean).join(' '),
+      balances,
+      money,
+      figuresHidden: figuresHidden(),
+      onCopy: () => {
+        copySummary(summary, money);
+        trackUsage('position-copy-summary');
+      },
+    };
+    return asProps ? props : positionSummaryReact(props);
   }
   function copySummary(summary, money) {
     // The clipboard artifact keeps FULL provenance the screen dropped: per-row
     // source + period, the named-gaps coverage note, and the fuller disclaimer
     // - a banker reading pasted text has no dropdown and needs the words.
-    const lines = [summary.title, `Prepared ${summary.generatedFor} (${summary.currency})`, ''];
-    for (const r of summary.rows) {
-      const val = /%$/.test(r.label) ? String(r.value) + '%' : money(r.value);
-      lines.push(`${r.label}: ${val}  [${r.source}, ${r.period}]`);
-    }
-    if (summary.coverageNote) {
+    // Built inside withExactFigures: copying is a deliberate act of sharing
+    // real figures, so the privacy gate is suspended for this build even when
+    // the screen behind it is showing masked amounts (privacy.js).
+    const text = withExactFigures(() => {
+      const lines = [summary.title, `Prepared ${summary.generatedFor} (${summary.currency})`, ''];
+      for (const r of summary.rows) {
+        const val = /%$/.test(r.label) ? String(r.value) + '%' : money(r.value);
+        lines.push(`${r.label}: ${val}  [${r.source}, ${r.period}]`);
+      }
+      if (summary.selfReported && summary.selfReported.length) {
+        lines.push('');
+        lines.push('Figures entered by hand');
+        for (const item of summary.selfReported) {
+          const sign = item.kind === 'liability' ? '-' : '';
+          const reviewed = item.lastReviewed ? `reviewed ${item.lastReviewed}` : 'review date unavailable';
+          const age = item.stale ? ', may be out of date' : '';
+          lines.push(`${item.label}: ${sign}${money(Math.abs(Number(item.value) || 0))}  [self-reported ${item.kind}, ${reviewed}${age}]`);
+        }
+      }
+      if (summary.coverageNote) {
+        lines.push('');
+        lines.push(summary.coverageNote);
+      }
       lines.push('');
-      lines.push(summary.coverageNote);
-    }
-    lines.push('');
-    lines.push(summary.exportDisclaimer || summary.disclaimer);
-    const text = lines.join('\n');
+      lines.push(summary.exportDisclaimer || summary.disclaimer);
+      return lines.join('\n');
+    });
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(
         () => toast('Summary copied.'),
@@ -638,33 +569,199 @@ export function createPositionRenderer(ctx) {
   }
 
   /* ---- the destination ---- */
-  function renderPosition() {
+  /* ---- THE Position decision header: one figure, one question ----
+   * Net position is what this destination answers; cash on hand, owed on card
+   * and income stability are its working and sit at the supporting size behind
+   * disclosure. Identical construction to Overview, Activity and Forecast -
+   * only the words differ. */
+  function renderPositionHeader(m, asProps = false) {
+    const reactActive = typeof window !== 'undefined' && typeof document !== 'undefined';
+    const nwModel = m.netWorthModel || {};
+    const lead = nwModel.lead || {};
+    const nw = m.netWorth || {};
+    const tags = [];
+    const trace = reactActive ? null : balanceUpdates.asOfTrace();
+    const traceModel = reactActive ? balanceUpdates.asOfTrace(true) : null;
+    if (trace) tags.push(trace);
+    const noteParts = [
+      nw.entered
+        ? `Includes balances you entered on ${formatDisplayDate(nw.entered.asOf)}. Individual movements since your statements aren’t itemised yet.`
+        : '',
+      nwModel.staleWarning || '',
+    ].filter(Boolean);
+
+    const whyModel = [];
+    if (lead.detail) whyModel.push({ text: lead.detail });
+    if (nwModel.coverageNote) whyModel.push({ text: nwModel.coverageNote, className: 'muted small' });
+    const why = reactActive ? [] : whyModel.map((item) => el('p', item.className ? { class: item.className } : {}, item.text));
+
+    const cardLink = {
+      cash: { kind: 'view', view: 'position', anchorId: '#position-cashdebt-card', goesTo: 'Where your cash sits' },
+      card: {
+        kind: 'view',
+        view: 'activity',
+        activityTab: 'analysis',
+        anchorId: '#activity-card-health',
+        openCardName: 'activity-card-health',
+        goesTo: 'How your card is doing',
+      },
+      income: {
+        kind: 'view',
+        view: 'activity',
+        activityTab: 'analysis',
+        anchorId: '#activity-income',
+        goesTo: 'Your regular deposits',
+      },
+    };
+    const cashAccountList = cashAccounts(m.cashDebt);
+    const cashCardAvailable =
+      cashAccountList.length > 1 || cashAccountList.some((account) => account.enteredAsOf);
+    const incomeCardAvailable =
+      typeof ctx.activityIncomePatternAvailable !== 'function' || ctx.activityIncomePatternAvailable();
+    const balanceModel = m.balances || provenModels.balances();
+    const cardBalance = (balanceModel && balanceModel.accounts || []).find((item) => item.ledger === 'card') || null;
+    const cardStale =
+      cardBalance &&
+      cardBalance.source === 'statement' &&
+      cardBalance.asOf &&
+      daysBetweenIso(cardBalance.asOf, isoToday()) > NUDGE_AFTER_DAYS;
+    const support = ((m.cashDebtModel && m.cashDebtModel.cards) || []).map((c) => {
+      const link = cardLink[c.id];
+      const destinationAvailable =
+        c.id === 'cash' ? cashCardAvailable : c.id === 'income' ? incomeCardAvailable : true;
+      const action = c.id === 'card' && cardBalance && (cardBalance.source === 'entered' || cardStale)
+        ? { label: cardBalance.source === 'entered' ? 'Fix balance' : 'Update balance', onClick: () => balanceUpdates.openUpdater(cardBalance.key) }
+        : null;
+      return {
+        id: `position-support-${c.id}`,
+        text: c.amountText,
+        label: c.label,
+        tag: c.tag,
+        tone: c.tone,
+        detail: c.detail,
+        ...(action ? reactActive
+          ? { actionModel: action }
+          : { action: el('button', { type: 'button', class: 'btn sm ghost', onclick: action.onClick }, action.label) }
+          : {}),
+        ...(link && destinationAvailable && openEvidence
+          ? { onClick: () => openEvidence(link), goesTo: link.goesTo }
+          : {}),
+      };
+    });
+
+    const money = ctx.bankMoney || ctx.money0 || ((n) => String(n));
+    const owed = Math.max(0, Number(nw.totalLiabilities) || 0);
+    const owned = Math.max(0, Number(nw.totalAssets) || 0);
+    const recordedNet = Number(nw.recordedNetWorth);
+    const net = Number.isFinite(recordedNet) ? recordedNet : owned - owed;
+    const equationRows = owned > 0 || owed > 0 ? [
+      { operator: '', label: 'Recorded assets', amount: money(owned) },
+      { operator: '\u2212', label: 'Recorded debts', amount: money(owed) },
+      { operator: '=', label: 'Recorded net worth', amount: money(net), total: true },
+    ] : null;
+    const equationRow = (row) => el(
+      'div',
+      { class: 'position-equation-row' + (row.total ? ' is-total' : '') },
+      el('span', { class: 'position-equation-operator', 'aria-hidden': 'true' }, row.operator),
+      el('span', { class: 'position-equation-label' }, row.label),
+      el('span', { class: 'position-equation-amount num' }, row.amount)
+    );
+    const equation = equationRows && typeof window === 'undefined'
+      ? el(
+            'div',
+            {
+              class: 'position-equation',
+              role: 'group',
+              'aria-label': 'Recorded assets minus recorded debts equals recorded net worth',
+            },
+            el('p', { class: 'position-equation-title' }, 'How it reconciles'),
+            ...equationRows.map(equationRow)
+          ) : null;
+
+    const note = noteParts.length
+      ? { text: noteParts.join(' '), tone: nwModel.staleWarning ? 'watch' : 'neutral', action: nwModel.staleWarning && openEvidence ? { label: 'Review entered figures', onClick: () => openEvidence({ kind: 'view', view: 'position', anchorId: '#position-networth-card' }) } : null }
+      : null;
+    if (reactActive) {
+      const props = {
+        id: 'position-header',
+        className: 'view-position',
+        question: 'Where do I stand overall?',
+        figure: lead.amountText != null ? lead.amountText : '',
+        meaning: lead.label || 'Recorded net worth',
+        tags,
+        traceModel,
+        note,
+        why: whyModel,
+        support,
+        supportLabel: 'Cash, card and money in behind it',
+        extraEquation: equationRows,
+        extraAside: true,
+      };
+      return asProps ? props : decisionSurfaceReact(el, props);
+    }
+
+    return renderDecisionHeader({
+      id: 'position-header',
+      class: 'view-position',
+      question: 'Where do I stand overall?',
+      figure: { text: lead.amountText != null ? lead.amountText : '' },
+      meaning: lead.label || 'Recorded net worth',
+      tags,
+      note,
+      why,
+      support,
+      supportLabel: 'Cash, card and money in behind it',
+      extra: equation,
+      extraModel: typeof window !== 'undefined' ? equationRows : null,
+      extraAside: true,
+    });
+  }
+
+  function renderPosition(settings = null) {
     trackUsage('view-position');
-    const wrap = el('div', { class: 'accounts-wrap accounts-grid view-position' });
-    // No bank data -> nothing reconciled to stand on. A card-only device still
-    // has a card balance, so guard on there being ANY position to show.
+    const reactActive = typeof window !== 'undefined' && !!settings;
     const hasBank = (state.bankRecords || []).length > 0;
     const hasCard = (state._cardStatements || []).length > 0;
-    if (!hasBank && !hasCard) {
-      const empty = el(
-        'section',
-        { class: 'card empty' },
-        el('div', { class: 'empty-icon', html: iconStore() }),
-        el('h2', {}, 'No position yet'),
-        el(
-          'p',
-          { class: 'muted' },
-          'Add a bank or card statement and your cash, debt and net-worth picture appears here.'
-        ),
-        el('button', { class: 'btn primary', onclick: pickStatements }, 'Add statement')
-      );
-      wrap.append(empty);
+    const hasInvestments = (state._investmentStatements || []).length > 0;
+    if (reactActive) {
+      if (!hasBank && !hasCard && !hasInvestments) return positionViewReact(el, {
+        empty: { iconMarkup: iconStore(), title: 'No position yet', body: 'Add bank, card or investment statements.', actionLabel: 'Add', onAction: pickStatements },
+        settings,
+      });
+      const m = provenModels.positionModels();
+      return positionViewReact(el, {
+        hero: renderPositionHeader(m, true),
+        update: balanceUpdates.renderUpdateCard(true),
+        netWorth: renderNetWorth(m.netWorthModel, m.netWorth, true),
+        investments: renderInvestments(true).filter(Boolean),
+        cash: renderCashDebt(m.cashDebtModel, m.cashDebt, true),
+        summary: renderSummary(m.summary, m.balances, true),
+        settings,
+      });
+    }
+    const wrap = el('div', { class: 'accounts-wrap accounts-grid view-position' });
+    if (!hasBank && !hasCard && !hasInvestments) {
+      wrap.append(emptyStateReact(el, {
+        iconMarkup: typeof window !== 'undefined' ? iconStore() : null,
+        iconNode: typeof window === 'undefined' ? icon(iconStore()) : null,
+        title: 'No position yet',
+        body: 'Add bank, card or investment statements.',
+        actionLabel: 'Add',
+        onAction: pickStatements,
+      }));
       return wrap;
     }
     const m = provenModels.positionModels();
-    wrap.append(renderCashDebt(m.cashDebtModel, m.cashDebt));
+    wrap.append(renderPositionHeader(m));
+    const updater = balanceUpdates.renderUpdateCard();
+    if (updater) wrap.append(updater);
     wrap.append(renderNetWorth(m.netWorthModel, m.netWorth));
-    wrap.append(renderSummary(m.summary));
+    const investments = renderInvestments().filter(Boolean);
+    for (let i = 0; i < investments.length; i += 2)
+      pairCards(wrap, investments[i], investments[i + 1]);
+    const cashCard = renderCashDebt(m.cashDebtModel, m.cashDebt);
+    pairCards(wrap, cashCard, renderSummary(m.summary, m.balances));
+    placeFoldAll(el, wrap);
     return wrap;
   }
 

@@ -1,0 +1,6149 @@
+{
+  "files": {
+    "interface/controls.css": {
+      "offScaleSpacing": 25,
+      "offScaleFontSizes": 17,
+      "offTokenRadii": 11,
+      "important": 0,
+      "multiFileSelectors": 11,
+      "idSelectors": 9,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/dashboard.css": {
+      "offScaleSpacing": 34,
+      "offScaleFontSizes": 26,
+      "offTokenRadii": 41,
+      "important": 0,
+      "multiFileSelectors": 28,
+      "idSelectors": 15,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/feature-additions.css": {
+      "offScaleSpacing": 47,
+      "offScaleFontSizes": 48,
+      "offTokenRadii": 22,
+      "important": 3,
+      "multiFileSelectors": 32,
+      "idSelectors": 21,
+      "deepSelectors": 1,
+      "staticJsxPx": 0
+    },
+    "interface/flow-chart.css": {
+      "offScaleSpacing": 19,
+      "offScaleFontSizes": 9,
+      "offTokenRadii": 8,
+      "important": 4,
+      "multiFileSelectors": 1,
+      "idSelectors": 6,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/foundation.css": {
+      "offScaleSpacing": 29,
+      "offScaleFontSizes": 11,
+      "offTokenRadii": 8,
+      "important": 1,
+      "multiFileSelectors": 27,
+      "idSelectors": 2,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/glass.css": {
+      "offScaleSpacing": 17,
+      "offScaleFontSizes": 11,
+      "offTokenRadii": 6,
+      "important": 22,
+      "multiFileSelectors": 27,
+      "idSelectors": 4,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/income-chart.css": {
+      "offScaleSpacing": 1,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 1,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/layout.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/premium.css": {
+      "offScaleSpacing": 24,
+      "offScaleFontSizes": 3,
+      "offTokenRadii": 7,
+      "important": 4,
+      "multiFileSelectors": 10,
+      "idSelectors": 75,
+      "deepSelectors": 2,
+      "staticJsxPx": 0
+    },
+    "interface/print.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 9,
+      "idSelectors": 19,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/responsive.css": {
+      "offScaleSpacing": 23,
+      "offScaleFontSizes": 4,
+      "offTokenRadii": 1,
+      "important": 0,
+      "multiFileSelectors": 30,
+      "idSelectors": 1,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/treemap.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 3,
+      "important": 0,
+      "multiFileSelectors": 1,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "interface/workspace-refinements.css": {
+      "offScaleSpacing": 21,
+      "offScaleFontSizes": 6,
+      "offTokenRadii": 4,
+      "important": 6,
+      "multiFileSelectors": 35,
+      "idSelectors": 4,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/AccordionComparison.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 2
+    },
+    "react-ui/components/pfa-account-rename.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-account-statement-trust.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-activity-income.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-activity-tabs.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-activity-view.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-app-messages.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-attention-list.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-balance-update-form.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-card-disclosure.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-card-fitness.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-card-shell.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-card-statement-trust.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-category-budget.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-category-picker.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-column-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-commitment-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-commitment-rows.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-commitment-timeline.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-confirm-line.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-coverage-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-custom-labels.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-decision-surface.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-donut-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-empty-state.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-expandable-list.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-flow-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-fold-all.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-foreign-spending.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-goal-form.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-goal-progress.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-hidden-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-import-progress.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-income-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-info-popover.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-inline-disclosure.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-insight-list.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-investment-account-control.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-investment-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-investment-holding.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-investment-holdings.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-investment-sections.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-ledger-review.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-ledger-tabs.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-manage-data-dialog.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-metric-lead.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-monthly-check-in.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-net-worth-line.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-overview-coverage-note.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-overview-flow-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-overview-view.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-payoff-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-period-bar.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-plan-assignments.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-plan-group-editor.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-plan-lever.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-plan-view.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-plan-why.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-plan-wizard.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-asset-form.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-cash-accounts.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-equation.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-mix.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-net-worth.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-summary.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-position-view.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-proportion-bar.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-ranked-payment-list.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-safety-boundary-form.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-savings-destinations.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-scenario-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-settings-accounts.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-settings-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-settings-fold.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-settings-rules.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-settings-statements.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-spending-limits.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/pfa-spending-trend-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-statement-nudges.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-subhead.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-target-bar.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-transaction-account-filter.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/pfa-transaction-category-filter.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/pfa-transaction-search.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-transaction-split-editor.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/pfa-transaction-table.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-transaction-tag-picker.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/pfa-treemap-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-treemap-chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-upcoming-payments.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/pfa-where-it-went-card.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/ui/accordion.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/ui/chart.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 3
+    },
+    "react-ui/components/ui/checkbox.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 2
+    },
+    "react-ui/components/ui/input.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/ui/radio-group.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/ui/select.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 1
+    },
+    "react-ui/components/ui/sonner.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/ui/table.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/components/ui/tabs.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/main.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/mount.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-card-disclosure.css": {
+      "offScaleSpacing": 2,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 1,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-column-chart.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-commitment-timeline.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 1,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-donut-chart.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-info-popover.css": {
+      "offScaleSpacing": 2,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 2,
+      "important": 1,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-payoff-chart.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 1,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-proportion-bar.css": {
+      "offScaleSpacing": 1,
+      "offScaleFontSizes": 1,
+      "offTokenRadii": 1,
+      "important": 1,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-transaction-table.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 1,
+      "offTokenRadii": 1,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/pfa-treemap-chart.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/styles/tailwind.css": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    },
+    "react-ui/vanilla-body.jsx": {
+      "offScaleSpacing": 0,
+      "offScaleFontSizes": 0,
+      "offTokenRadii": 0,
+      "important": 0,
+      "multiFileSelectors": 0,
+      "idSelectors": 0,
+      "deepSelectors": 0,
+      "staticJsxPx": 0
+    }
+  },
+  "totals": {
+    "offScaleSpacing": 245,
+    "offScaleFontSizes": 139,
+    "offTokenRadii": 116,
+    "important": 43,
+    "multiFileSelectors": 92,
+    "idSelectors": 156,
+    "deepSelectors": 3,
+    "staticJsxPx": 16
+  },
+  "signatures": {
+    "interface/controls.css": {
+      "offScaleFontSizes": [
+        [
+          ".sec-value",
+          "font-size",
+          "18px"
+        ],
+        [
+          ".sec-subhead",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          "details.explainer > summary, .explainer.pfa-inline-disclosure .pfa-inline-disclosure-trigger",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".empty h2",
+          "font-size",
+          "22px"
+        ],
+        [
+          ".app-loading",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".pfa-sonner [data-sonner-toast]",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".install-banner",
+          "font-size",
+          "13px"
+        ],
+        [
+          "#greeting .greeting-text",
+          "font-size",
+          "15px"
+        ],
+        [
+          "#greeting .greeting-heading",
+          "font-size",
+          "16px"
+        ],
+        [
+          ".picker-head",
+          "font-size",
+          "15px"
+        ],
+        [
+          ".picker-item",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".scope",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".picker-decision .pfa-inline-disclosure-trigger, .picker-more .pfa-inline-disclosure-trigger",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".prog-name",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".prog-status",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".tip",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".footer",
+          "font-size",
+          "12px"
+        ]
+      ],
+      "offScaleSpacing": [
+        [
+          ".sec-subhead",
+          "margin",
+          "14px"
+        ],
+        [
+          ".sec-subhead",
+          "margin",
+          "10px"
+        ],
+        [
+          ".card > .sec-subhead",
+          "padding-left",
+          "10px"
+        ],
+        [
+          "details.explainer > summary, .explainer.pfa-inline-disclosure .pfa-inline-disclosure-trigger",
+          "gap",
+          "7px"
+        ],
+        [
+          ".empty",
+          "padding",
+          "42px"
+        ],
+        [
+          ".empty",
+          "gap",
+          "10px"
+        ],
+        [
+          ".app-loading",
+          "padding",
+          "64px"
+        ],
+        [
+          ".pfa-sonner [data-sonner-toast]",
+          "padding",
+          "11px"
+        ],
+        [
+          "#greeting .greeting-inner",
+          "gap",
+          "14px"
+        ],
+        [
+          "#greeting .greeting-inner",
+          "padding",
+          "14px"
+        ],
+        [
+          "#greeting .greeting-inner",
+          "padding",
+          "28px"
+        ],
+        [
+          "#greeting .greeting-inner",
+          "padding",
+          "14px"
+        ],
+        [
+          "#greeting .greeting-inner",
+          "padding",
+          "28px"
+        ],
+        [
+          "#greeting .greeting-sub",
+          "margin",
+          "6px"
+        ],
+        [
+          ".overlay",
+          "padding",
+          "18px"
+        ],
+        [
+          ".pass",
+          "padding",
+          "10px"
+        ],
+        [
+          ".prog-row",
+          "padding",
+          "10px"
+        ],
+        [
+          ".prog-status",
+          "gap",
+          "6px"
+        ],
+        [
+          ".tip",
+          "padding",
+          "7px"
+        ],
+        [
+          ".tip",
+          "padding",
+          "10px"
+        ],
+        [
+          ".tip",
+          "gap",
+          "1px"
+        ],
+        [
+          ".footer",
+          "padding",
+          "14px"
+        ],
+        [
+          ".footer",
+          "padding",
+          "28px"
+        ],
+        [
+          ".footer",
+          "padding",
+          "14px"
+        ],
+        [
+          ".footer",
+          "padding",
+          "28px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          "details.explainer > summary:focus-visible, .explainer.pfa-inline-disclosure .pfa-inline-disclosure-trigger:focus-visible, .secondary > summary:focus-visible",
+          "border-radius",
+          "6px"
+        ],
+        [
+          ".empty-icon",
+          "border-radius",
+          "18px"
+        ],
+        [
+          ".busy-card",
+          "border-radius",
+          "14px"
+        ],
+        [
+          ".busy-spin, .spin",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".install-banner",
+          "border-radius",
+          "16px"
+        ],
+        [
+          ".picker",
+          "border-radius",
+          "16px"
+        ],
+        [
+          ".picker-item",
+          "border-radius",
+          "9px"
+        ],
+        [
+          ".picker-item",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".pass",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".prog-row",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".tip",
+          "border-radius",
+          "8px"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#greeting",
+          "selector",
+          "#greeting"
+        ],
+        [
+          "#greeting.show",
+          "selector",
+          "#greeting.show"
+        ],
+        [
+          "#greeting .greeting-inner",
+          "selector",
+          "#greeting .greeting-inner"
+        ],
+        [
+          "#greeting .greeting-text",
+          "selector",
+          "#greeting .greeting-text"
+        ],
+        [
+          "#greeting .greeting-body",
+          "selector",
+          "#greeting .greeting-body"
+        ],
+        [
+          "#greeting .greeting-heading",
+          "selector",
+          "#greeting .greeting-heading"
+        ],
+        [
+          "#greeting .greeting-sub",
+          "selector",
+          "#greeting .greeting-sub"
+        ],
+        [
+          "#greeting .greeting-dismiss",
+          "selector",
+          "#greeting .greeting-dismiss"
+        ],
+        [
+          ".topbar-stack:has(#greeting.show) ~ #app.wrap",
+          "selector",
+          ".topbar-stack:has(#greeting.show) ~ #app.wrap"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".secondary[open] > summary",
+          "selector",
+          ".secondary[open] > summary"
+        ],
+        [
+          ".app-loading",
+          "selector",
+          ".app-loading"
+        ],
+        [
+          ".pfa-sonner [data-sonner-toast]",
+          "selector",
+          ".pfa-sonner [data-sonner-toast]"
+        ],
+        [
+          ".busy",
+          "selector",
+          ".busy"
+        ],
+        [
+          ".busy-card",
+          "selector",
+          ".busy-card"
+        ],
+        [
+          ".install-banner",
+          "selector",
+          ".install-banner"
+        ],
+        [
+          ".overlay",
+          "selector",
+          ".overlay"
+        ],
+        [
+          ".picker",
+          "selector",
+          ".picker"
+        ],
+        [
+          ".pass",
+          "selector",
+          ".pass"
+        ],
+        [
+          ".tip",
+          "selector",
+          ".tip"
+        ],
+        [
+          ".footer",
+          "selector",
+          ".footer"
+        ]
+      ]
+    },
+    "interface/dashboard.css": {
+      "offTokenRadii": [
+        [
+          ".insight",
+          "border-radius",
+          "12px"
+        ],
+        [
+          ".insight-icon",
+          "border-radius",
+          "9px"
+        ],
+        [
+          ".attn-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".share-bar-track",
+          "border-radius",
+          "7px"
+        ],
+        [
+          ".position-account-open::after",
+          "border-radius",
+          "inherit"
+        ],
+        [
+          ".position-currency-pill",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".position-account-track",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".position-account-fill",
+          "border-radius",
+          "inherit"
+        ],
+        [
+          ".position-utilisation-track, .position-monthly-track",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".position-utilisation-fill, .position-monthly-fill",
+          "border-radius",
+          "inherit"
+        ],
+        [
+          ".acct-chip",
+          "border-radius",
+          "12px"
+        ],
+        [
+          ".pair-scroll::-webkit-scrollbar-thumb",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".recurring-row",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".commit-row, .rank-row",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".commit-bar",
+          "border-radius",
+          "5px"
+        ],
+        [
+          ".up-timeline::before",
+          "border-radius",
+          "2px"
+        ],
+        [
+          ".up-now-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".up-day-tick",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".up-pay",
+          "border-radius",
+          "9px"
+        ],
+        [
+          ".up-pay-bar",
+          "border-radius",
+          "4px"
+        ],
+        [
+          ".up-pay-bar-fill",
+          "border-radius",
+          "4px"
+        ],
+        [
+          ".commit-bar-fill",
+          "border-radius",
+          "5px"
+        ],
+        [
+          ".commit-when-payday-label",
+          "border-radius",
+          "4px"
+        ],
+        [
+          ".commit-when-peak",
+          "border-radius",
+          "5px"
+        ],
+        [
+          "#app .commit-when-target, .commit-when-target",
+          "border-radius",
+          "8px"
+        ],
+        [
+          ".commit-risen",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".rank-bar",
+          "border-radius",
+          "3px"
+        ],
+        [
+          ".rank-bar-fill",
+          "border-radius",
+          "3px"
+        ],
+        [
+          ".foreign-row",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".foreign-row:focus-visible",
+          "border-radius",
+          "8px"
+        ],
+        [
+          ".ktag .kdot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".cat-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          "button.cat-tag-btn:focus-visible",
+          "border-radius",
+          "6px"
+        ],
+        [
+          ".filters input, .filters select",
+          "border-radius",
+          "9px"
+        ],
+        [
+          ".f-check",
+          "border-radius",
+          "9px"
+        ],
+        [
+          ".row-tag-action:focus-visible",
+          "border-radius",
+          "4px"
+        ],
+        [
+          ".txfilter",
+          "border-radius",
+          "12px"
+        ],
+        [
+          "#app .txfilter-chip, .txfilter-chip",
+          "border-radius",
+          "999px"
+        ],
+        [
+          "#app .tx-sort-btn",
+          "border-radius",
+          "6px"
+        ],
+        [
+          ".pos-bar",
+          "border-radius",
+          "2px"
+        ],
+        [
+          ".pos-bar-fill",
+          "border-radius",
+          "2px"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".insight-text",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".attn-body",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".acct-chip-name",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".chip.tiny",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".recurring-name",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".commit-name-main",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".up-now-label",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".up-day-date",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".up-pay-name",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".commit-when-payday-label",
+          "font-size",
+          "10px"
+        ],
+        [
+          ".commit-when-peak",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".commit-risen",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".foreign-amt",
+          "font-size",
+          "26px"
+        ],
+        [
+          ".foreign-place",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".foreign-place-name",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          "table.grid",
+          "font-size",
+          "14px"
+        ],
+        [
+          "table.grid th",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".ktag",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".cat-tag",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".kv-v",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".f-check",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".chip",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".linkbtn",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".row-tag-action",
+          "font-size",
+          "11.5px"
+        ],
+        [
+          "#app .txfilter-chip, .txfilter-chip",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".txfilter-x",
+          "font-size",
+          "14px"
+        ]
+      ],
+      "offScaleSpacing": [
+        [
+          ".share-bar-cap",
+          "margin-top",
+          "6px"
+        ],
+        [
+          ".review-settled",
+          "gap",
+          "10px"
+        ],
+        [
+          ".review-settled",
+          "gap",
+          "14px"
+        ],
+        [
+          ".chip.tiny",
+          "padding",
+          "9px"
+        ],
+        [
+          ".recurring-row",
+          "padding",
+          "9px"
+        ],
+        [
+          ".recurring-row",
+          "padding",
+          "10px"
+        ],
+        [
+          ".recurring-name .cat-dot, .recurring-months .cat-dot",
+          "margin-right",
+          "7px"
+        ],
+        [
+          ".up-row-cue",
+          "margin-left",
+          "6px"
+        ],
+        [
+          ".commit-row, .rank-row",
+          "gap",
+          "7px"
+        ],
+        [
+          ".commit-row, .rank-row",
+          "padding",
+          "10px"
+        ],
+        [
+          ".commit-name",
+          "gap",
+          "1px"
+        ],
+        [
+          ".commit-when",
+          "margin",
+          "14px"
+        ],
+        [
+          ".commit-when-payday-label",
+          "padding",
+          "5px"
+        ],
+        [
+          ".commit-when-peak",
+          "padding",
+          "1px"
+        ],
+        [
+          ".commit-when-peak",
+          "padding",
+          "6px"
+        ],
+        [
+          ".commit-risen",
+          "padding",
+          "1px"
+        ],
+        [
+          ".commit-risen",
+          "padding",
+          "7px"
+        ],
+        [
+          ".ktag",
+          "gap",
+          "6px"
+        ],
+        [
+          ".cat-tag",
+          "gap",
+          "7px"
+        ],
+        [
+          ".detail-grid",
+          "gap",
+          "10px"
+        ],
+        [
+          ".empty-row-lg",
+          "padding",
+          "26px"
+        ],
+        [
+          ".empty-row-lg",
+          "padding",
+          "10px"
+        ],
+        [
+          ".filters",
+          "margin-bottom",
+          "10px"
+        ],
+        [
+          ".filters input, .filters select",
+          "padding",
+          "11px"
+        ],
+        [
+          ".filters select",
+          "padding-right",
+          "30px"
+        ],
+        [
+          ".f-range",
+          "gap",
+          "6px"
+        ],
+        [
+          ".f-check",
+          "gap",
+          "5px"
+        ],
+        [
+          ".f-check",
+          "padding",
+          "6px"
+        ],
+        [
+          ".chips",
+          "gap",
+          "7px"
+        ],
+        [
+          ".chip",
+          "gap",
+          "6px"
+        ],
+        [
+          ".chip",
+          "padding",
+          "5px"
+        ],
+        [
+          ".chip",
+          "padding",
+          "11px"
+        ],
+        [
+          ".linkbtn",
+          "padding",
+          "6px"
+        ],
+        [
+          ".nw-slot-another",
+          "padding",
+          "6px"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#app .commit-when-target",
+          "selector",
+          "#app .commit-when-target"
+        ],
+        [
+          "#app .commit-when-target:hover",
+          "selector",
+          "#app .commit-when-target:hover"
+        ],
+        [
+          "#app .commit-when-target:focus-visible",
+          "selector",
+          "#app .commit-when-target:focus-visible"
+        ],
+        [
+          "#app .txfilter-chip",
+          "selector",
+          "#app .txfilter-chip"
+        ],
+        [
+          "#app .txfilter-chip > span:first-child",
+          "selector",
+          "#app .txfilter-chip > span:first-child"
+        ],
+        [
+          "#app .txfilter-chip:hover",
+          "selector",
+          "#app .txfilter-chip:hover"
+        ],
+        [
+          "#app .txfilter-chip:active",
+          "selector",
+          "#app .txfilter-chip:active"
+        ],
+        [
+          "#app .txfilter-chip:focus-visible",
+          "selector",
+          "#app .txfilter-chip:focus-visible"
+        ],
+        [
+          "#app .txfilter-chip:hover .txfilter-x",
+          "selector",
+          "#app .txfilter-chip:hover .txfilter-x"
+        ],
+        [
+          "#app th.tx-sort",
+          "selector",
+          "#app th.tx-sort"
+        ],
+        [
+          "#app .tx-sort-btn",
+          "selector",
+          "#app .tx-sort-btn"
+        ],
+        [
+          "#app th.tx-sort.num .tx-sort-btn",
+          "selector",
+          "#app th.tx-sort.num .tx-sort-btn"
+        ],
+        [
+          "#app .tx-sort-btn:hover",
+          "selector",
+          "#app .tx-sort-btn:hover"
+        ],
+        [
+          "#app .tx-sort-btn:focus-visible",
+          "selector",
+          "#app .tx-sort-btn:focus-visible"
+        ],
+        [
+          "#app th.tx-sort.is-active .tx-sort-btn",
+          "selector",
+          "#app th.tx-sort.is-active .tx-sort-btn"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".row2",
+          "selector",
+          ".row2"
+        ],
+        [
+          ".insight",
+          "selector",
+          ".insight"
+        ],
+        [
+          ".insight:hover",
+          "selector",
+          ".insight:hover"
+        ],
+        [
+          ".insight-go",
+          "selector",
+          ".insight-go"
+        ],
+        [
+          ".insight:hover .insight-go",
+          "selector",
+          ".insight:hover .insight-go"
+        ],
+        [
+          ".attention .attn-item",
+          "selector",
+          ".attention .attn-item"
+        ],
+        [
+          ".up-pay",
+          "selector",
+          ".up-pay"
+        ],
+        [
+          ".table-wrap.sticky",
+          "selector",
+          ".table-wrap.sticky"
+        ],
+        [
+          "table.grid",
+          "selector",
+          "table.grid"
+        ],
+        [
+          "table.grid th",
+          "selector",
+          "table.grid th"
+        ],
+        [
+          ".table-wrap.sticky table.grid thead th",
+          "selector",
+          ".table-wrap.sticky table.grid thead th"
+        ],
+        [
+          "button.cat-tag-btn",
+          "selector",
+          "button.cat-tag-btn"
+        ],
+        [
+          ".tx-detail td",
+          "selector",
+          ".tx-detail td"
+        ],
+        [
+          ".filters",
+          "selector",
+          ".filters"
+        ],
+        [
+          ".filters input",
+          "selector",
+          ".filters input"
+        ],
+        [
+          ".filters select",
+          "selector",
+          ".filters select"
+        ],
+        [
+          ".f-search",
+          "selector",
+          ".f-search"
+        ],
+        [
+          ".f-num",
+          "selector",
+          ".f-num"
+        ],
+        [
+          ".f-range",
+          "selector",
+          ".f-range"
+        ],
+        [
+          ".f-check",
+          "selector",
+          ".f-check"
+        ],
+        [
+          ".chips",
+          "selector",
+          ".chips"
+        ],
+        [
+          ".chip",
+          "selector",
+          ".chip"
+        ],
+        [
+          ".linkbtn",
+          "selector",
+          ".linkbtn"
+        ],
+        [
+          ".row-tag-action",
+          "selector",
+          ".row-tag-action"
+        ],
+        [
+          ".row-tag-action:hover",
+          "selector",
+          ".row-tag-action:hover"
+        ],
+        [
+          ".mobile-sort",
+          "selector",
+          ".mobile-sort"
+        ],
+        [
+          "#app .txfilter-chip",
+          "selector",
+          "#app .txfilter-chip"
+        ],
+        [
+          ".tx-search-actions",
+          "selector",
+          ".tx-search-actions"
+        ]
+      ]
+    },
+    "interface/feature-additions.css": {
+      "offScaleSpacing": [
+        [
+          ".report-close",
+          "gap",
+          "7px"
+        ],
+        [
+          ".report-close",
+          "padding",
+          "9px"
+        ],
+        [
+          ".report-close",
+          "padding",
+          "13px"
+        ],
+        [
+          ".pass-note",
+          "margin",
+          "-4px"
+        ],
+        [
+          ".name-field",
+          "padding",
+          "10px"
+        ],
+        [
+          ".empty-lines",
+          "margin",
+          "10px"
+        ],
+        [
+          ".show-more",
+          "gap",
+          "10px"
+        ],
+        [
+          ".prog-privacy",
+          "margin",
+          "-6px"
+        ],
+        [
+          ".ledger-tab",
+          "padding",
+          "18px"
+        ],
+        [
+          ".ledger-switch",
+          "padding",
+          "6px"
+        ],
+        [
+          ".ledger-switch",
+          "padding",
+          "6px"
+        ],
+        [
+          "body.has-bottom-nav",
+          "padding-bottom",
+          "72px"
+        ],
+        [
+          ".recent-item",
+          "padding",
+          "11px"
+        ],
+        [
+          ".recent-meta",
+          "margin-top",
+          "3px"
+        ],
+        [
+          ".recent-cat",
+          "gap",
+          "6px"
+        ],
+        [
+          ".recent-seeall",
+          "margin-top",
+          "14px"
+        ],
+        [
+          ".to-top",
+          "gap",
+          "7px"
+        ],
+        [
+          ".to-top",
+          "padding",
+          "13px"
+        ],
+        [
+          ".filters .f-search",
+          "padding",
+          "7px"
+        ],
+        [
+          ".filters .f-check",
+          "padding",
+          "5px"
+        ],
+        [
+          ".filters .f-check",
+          "padding",
+          "10px"
+        ],
+        [
+          ".cov-ledger + .cov-ledger",
+          "margin-top",
+          "14px"
+        ],
+        [
+          ".cov-head",
+          "gap",
+          "10px"
+        ],
+        [
+          ".cov-head",
+          "margin-bottom",
+          "6px"
+        ],
+        [
+          ".cov-cell:hover::after",
+          "padding",
+          "5px"
+        ],
+        [
+          ".plan-unsaved",
+          "padding",
+          "3px"
+        ],
+        [
+          ".plan-unsaved",
+          "padding",
+          "9px"
+        ],
+        [
+          ".disclosure.card-disclosure > summary",
+          "gap",
+          "10px"
+        ],
+        [
+          ".disclosure.card-disclosure > summary",
+          "gap",
+          "14px"
+        ],
+        [
+          ".disclosure.card-disclosure > summary",
+          "padding-block",
+          "14px"
+        ],
+        [
+          ".card-disclosure[open] > summary",
+          "padding-bottom",
+          "6px"
+        ],
+        [
+          "button.plan-total.is-fixable",
+          "padding-inline",
+          "14px"
+        ],
+        [
+          ".plan-sheet-head-row",
+          "row-gap",
+          "6px"
+        ],
+        [
+          "#app .card.card-collapsible:not(.card-compact) > .card-disclosure[open] > summary",
+          "padding-bottom",
+          "6px"
+        ],
+        [
+          ".tx-categories-filter",
+          "gap",
+          "6px"
+        ],
+        [
+          ".settings-category-list",
+          "gap",
+          "6px"
+        ],
+        [
+          ".settings-category-row",
+          "gap",
+          "10px"
+        ],
+        [
+          ".card-disclosure > summary",
+          "gap",
+          "5px"
+        ],
+        [
+          ".card-disclosure > summary",
+          "gap",
+          "10px"
+        ],
+        [
+          ".nudge-working",
+          "margin-top",
+          "6px"
+        ],
+        [
+          ".confirm-pair",
+          "gap",
+          "6px"
+        ],
+        [
+          ".confirm-line",
+          "padding",
+          "10px"
+        ],
+        [
+          ".review-row .confirm-line, .pace-row .pace-note",
+          "padding",
+          "10px"
+        ],
+        [
+          ".review-row .confirm-line, .pace-row .pace-note",
+          "padding",
+          "10px"
+        ],
+        [
+          ".picker-note",
+          "margin",
+          "6px"
+        ],
+        [
+          ".spending-limit-actions",
+          "gap",
+          "18px"
+        ],
+        [
+          ".spending-limit-actions",
+          "margin-top",
+          "10px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".report-close",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".picker-filter",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".name-field",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".stmt-remove-confirm",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".overlay.sheet .picker",
+          "border-radius",
+          "18px 18px 0 0"
+        ],
+        [
+          ".ledger-tab",
+          "border-radius",
+          "12px"
+        ],
+        [
+          ".tx-filters .f-search",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".recent-cat .cat-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".stmt-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".stmt-card",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".to-top",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".to-back",
+          "border-radius",
+          "999px"
+        ],
+        [
+          ".proportion-key",
+          "border-radius",
+          "3px"
+        ],
+        [
+          ".cov-cell",
+          "border-radius",
+          "2px"
+        ],
+        [
+          ".plan-unsaved::before",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".row-tag-action.is-icon",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".account-rename",
+          "border-radius",
+          "8px"
+        ],
+        [
+          ".balance-update-kind-mark",
+          "border-radius",
+          "12px"
+        ],
+        [
+          ".balance-update-resting::before",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".card-fitness-status::before",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".upcoming-date-group h4::before",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".category-budget-status-title::before",
+          "border-radius",
+          "50%"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".report-close",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".pass-note",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".stmt-body",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          "body",
+          "font-size",
+          "15px"
+        ],
+        [
+          "table.grid",
+          "font-size",
+          "15px"
+        ],
+        [
+          ".ledger-tab",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".recon-ok",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".recon-warn",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".recent-cat",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".stmt-card-name",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".stmt-card-health",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".to-back-label",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".filters .f-check",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".proportion-legend-share",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-note",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".plan-pct",
+          "font-size",
+          "16px"
+        ],
+        [
+          ".plan-pct-sign",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".plan-track",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-total",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-dest-amt",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".wiz-step",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".wiz-q",
+          "font-size",
+          "20px"
+        ],
+        [
+          ".wiz-evidence",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".plan-assign-head",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".cov-count",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".cov-cell:hover::after",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".cov-scale",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".plan-unsaved",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".proportion-legend-share",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-track",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".plan-pct",
+          "font-size",
+          "15px"
+        ],
+        [
+          ".plan-pct-sign",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-row-label",
+          "font-size",
+          "14px"
+        ],
+        [
+          ".plan-row-share .plan-pct",
+          "font-size",
+          "15px"
+        ],
+        [
+          ".plan-pct-sign",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-row-actual",
+          "font-size",
+          "16px"
+        ],
+        [
+          ".plan-target-amt",
+          "font-size",
+          "14px"
+        ],
+        [
+          ".plan-track",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".plan-saved-note",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".plan-drawer-summary",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".plan-dest-toggle",
+          "font-size",
+          "13px"
+        ],
+        [
+          "button.plan-total",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".row-tag-action",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".tx-hint-cat",
+          "font-size",
+          "11.5px"
+        ],
+        [
+          ".plan-dest-suggested",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".sec-fold-meta",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".plan-drawer-summary",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".inv-arrow",
+          "font-size",
+          "0.8em"
+        ]
+      ],
+      "important": [
+        [
+          ".report-close",
+          "display",
+          "none !important"
+        ],
+        [
+          ".to-top",
+          "display",
+          "none !important"
+        ],
+        [
+          ".proportion-seg",
+          "transform",
+          "none !important"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#app.wrap",
+          "selector",
+          "#app.wrap"
+        ],
+        [
+          "#app.wrap > *",
+          "selector",
+          "#app.wrap > *"
+        ],
+        [
+          "#app.wrap > .hero",
+          "selector",
+          "#app.wrap > .hero"
+        ],
+        [
+          "#app.wrap > .row2",
+          "selector",
+          "#app.wrap > .row2"
+        ],
+        [
+          "#app.wrap > .card:has(.foreign-list)",
+          "selector",
+          "#app.wrap > .card:has(.foreign-list)"
+        ],
+        [
+          "#app.wrap > .card:has(.recurring-list)",
+          "selector",
+          "#app.wrap > .card:has(.recurring-list)"
+        ],
+        [
+          "#app.wrap > .card-fitness",
+          "selector",
+          "#app.wrap > .card-fitness"
+        ],
+        [
+          "#app.wrap > .card:has(.trend)",
+          "selector",
+          "#app.wrap > .card:has(.trend)"
+        ],
+        [
+          "#app.wrap > .card:has(.recent-list)",
+          "selector",
+          "#app.wrap > .card:has(.recent-list)"
+        ],
+        [
+          "#app.wrap > #explorer",
+          "selector",
+          "#app.wrap > #explorer"
+        ],
+        [
+          "#app.wrap > .manage",
+          "selector",
+          "#app.wrap > .manage"
+        ],
+        [
+          "#app.wrap > .secondary",
+          "selector",
+          "#app.wrap > .secondary"
+        ],
+        [
+          ".accounts-wrap.accounts-grid > #acct-tx",
+          "selector",
+          ".accounts-wrap.accounts-grid > #acct-tx"
+        ],
+        [
+          "#app .card.card-collapsible:not(.card-compact) > .card-disclosure > summary",
+          "selector",
+          "#app .card.card-collapsible:not(.card-compact) > .card-disclosure > summary"
+        ],
+        [
+          "#app .card.card-collapsible:not(.card-compact) > .card-disclosure[open] > summary",
+          "selector",
+          "#app .card.card-collapsible:not(.card-compact) > .card-disclosure[open] > summary"
+        ],
+        [
+          "#app .txfilter-chip",
+          "selector",
+          "#app .txfilter-chip"
+        ],
+        [
+          "#app .foreign-group > summary",
+          "selector",
+          "#app .foreign-group > summary"
+        ],
+        [
+          "#balance-update .pfa-card-disclosure-trigger .card-disclosure-note",
+          "selector",
+          "#balance-update .pfa-card-disclosure-trigger .card-disclosure-note"
+        ],
+        [
+          "body:has(#balance-update .pfa-card-disclosure[data-open=\"true\"]) #to-top",
+          "selector",
+          "body:has(#balance-update .pfa-card-disclosure[data-open=\"true\"]) #to-top"
+        ],
+        [
+          "#balance-update .pfa-card-disclosure-trigger",
+          "selector",
+          "#balance-update .pfa-card-disclosure-trigger"
+        ],
+        [
+          "#app .position-class-chips > button",
+          "selector",
+          "#app .position-class-chips > button"
+        ]
+      ],
+      "deepSelectors": [
+        [
+          ".sec-manage-wrap > .sec-fold > .settings-fold-disclosure > .pfa-inline-disclosure-item > .pfa-inline-disclosure-header > .pfa-inline-disclosure-trigger",
+          "selector",
+          ".sec-manage-wrap > .sec-fold > .settings-fold-disclosure > .pfa-inline-disclosure-item > .pfa-inline-disclosure-header > .pfa-inline-disclosure-trigger"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".attention .attn-item",
+          "selector",
+          ".attention .attn-item"
+        ],
+        [
+          ".up-pay",
+          "selector",
+          ".up-pay"
+        ],
+        [
+          "table.grid",
+          "selector",
+          "table.grid"
+        ],
+        [
+          "button.cat-tag-btn",
+          "selector",
+          "button.cat-tag-btn"
+        ],
+        [
+          ".linkbtn",
+          "selector",
+          ".linkbtn"
+        ],
+        [
+          ".row-tag-action",
+          "selector",
+          ".row-tag-action"
+        ],
+        [
+          ".row-tag-action:hover",
+          "selector",
+          ".row-tag-action:hover"
+        ],
+        [
+          "#app .txfilter-chip",
+          "selector",
+          "#app .txfilter-chip"
+        ],
+        [
+          ".report-close",
+          "selector",
+          ".report-close"
+        ],
+        [
+          ".picker-filter",
+          "selector",
+          ".picker-filter"
+        ],
+        [
+          ".name-field",
+          "selector",
+          ".name-field"
+        ],
+        [
+          "body",
+          "selector",
+          "body"
+        ],
+        [
+          "#app.wrap",
+          "selector",
+          "#app.wrap"
+        ],
+        [
+          ".accounts-wrap.accounts-grid",
+          "selector",
+          ".accounts-wrap.accounts-grid"
+        ],
+        [
+          ".ledger-tabs",
+          "selector",
+          ".ledger-tabs"
+        ],
+        [
+          ".ledger-tab",
+          "selector",
+          ".ledger-tab"
+        ],
+        [
+          ".ledger-tab:hover",
+          "selector",
+          ".ledger-tab:hover"
+        ],
+        [
+          ".ledger-tab.active",
+          "selector",
+          ".ledger-tab.active"
+        ],
+        [
+          ".period-bar",
+          "selector",
+          ".period-bar"
+        ],
+        [
+          ".tx-filters",
+          "selector",
+          ".tx-filters"
+        ],
+        [
+          ".tx-filters .f-search:focus",
+          "selector",
+          ".tx-filters .f-search:focus"
+        ],
+        [
+          ".recent-item",
+          "selector",
+          ".recent-item"
+        ],
+        [
+          ".card.secondary > summary",
+          "selector",
+          ".card.secondary > summary"
+        ],
+        [
+          ".to-top",
+          "selector",
+          ".to-top"
+        ],
+        [
+          ".mobile-sort-field",
+          "selector",
+          ".mobile-sort-field"
+        ],
+        [
+          ".seg-btn",
+          "selector",
+          ".seg-btn"
+        ],
+        [
+          ":root",
+          "selector",
+          ":root"
+        ],
+        [
+          "html",
+          "selector",
+          "html"
+        ],
+        [
+          ".fold-all-btn",
+          "selector",
+          ".fold-all-btn"
+        ],
+        [
+          ".skip-link:focus",
+          "selector",
+          ".skip-link:focus"
+        ],
+        [
+          ".file-trigger-input",
+          "selector",
+          ".file-trigger-input"
+        ],
+        [
+          ".scenario-row .recurring-name",
+          "selector",
+          ".scenario-row .recurring-name"
+        ]
+      ]
+    },
+    "interface/flow-chart.css": {
+      "offScaleSpacing": [
+        [
+          ".chart-scroll",
+          "padding",
+          "10px"
+        ],
+        [
+          ".chart-canvas",
+          "padding-left",
+          "64px"
+        ],
+        [
+          ".chart-axis.is-sticky",
+          "margin-bottom",
+          "-220px"
+        ],
+        [
+          ".chart-months",
+          "margin-top",
+          "10px"
+        ],
+        [
+          ".chart-month-year",
+          "margin-top",
+          "1px"
+        ],
+        [
+          ".chart-legend",
+          "gap",
+          "18px"
+        ],
+        [
+          ".chart-legend",
+          "margin",
+          "64px"
+        ],
+        [
+          ".chart-legend > span",
+          "gap",
+          "6px"
+        ],
+        [
+          ".chart-legend > .chart-legend-note",
+          "gap",
+          "1px"
+        ],
+        [
+          ".donut",
+          "gap",
+          "14px"
+        ],
+        [
+          ".donut",
+          "gap",
+          "26px"
+        ],
+        [
+          ".donut",
+          "margin",
+          "14px"
+        ],
+        [
+          ".donut-legend-row",
+          "gap",
+          "9px"
+        ],
+        [
+          ".donut-legend-row",
+          "padding",
+          "7px"
+        ],
+        [
+          ".chart-tooltip",
+          "padding",
+          "10px"
+        ],
+        [
+          ".chart-tooltip",
+          "padding",
+          "13px"
+        ],
+        [
+          ".fl-panels",
+          "gap",
+          "28px"
+        ],
+        [
+          ".fl-panel-head",
+          "gap",
+          "6px"
+        ],
+        [
+          ".fl-panel-head h4",
+          "gap",
+          "7px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".chart-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          "#app .chart-target, .chart-target",
+          "border-radius",
+          "8px"
+        ],
+        [
+          ".chart-key",
+          "border-radius",
+          "3px"
+        ],
+        [
+          ".chart-key.is-marker",
+          "border-radius",
+          "2px"
+        ],
+        [
+          ".donut-legend-row",
+          "border-radius",
+          "8px"
+        ],
+        [
+          ".donut-key",
+          "border-radius",
+          "3px"
+        ],
+        [
+          ".chart-tooltip",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".chart-info > .chart-info-body",
+          "border-radius",
+          "10px"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".chart-guide",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".donut-centre-value",
+          "font-size",
+          "15px"
+        ],
+        [
+          ".donut-legend-row",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".chart-tooltip",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".chart-info",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".chart-info > .chart-info-body",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".fl-panel-head h4",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".fl-panel-head > .num",
+          "font-size",
+          "17px"
+        ],
+        [
+          ".fl-net",
+          "font-size",
+          "13px"
+        ]
+      ],
+      "important": [
+        [
+          ".chart-tooltip[hidden], html[data-privacy='on'] .chart-tooltip, html[data-privacy='on'] .chart-surface, html[data-privacy='on'] .donut, html[data-privacy='on'] .commit-when, html[data-privacy='on'] .chart-info-body, html[data-privacy='on'] .tm-wrap",
+          "display",
+          "none !important"
+        ],
+        [
+          ".chart-target, #app .chart-target, .tm-tile, .ownowe-fill",
+          "transition",
+          "none !important"
+        ],
+        [
+          ".chart-target, #app .chart-target, .tm-tile, .ownowe-fill",
+          "animation",
+          "none !important"
+        ],
+        [
+          ".chart-surface, .chart-controls, .chart-tooltip, .chart-info",
+          "display",
+          "none !important"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#app .chart-target",
+          "selector",
+          "#app .chart-target"
+        ],
+        [
+          "#app .chart-target:hover",
+          "selector",
+          "#app .chart-target:hover"
+        ],
+        [
+          "#app .chart-target:focus-visible",
+          "selector",
+          "#app .chart-target:focus-visible"
+        ],
+        [
+          "#app .chart-target:active",
+          "selector",
+          "#app .chart-target:active"
+        ],
+        [
+          "#app .chart-target.is-selected",
+          "selector",
+          "#app .chart-target.is-selected"
+        ],
+        [
+          "#app .chart-target.is-compared",
+          "selector",
+          "#app .chart-target.is-compared"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".tm-tile",
+          "selector",
+          ".tm-tile"
+        ]
+      ]
+    },
+    "interface/foundation.css": {
+      "offScaleFontSizes": [
+        [
+          "body",
+          "font-size",
+          "14px"
+        ],
+        [
+          "body.dropping::after",
+          "font-size",
+          "18px"
+        ],
+        [
+          ".skip-link",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".brand-name",
+          "font-size",
+          "15.5px"
+        ],
+        [
+          ".btn",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".btn.sm",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".btn.lg",
+          "font-size",
+          "15px"
+        ],
+        [
+          ".menu-item",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".menu-label",
+          "font-size",
+          "11px"
+        ],
+        [
+          ".pill",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".fact-value",
+          "font-size",
+          "18px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          "body.dropping::after",
+          "border-radius",
+          "18px"
+        ],
+        [
+          ".skip-link",
+          "border-radius",
+          "8px"
+        ],
+        [
+          ".brand-mark",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".menu",
+          "border-radius",
+          "14px"
+        ],
+        [
+          ".menu-item",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".period-select, select.mini",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".card",
+          "border-radius",
+          "var(--radius)"
+        ],
+        [
+          ".swatch",
+          "border-radius",
+          "3px"
+        ]
+      ],
+      "important": [
+        [
+          "[hidden]",
+          "display",
+          "none !important"
+        ]
+      ],
+      "offScaleSpacing": [
+        [
+          ".skip-link",
+          "padding",
+          "10px"
+        ],
+        [
+          ".skip-link",
+          "padding",
+          "14px"
+        ],
+        [
+          ".topbar",
+          "gap",
+          "14px"
+        ],
+        [
+          ".topbar",
+          "padding",
+          "14px"
+        ],
+        [
+          ".topbar",
+          "padding",
+          "28px"
+        ],
+        [
+          ".topbar",
+          "padding",
+          "14px"
+        ],
+        [
+          ".topbar",
+          "padding",
+          "28px"
+        ],
+        [
+          ".brand",
+          "gap",
+          "10px"
+        ],
+        [
+          ".btn",
+          "padding",
+          "9px"
+        ],
+        [
+          ".btn",
+          "padding",
+          "14px"
+        ],
+        [
+          ".btn.sm",
+          "padding",
+          "6px"
+        ],
+        [
+          ".btn.sm",
+          "padding",
+          "11px"
+        ],
+        [
+          ".period-bar",
+          "padding",
+          "10px"
+        ],
+        [
+          ".period-bar",
+          "padding",
+          "14px"
+        ],
+        [
+          ".period-bar",
+          "padding",
+          "28px"
+        ],
+        [
+          ".period-bar",
+          "padding",
+          "10px"
+        ],
+        [
+          ".period-bar",
+          "padding",
+          "14px"
+        ],
+        [
+          ".period-bar",
+          "padding",
+          "28px"
+        ],
+        [
+          ".period-select, select.mini",
+          "padding",
+          "30px"
+        ],
+        [
+          ".mini",
+          "padding-block",
+          "6px"
+        ],
+        [
+          ".wrap",
+          "padding",
+          "14px"
+        ],
+        [
+          ".wrap",
+          "padding",
+          "28px"
+        ],
+        [
+          ".wrap",
+          "padding",
+          "14px"
+        ],
+        [
+          ".wrap",
+          "padding",
+          "28px"
+        ],
+        [
+          ".pad",
+          "padding",
+          "6px"
+        ],
+        [
+          ".swatch",
+          "margin-right",
+          "7px"
+        ],
+        [
+          ".swatch.sm",
+          "margin-right",
+          "6px"
+        ],
+        [
+          ".pill",
+          "gap",
+          "6px"
+        ],
+        [
+          ".pill",
+          "padding",
+          "10px"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#theme-btn .nav-ic",
+          "selector",
+          "#theme-btn .nav-ic"
+        ],
+        [
+          "#add-btn.btn.primary",
+          "selector",
+          "#add-btn.btn.primary"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          "body",
+          "selector",
+          "body"
+        ],
+        [
+          ".period-bar",
+          "selector",
+          ".period-bar"
+        ],
+        [
+          ":root",
+          "selector",
+          ":root"
+        ],
+        [
+          "html",
+          "selector",
+          "html"
+        ],
+        [
+          ".skip-link:focus",
+          "selector",
+          ".skip-link:focus"
+        ],
+        [
+          ".file-trigger-input",
+          "selector",
+          ".file-trigger-input"
+        ],
+        [
+          "[data-theme='dark']",
+          "selector",
+          "[data-theme='dark']"
+        ],
+        [
+          "[data-theme='auto']",
+          "selector",
+          "[data-theme='auto']"
+        ],
+        [
+          "*",
+          "selector",
+          "*"
+        ],
+        [
+          ".topbar-stack",
+          "selector",
+          ".topbar-stack"
+        ],
+        [
+          ".topbar",
+          "selector",
+          ".topbar"
+        ],
+        [
+          ".top-actions",
+          "selector",
+          ".top-actions"
+        ],
+        [
+          ".btn",
+          "selector",
+          ".btn"
+        ],
+        [
+          ".btn:hover",
+          "selector",
+          ".btn:hover"
+        ],
+        [
+          ".btn:active",
+          "selector",
+          ".btn:active"
+        ],
+        [
+          ".btn.primary:hover",
+          "selector",
+          ".btn.primary:hover"
+        ],
+        [
+          ".btn.sm",
+          "selector",
+          ".btn.sm"
+        ],
+        [
+          ".nav-ic",
+          "selector",
+          ".nav-ic"
+        ],
+        [
+          ".btn .btn-label",
+          "selector",
+          ".btn .btn-label"
+        ],
+        [
+          ".btn.primary .btn-label",
+          "selector",
+          ".btn.primary .btn-label"
+        ],
+        [
+          ".menu",
+          "selector",
+          ".menu"
+        ],
+        [
+          ".period-left",
+          "selector",
+          ".period-left"
+        ],
+        [
+          ".period-select",
+          "selector",
+          ".period-select"
+        ],
+        [
+          ".mini",
+          "selector",
+          ".mini"
+        ],
+        [
+          ".period-range",
+          "selector",
+          ".period-range"
+        ],
+        [
+          ".wrap",
+          "selector",
+          ".wrap"
+        ],
+        [
+          ".hero-figure",
+          "selector",
+          ".hero-figure"
+        ]
+      ]
+    },
+    "interface/glass.css": {
+      "important": [
+        [
+          ".glass, .glass-nav, #app.wrap > .card, .accounts-wrap > .card, .card.hero",
+          "background",
+          "var(--panel) !important"
+        ],
+        [
+          ".glass, .glass-nav, #app.wrap > .card, .accounts-wrap > .card, .card.hero",
+          "-webkit-backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".glass, .glass-nav, #app.wrap > .card, .accounts-wrap > .card, .card.hero",
+          "backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".overlay.glass-overlay",
+          "background",
+          "color-mix(in srgb, #000 42%, transparent) !important"
+        ],
+        [
+          ".overlay.glass-overlay",
+          "-webkit-backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".overlay.glass-overlay",
+          "backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".vm-number, .vm-label, .vm-tag, .vm-reconcile",
+          "color",
+          "#10161f !important"
+        ],
+        [
+          ".vm-number, .vm-label, .vm-tag, .vm-reconcile",
+          "background",
+          "none !important"
+        ],
+        [
+          ".vm-tag",
+          "border-color",
+          "#cdd5df !important"
+        ],
+        [
+          ".menu, .picker, .pfa-sonner [data-sonner-toast], .install-banner, .busy-card, .report-close, .to-top",
+          "background",
+          "var(--panel) !important"
+        ],
+        [
+          ".menu, .picker, .pfa-sonner [data-sonner-toast], .install-banner, .busy-card, .report-close, .to-top",
+          "-webkit-backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".menu, .picker, .pfa-sonner [data-sonner-toast], .install-banner, .busy-card, .report-close, .to-top",
+          "backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".pfa-sonner [data-sonner-toast]",
+          "background",
+          "var(--tip-bg) !important"
+        ],
+        [
+          ".overlay",
+          "background",
+          "color-mix(in srgb, #000 42%, transparent) !important"
+        ],
+        [
+          ".overlay",
+          "-webkit-backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".overlay",
+          "backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".ledger-tab, .btn, .insight",
+          "transition",
+          "none !important"
+        ],
+        [
+          ".btn:active",
+          "transform",
+          "none !important"
+        ],
+        [
+          ".offer, .status-line",
+          "background",
+          "var(--panel) !important"
+        ],
+        [
+          ".offer, .status-line",
+          "-webkit-backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".offer, .status-line",
+          "backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".status-line",
+          "background",
+          "var(--panel-2) !important"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".vm-number",
+          "font-size",
+          "27px"
+        ],
+        [
+          ".vm-number.lg",
+          "font-size",
+          "42px"
+        ],
+        [
+          ".vm-label",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".vm-tag",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".vm-reconcile",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".dest-tab",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".dest-bottom .dest-tab",
+          "font-size",
+          "10.5px"
+        ],
+        [
+          ".seg-btn",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          "body.dense .vm-number.lg",
+          "font-size",
+          "var(--vm-number-lg)"
+        ],
+        [
+          "body.dense .vm-number",
+          "font-size",
+          "var(--vm-number)"
+        ],
+        [
+          "body.dense table.grid",
+          "font-size",
+          "13px"
+        ]
+      ],
+      "offScaleSpacing": [
+        [
+          ".vm-tag",
+          "gap",
+          "6px"
+        ],
+        [
+          ".vm-tag",
+          "padding",
+          "3px"
+        ],
+        [
+          ".vm-tag",
+          "padding",
+          "10px"
+        ],
+        [
+          ".vm-tags",
+          "gap",
+          "6px"
+        ],
+        [
+          ".dest-tab",
+          "padding",
+          "9px"
+        ],
+        [
+          ".dest-nav.dest-sidebar",
+          "gap",
+          "3px"
+        ],
+        [
+          ".dest-nav.dest-sidebar",
+          "padding",
+          "14px"
+        ],
+        [
+          ".dest-nav.dest-sidebar",
+          "padding",
+          "10px"
+        ],
+        [
+          ".dest-sidebar .dest-tab",
+          "padding",
+          "11px"
+        ],
+        [
+          ".dest-nav.dest-bottom",
+          "padding",
+          "6px"
+        ],
+        [
+          ".dest-nav.dest-bottom",
+          "padding",
+          "6px"
+        ],
+        [
+          ".dest-bottom .dest-tab",
+          "gap",
+          "3px"
+        ],
+        [
+          "body.has-dest-nav",
+          "padding-bottom",
+          "72px"
+        ],
+        [
+          ".seg-btn",
+          "padding",
+          "6px"
+        ],
+        [
+          ".seg-btn",
+          "padding",
+          "10px"
+        ],
+        [
+          "body.dense table.grid td, body.dense table.grid th",
+          "padding",
+          "7px"
+        ],
+        [
+          "body.dense table.grid td, body.dense table.grid th",
+          "padding",
+          "10px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".vm-tag::before",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".vm-reconcile",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".dest-sidebar .dest-tab",
+          "border-radius",
+          "11px"
+        ],
+        [
+          ".dest-bottom .dest-tab",
+          "border-radius",
+          "12px"
+        ],
+        [
+          ".seg",
+          "border-radius",
+          "10px"
+        ],
+        [
+          "#acct-tx:focus-visible",
+          "border-radius",
+          "10px"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#app.wrap > .card",
+          "selector",
+          "#app.wrap > .card"
+        ],
+        [
+          "#app.wrap > .card.secondary",
+          "selector",
+          "#app.wrap > .card.secondary"
+        ],
+        [
+          "#acct-tx:focus-visible",
+          "selector",
+          "#acct-tx:focus-visible"
+        ],
+        [
+          "body.modal-open #pfa-mock-switcher",
+          "selector",
+          "body.modal-open #pfa-mock-switcher"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".pfa-sonner [data-sonner-toast]",
+          "selector",
+          ".pfa-sonner [data-sonner-toast]"
+        ],
+        [
+          ".busy",
+          "selector",
+          ".busy"
+        ],
+        [
+          ".busy-card",
+          "selector",
+          ".busy-card"
+        ],
+        [
+          ".install-banner",
+          "selector",
+          ".install-banner"
+        ],
+        [
+          ".overlay",
+          "selector",
+          ".overlay"
+        ],
+        [
+          ".picker",
+          "selector",
+          ".picker"
+        ],
+        [
+          ".insight",
+          "selector",
+          ".insight"
+        ],
+        [
+          ".insight:hover",
+          "selector",
+          ".insight:hover"
+        ],
+        [
+          ".insight:hover .insight-go",
+          "selector",
+          ".insight:hover .insight-go"
+        ],
+        [
+          ".report-close",
+          "selector",
+          ".report-close"
+        ],
+        [
+          ".ledger-tab",
+          "selector",
+          ".ledger-tab"
+        ],
+        [
+          ".ledger-tab.active",
+          "selector",
+          ".ledger-tab.active"
+        ],
+        [
+          ".to-top",
+          "selector",
+          ".to-top"
+        ],
+        [
+          ".seg-btn",
+          "selector",
+          ".seg-btn"
+        ],
+        [
+          ":root",
+          "selector",
+          ":root"
+        ],
+        [
+          ".scenario-row .recurring-name",
+          "selector",
+          ".scenario-row .recurring-name"
+        ],
+        [
+          "[data-theme='dark']",
+          "selector",
+          "[data-theme='dark']"
+        ],
+        [
+          "[data-theme='auto']",
+          "selector",
+          "[data-theme='auto']"
+        ],
+        [
+          ".btn",
+          "selector",
+          ".btn"
+        ],
+        [
+          ".btn:hover",
+          "selector",
+          ".btn:hover"
+        ],
+        [
+          ".btn:active",
+          "selector",
+          ".btn:active"
+        ],
+        [
+          ".btn.primary:hover",
+          "selector",
+          ".btn.primary:hover"
+        ],
+        [
+          ".menu",
+          "selector",
+          ".menu"
+        ],
+        [
+          ".offer",
+          "selector",
+          ".offer"
+        ],
+        [
+          ".vm-number",
+          "selector",
+          ".vm-number"
+        ],
+        [
+          ".card.secondary",
+          "selector",
+          ".card.secondary"
+        ],
+        [
+          ".status-line",
+          "selector",
+          ".status-line"
+        ]
+      ]
+    },
+    "interface/income-chart.css": {
+      "offScaleSpacing": [
+        [
+          ".ic-scale-note",
+          "margin",
+          "6px"
+        ]
+      ],
+      "important": [
+        [
+          ".ic-chart",
+          "display",
+          "none !important"
+        ]
+      ]
+    },
+    "interface/premium.css": {
+      "offScaleSpacing": [
+        [
+          ".metric",
+          "gap",
+          "3px"
+        ],
+        [
+          ".metric-open",
+          "margin-block",
+          "-6px"
+        ],
+        [
+          ".metric-open",
+          "padding-block",
+          "6px"
+        ],
+        [
+          ".metric.is-linked > .metric-detail",
+          "margin-top",
+          "10px"
+        ],
+        [
+          ".metric-detail",
+          "margin",
+          "6px"
+        ],
+        [
+          ".metric-actions",
+          "margin-top",
+          "10px"
+        ],
+        [
+          ".dh-status",
+          "gap",
+          "6px"
+        ],
+        [
+          ".dh-note",
+          "padding",
+          "10px"
+        ],
+        [
+          ".tag, #app .vm-tag, .accounts-wrap .vm-tag",
+          "gap",
+          "6px"
+        ],
+        [
+          ".tag, #app .vm-tag, .accounts-wrap .vm-tag",
+          "padding",
+          "3px"
+        ],
+        [
+          ".tag, #app .vm-tag, .accounts-wrap .vm-tag",
+          "padding",
+          "10px"
+        ],
+        [
+          ".tag, #app .vm-tag, .accounts-wrap .vm-tag",
+          "padding",
+          "3px"
+        ],
+        [
+          ".tag, #app .vm-tag, .accounts-wrap .vm-tag",
+          "padding",
+          "9px"
+        ],
+        [
+          ".disclosure > summary, :where(.disclosure) [data-slot=\"accordion-trigger\"], .fold-all-btn",
+          "gap",
+          "7px"
+        ],
+        [
+          ".fold-all",
+          "margin-block",
+          "-6px"
+        ],
+        [
+          ".pfa-inline-disclosure-trigger",
+          "gap",
+          "7px"
+        ],
+        [
+          ".stmt-summary-section .pfa-inline-disclosure-trigger",
+          "gap",
+          "10px"
+        ],
+        [
+          ".chart-hidden",
+          "gap",
+          "10px"
+        ],
+        [
+          ".chart-hidden-mark",
+          "gap",
+          "5px"
+        ],
+        [
+          ".visually-hidden",
+          "margin",
+          "-1px"
+        ],
+        [
+          ".compact-form .name-field",
+          "padding-top",
+          "6px"
+        ],
+        [
+          ".compact-form .name-field",
+          "padding-bottom",
+          "6px"
+        ],
+        [
+          ".compact-form .btn.sm",
+          "padding-top",
+          "7px"
+        ],
+        [
+          ".compact-form .btn.sm",
+          "padding-bottom",
+          "7px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".metric-open",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".tag::before, #app .vm-tag::before",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".disclosure > summary:focus-visible, :where(.disclosure) [data-slot=\"accordion-trigger\"]:focus-visible, .fold-all-btn:focus-visible",
+          "border-radius",
+          "6px"
+        ],
+        [
+          ".pfa-inline-disclosure-trigger:focus-visible",
+          "border-radius",
+          "6px"
+        ],
+        [
+          ".chart-hidden-dot",
+          "border-radius",
+          "50%"
+        ],
+        [
+          "#app .commit-bar, #app .up-pay-bar",
+          "border-radius",
+          "2px"
+        ],
+        [
+          "#app .commit-bar-fill, #app .up-pay-bar-fill",
+          "border-radius",
+          "2px"
+        ]
+      ],
+      "important": [
+        [
+          ":root[data-privacy='on'] [data-proportional]",
+          "display",
+          "none !important"
+        ],
+        [
+          "[data-proportional]",
+          "display",
+          "revert !important"
+        ],
+        [
+          ".chart-hidden",
+          "display",
+          "none !important"
+        ],
+        [
+          ".visually-hidden",
+          "position",
+          "absolute !important"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".brand-name[data-short-name]",
+          "font-size",
+          "0"
+        ],
+        [
+          ".brand-name[data-short-name]::after",
+          "font-size",
+          "15.5px"
+        ],
+        [
+          ".top-actions #add-btn .btn-label, .top-actions #export-btn .btn-label",
+          "font-size",
+          "12px"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#app .card",
+          "selector",
+          "#app .card"
+        ],
+        [
+          "#app .card.decision",
+          "selector",
+          "#app .card.decision"
+        ],
+        [
+          "#app .card[data-surface='lead']",
+          "selector",
+          "#app .card[data-surface='lead']"
+        ],
+        [
+          "#app .card.hero",
+          "selector",
+          "#app .card.hero"
+        ],
+        [
+          "#app .card.lead",
+          "selector",
+          "#app .card.lead"
+        ],
+        [
+          "#app .card.secondary",
+          "selector",
+          "#app .card.secondary"
+        ],
+        [
+          "#app .card-title svg",
+          "selector",
+          "#app .card-title svg"
+        ],
+        [
+          "#app .pfa-card-disclosure-icon svg",
+          "selector",
+          "#app .pfa-card-disclosure-icon svg"
+        ],
+        [
+          "#app .num",
+          "selector",
+          "#app .num"
+        ],
+        [
+          "#app .vm-number",
+          "selector",
+          "#app .vm-number"
+        ],
+        [
+          "#app .recurring-amt",
+          "selector",
+          "#app .recurring-amt"
+        ],
+        [
+          "#app .commit-amt",
+          "selector",
+          "#app .commit-amt"
+        ],
+        [
+          "#app .up-pay-amt",
+          "selector",
+          "#app .up-pay-amt"
+        ],
+        [
+          "#app .amt",
+          "selector",
+          "#app .amt"
+        ],
+        [
+          "#app .tm-value",
+          "selector",
+          "#app .tm-value"
+        ],
+        [
+          "#app .fact-value",
+          "selector",
+          "#app .fact-value"
+        ],
+        [
+          "#app .sec-value",
+          "selector",
+          "#app .sec-value"
+        ],
+        [
+          "#app .recent-amt",
+          "selector",
+          "#app .recent-amt"
+        ],
+        [
+          "#app .foreign-amt",
+          "selector",
+          "#app .foreign-amt"
+        ],
+        [
+          "#app .metric-value",
+          "selector",
+          "#app .metric-value"
+        ],
+        [
+          "#app .metric--hero > .metric-value",
+          "selector",
+          "#app .metric--hero > .metric-value"
+        ],
+        [
+          "#app .metric--hero.metric-value",
+          "selector",
+          "#app .metric--hero.metric-value"
+        ],
+        [
+          "#app .dh-figure",
+          "selector",
+          "#app .dh-figure"
+        ],
+        [
+          "#app .metric--major > .metric-value",
+          "selector",
+          "#app .metric--major > .metric-value"
+        ],
+        [
+          "#app .metric--major.metric-value",
+          "selector",
+          "#app .metric--major.metric-value"
+        ],
+        [
+          "#app .metric--minor > .metric-value",
+          "selector",
+          "#app .metric--minor > .metric-value"
+        ],
+        [
+          "#app .metric--minor.metric-value",
+          "selector",
+          "#app .metric--minor.metric-value"
+        ],
+        [
+          "#app .metric--row > .metric-value",
+          "selector",
+          "#app .metric--row > .metric-value"
+        ],
+        [
+          "#app .metric--row.metric-value",
+          "selector",
+          "#app .metric--row.metric-value"
+        ],
+        [
+          "#app .vm-number.lg",
+          "selector",
+          "#app .vm-number.lg"
+        ],
+        [
+          "#app .ownowe-amt",
+          "selector",
+          "#app .ownowe-amt"
+        ],
+        [
+          "#app .share-bar-total",
+          "selector",
+          "#app .share-bar-total"
+        ],
+        [
+          "#app .sec-label",
+          "selector",
+          "#app .sec-label"
+        ],
+        [
+          "#app .card.decision.decision--supporting",
+          "selector",
+          "#app .card.decision.decision--supporting"
+        ],
+        [
+          "#app .card.decision.decision--supporting .dh-question",
+          "selector",
+          "#app .card.decision.decision--supporting .dh-question"
+        ],
+        [
+          "#app .vm-tag",
+          "selector",
+          "#app .vm-tag"
+        ],
+        [
+          "#app .vm-tag::before",
+          "selector",
+          "#app .vm-tag::before"
+        ],
+        [
+          "#app .confirm-chip[aria-pressed='true']",
+          "selector",
+          "#app .confirm-chip[aria-pressed='true']"
+        ],
+        [
+          "#app .confirm-chip[aria-pressed='true']::before",
+          "selector",
+          "#app .confirm-chip[aria-pressed='true']::before"
+        ],
+        [
+          "[data-theme='dark'] #app :focus-visible",
+          "selector",
+          "[data-theme='dark'] #app :focus-visible"
+        ],
+        [
+          "[data-theme='auto'] #app :focus-visible",
+          "selector",
+          "[data-theme='auto'] #app :focus-visible"
+        ],
+        [
+          "#app .fl-bar.out",
+          "selector",
+          "#app .fl-bar.out"
+        ],
+        [
+          "#app .fl-plot",
+          "selector",
+          "#app .fl-plot"
+        ],
+        [
+          "#app .ic-plot",
+          "selector",
+          "#app .ic-plot"
+        ],
+        [
+          "#app .ch-month",
+          "selector",
+          "#app .ch-month"
+        ],
+        [
+          "#app .ic-month",
+          "selector",
+          "#app .ic-month"
+        ],
+        [
+          "#app .fl-legend",
+          "selector",
+          "#app .fl-legend"
+        ],
+        [
+          ":root[data-privacy='on'] #privacy-btn",
+          "selector",
+          ":root[data-privacy='on'] #privacy-btn"
+        ],
+        [
+          "#app .recurring-row",
+          "selector",
+          "#app .recurring-row"
+        ],
+        [
+          "#app .commit-row",
+          "selector",
+          "#app .commit-row"
+        ],
+        [
+          "#app .up-pay",
+          "selector",
+          "#app .up-pay"
+        ],
+        [
+          "#app button.recurring-row:hover",
+          "selector",
+          "#app button.recurring-row:hover"
+        ],
+        [
+          "#app button.commit-row:hover",
+          "selector",
+          "#app button.commit-row:hover"
+        ],
+        [
+          "#app button.up-pay:hover",
+          "selector",
+          "#app button.up-pay:hover"
+        ],
+        [
+          "#app .recurring-name",
+          "selector",
+          "#app .recurring-name"
+        ],
+        [
+          "#app .commit-name-main",
+          "selector",
+          "#app .commit-name-main"
+        ],
+        [
+          "#app .up-pay-name",
+          "selector",
+          "#app .up-pay-name"
+        ],
+        [
+          "#app .commit-bar",
+          "selector",
+          "#app .commit-bar"
+        ],
+        [
+          "#app .up-pay-bar",
+          "selector",
+          "#app .up-pay-bar"
+        ],
+        [
+          "#app .commit-bar-fill",
+          "selector",
+          "#app .commit-bar-fill"
+        ],
+        [
+          "#app .up-pay-bar-fill",
+          "selector",
+          "#app .up-pay-bar-fill"
+        ],
+        [
+          "#app",
+          "selector",
+          "#app"
+        ],
+        [
+          "#theme-btn.icon-btn",
+          "selector",
+          "#theme-btn.icon-btn"
+        ],
+        [
+          ".top-actions #add-btn",
+          "selector",
+          ".top-actions #add-btn"
+        ],
+        [
+          ".top-actions #export-btn",
+          "selector",
+          ".top-actions #export-btn"
+        ],
+        [
+          ".top-actions #add-btn .btn-label",
+          "selector",
+          ".top-actions #add-btn .btn-label"
+        ],
+        [
+          ".top-actions #export-btn .btn-label",
+          "selector",
+          ".top-actions #export-btn .btn-label"
+        ],
+        [
+          ".top-actions #export-btn .btn-ic",
+          "selector",
+          ".top-actions #export-btn .btn-ic"
+        ],
+        [
+          "#app .card.card-compact > .card-disclosure > summary",
+          "selector",
+          "#app .card.card-compact > .card-disclosure > summary"
+        ],
+        [
+          "#app .card.card-compact > .card-disclosure > summary > .card-disclosure-note",
+          "selector",
+          "#app .card.card-compact > .card-disclosure > summary > .card-disclosure-note"
+        ],
+        [
+          "#app .tm-label",
+          "selector",
+          "#app .tm-label"
+        ],
+        [
+          "#app .tm-help",
+          "selector",
+          "#app .tm-help"
+        ],
+        [
+          "#app .ic-steady",
+          "selector",
+          "#app .ic-steady"
+        ],
+        [
+          "#app .fl-steady-note",
+          "selector",
+          "#app .fl-steady-note"
+        ],
+        [
+          "#app .ic-steady-note",
+          "selector",
+          "#app .ic-steady-note"
+        ]
+      ],
+      "deepSelectors": [
+        [
+          "#app .card.card-compact > .card-disclosure > summary > .card-disclosure-note",
+          "selector",
+          "#app .card.card-compact > .card-disclosure > summary > .card-disclosure-note"
+        ],
+        [
+          ".accounts-wrap .card.card-compact > .card-disclosure > summary > .card-disclosure-note",
+          "selector",
+          ".accounts-wrap .card.card-compact > .card-disclosure > summary > .card-disclosure-note"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".tx-search-actions",
+          "selector",
+          ".tx-search-actions"
+        ],
+        [
+          ":root",
+          "selector",
+          ":root"
+        ],
+        [
+          ".fold-all-btn",
+          "selector",
+          ".fold-all-btn"
+        ],
+        [
+          "[data-theme='dark']",
+          "selector",
+          "[data-theme='dark']"
+        ],
+        [
+          "[data-theme='auto']",
+          "selector",
+          "[data-theme='auto']"
+        ],
+        [
+          ".topbar",
+          "selector",
+          ".topbar"
+        ],
+        [
+          ".top-actions",
+          "selector",
+          ".top-actions"
+        ],
+        [
+          "#app",
+          "selector",
+          "#app"
+        ],
+        [
+          "table.grid.tx tbody tr.tx-row",
+          "selector",
+          "table.grid.tx tbody tr.tx-row"
+        ],
+        [
+          "table.grid.tx tr.tx-row td:nth-child(2)",
+          "selector",
+          "table.grid.tx tr.tx-row td:nth-child(2)"
+        ]
+      ]
+    },
+    "interface/print.css": {
+      "idSelectors": [
+        [
+          "#ledger-switch",
+          "selector",
+          "#ledger-switch"
+        ],
+        [
+          "#app",
+          "selector",
+          "#app"
+        ],
+        [
+          "#footer",
+          "selector",
+          "#footer"
+        ],
+        [
+          "#backup-banner",
+          "selector",
+          "#backup-banner"
+        ],
+        [
+          "#first-run-banner",
+          "selector",
+          "#first-run-banner"
+        ],
+        [
+          "#busy",
+          "selector",
+          "#busy"
+        ],
+        [
+          "#install",
+          "selector",
+          "#install"
+        ],
+        [
+          "#to-top",
+          "selector",
+          "#to-top"
+        ],
+        [
+          "#go-back",
+          "selector",
+          "#go-back"
+        ],
+        [
+          "html.printing #ledger-switch",
+          "selector",
+          "html.printing #ledger-switch"
+        ],
+        [
+          "html.printing #app",
+          "selector",
+          "html.printing #app"
+        ],
+        [
+          "html.printing #footer",
+          "selector",
+          "html.printing #footer"
+        ],
+        [
+          "html.printing #backup-banner",
+          "selector",
+          "html.printing #backup-banner"
+        ],
+        [
+          "html.printing #first-run-banner",
+          "selector",
+          "html.printing #first-run-banner"
+        ],
+        [
+          "html.printing #install",
+          "selector",
+          "html.printing #install"
+        ],
+        [
+          "html.printing #busy",
+          "selector",
+          "html.printing #busy"
+        ],
+        [
+          "html.printing #to-top",
+          "selector",
+          "html.printing #to-top"
+        ],
+        [
+          "html.printing #go-back",
+          "selector",
+          "html.printing #go-back"
+        ],
+        [
+          "html.printing #print-report",
+          "selector",
+          "html.printing #print-report"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".overlay",
+          "selector",
+          ".overlay"
+        ],
+        [
+          ".tip",
+          "selector",
+          ".tip"
+        ],
+        [
+          "body",
+          "selector",
+          "body"
+        ],
+        [
+          ".period-bar",
+          "selector",
+          ".period-bar"
+        ],
+        [
+          "html",
+          "selector",
+          "html"
+        ],
+        [
+          "*",
+          "selector",
+          "*"
+        ],
+        [
+          ".topbar-stack",
+          "selector",
+          ".topbar-stack"
+        ],
+        [
+          ".topbar",
+          "selector",
+          ".topbar"
+        ],
+        [
+          "#app",
+          "selector",
+          "#app"
+        ]
+      ]
+    },
+    "interface/responsive.css": {
+      "offScaleSpacing": [
+        [
+          ".btn",
+          "padding-top",
+          "11px"
+        ],
+        [
+          ".btn",
+          "padding-bottom",
+          "11px"
+        ],
+        [
+          ".btn.sm",
+          "padding-top",
+          "10px"
+        ],
+        [
+          ".btn.sm",
+          "padding-bottom",
+          "10px"
+        ],
+        [
+          ".cat-tag-btn",
+          "padding-top",
+          "10px"
+        ],
+        [
+          ".cat-tag-btn",
+          "padding-bottom",
+          "10px"
+        ],
+        [
+          ".chip",
+          "padding-top",
+          "9px"
+        ],
+        [
+          ".chip",
+          "padding-bottom",
+          "9px"
+        ],
+        [
+          ".f-check",
+          "padding",
+          "10px"
+        ],
+        [
+          ".f-check",
+          "padding",
+          "10px"
+        ],
+        [
+          ".period-bar .period-select",
+          "padding-top",
+          "6px"
+        ],
+        [
+          ".period-bar .period-select",
+          "padding-bottom",
+          "6px"
+        ],
+        [
+          ".filters",
+          "gap",
+          "10px"
+        ],
+        [
+          ".mobile-sort",
+          "margin",
+          "10px"
+        ],
+        [
+          ".mobile-sort-field",
+          "padding",
+          "30px"
+        ],
+        [
+          ".wrap",
+          "padding-top",
+          "14px"
+        ],
+        [
+          ".wrap",
+          "gap",
+          "14px"
+        ],
+        [
+          ".btn.sm",
+          "padding-top",
+          "6px"
+        ],
+        [
+          ".btn.sm",
+          "padding-bottom",
+          "6px"
+        ],
+        [
+          ".chip",
+          "padding-top",
+          "5px"
+        ],
+        [
+          ".chip",
+          "padding-bottom",
+          "5px"
+        ],
+        [
+          ".f-check",
+          "padding-top",
+          "6px"
+        ],
+        [
+          ".f-check",
+          "padding-bottom",
+          "6px"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".period-bar .period-select",
+          "font-size",
+          "14px"
+        ],
+        [
+          "table.grid.tx tr.tx-row td:nth-child(4)",
+          "font-size",
+          "15px"
+        ],
+        [
+          "table.grid.tx tr.tx-row td:nth-child(3)",
+          "font-size",
+          "12px"
+        ],
+        [
+          "table.grid.tx tr.tx-row td:nth-child(1)",
+          "font-size",
+          "12px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".mobile-sort-field",
+          "border-radius",
+          "9px"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#export-btn .caret",
+          "selector",
+          "#export-btn .caret"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".pfa-sonner [data-sonner-toast]",
+          "selector",
+          ".pfa-sonner [data-sonner-toast]"
+        ],
+        [
+          ".row2",
+          "selector",
+          ".row2"
+        ],
+        [
+          ".table-wrap.sticky",
+          "selector",
+          ".table-wrap.sticky"
+        ],
+        [
+          ".table-wrap.sticky table.grid thead th",
+          "selector",
+          ".table-wrap.sticky table.grid thead th"
+        ],
+        [
+          ".tx-detail td",
+          "selector",
+          ".tx-detail td"
+        ],
+        [
+          ".filters",
+          "selector",
+          ".filters"
+        ],
+        [
+          ".filters input",
+          "selector",
+          ".filters input"
+        ],
+        [
+          ".filters select",
+          "selector",
+          ".filters select"
+        ],
+        [
+          ".f-search",
+          "selector",
+          ".f-search"
+        ],
+        [
+          ".f-num",
+          "selector",
+          ".f-num"
+        ],
+        [
+          ".f-range",
+          "selector",
+          ".f-range"
+        ],
+        [
+          ".f-check",
+          "selector",
+          ".f-check"
+        ],
+        [
+          ".chips",
+          "selector",
+          ".chips"
+        ],
+        [
+          ".chip",
+          "selector",
+          ".chip"
+        ],
+        [
+          ".mobile-sort",
+          "selector",
+          ".mobile-sort"
+        ],
+        [
+          ".period-bar",
+          "selector",
+          ".period-bar"
+        ],
+        [
+          ".mobile-sort-field",
+          "selector",
+          ".mobile-sort-field"
+        ],
+        [
+          ".btn",
+          "selector",
+          ".btn"
+        ],
+        [
+          ".btn.sm",
+          "selector",
+          ".btn.sm"
+        ],
+        [
+          ".nav-ic",
+          "selector",
+          ".nav-ic"
+        ],
+        [
+          ".btn .btn-label",
+          "selector",
+          ".btn .btn-label"
+        ],
+        [
+          ".btn.primary .btn-label",
+          "selector",
+          ".btn.primary .btn-label"
+        ],
+        [
+          ".period-left",
+          "selector",
+          ".period-left"
+        ],
+        [
+          ".period-select",
+          "selector",
+          ".period-select"
+        ],
+        [
+          ".mini",
+          "selector",
+          ".mini"
+        ],
+        [
+          ".period-range",
+          "selector",
+          ".period-range"
+        ],
+        [
+          ".wrap",
+          "selector",
+          ".wrap"
+        ],
+        [
+          ".hero-figure",
+          "selector",
+          ".hero-figure"
+        ],
+        [
+          "table.grid.tx tbody tr.tx-row",
+          "selector",
+          "table.grid.tx tbody tr.tx-row"
+        ],
+        [
+          "table.grid.tx tr.tx-row td:nth-child(2)",
+          "selector",
+          "table.grid.tx tr.tx-row td:nth-child(2)"
+        ]
+      ]
+    },
+    "interface/treemap.css": {
+      "offTokenRadii": [
+        [
+          ".tm-wrap",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".tm-svg",
+          "border-radius",
+          "10px"
+        ],
+        [
+          ".tm-category-name i",
+          "border-radius",
+          "50%"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".tm-tile",
+          "selector",
+          ".tm-tile"
+        ]
+      ]
+    },
+    "interface/workspace-refinements.css": {
+      "offTokenRadii": [
+        [
+          ".msg-dismiss",
+          "border-radius",
+          "50%"
+        ],
+        [
+          ".status-line",
+          "border-radius",
+          "var(--radius)"
+        ],
+        [
+          ".offer",
+          "border-radius",
+          "16px"
+        ],
+        [
+          ".app-loading-mark",
+          "border-radius",
+          "14px"
+        ]
+      ],
+      "offScaleSpacing": [
+        [
+          ".status-line",
+          "gap",
+          "10px"
+        ],
+        [
+          ".status-line",
+          "padding",
+          "14px"
+        ],
+        [
+          ".status-line-ic",
+          "margin-top",
+          "1px"
+        ],
+        [
+          ".status-line .msg-dismiss",
+          "margin",
+          "-4px"
+        ],
+        [
+          ".status-line .msg-dismiss",
+          "margin",
+          "-4px"
+        ],
+        [
+          ".status-line .msg-dismiss",
+          "margin",
+          "-4px"
+        ],
+        [
+          ".offer.show",
+          "row-gap",
+          "10px"
+        ],
+        [
+          ".wrap",
+          "padding-top",
+          "18px"
+        ],
+        [
+          ".wrap",
+          "padding-top",
+          "30px"
+        ],
+        [
+          ".wrap",
+          "padding-bottom",
+          "56px"
+        ],
+        [
+          ".ledger-tabs",
+          "padding",
+          "3px"
+        ],
+        [
+          ".ledger-tab",
+          "padding",
+          "17px"
+        ],
+        [
+          "#app.wrap, .accounts-wrap.accounts-grid",
+          "column-gap",
+          "18px"
+        ],
+        [
+          "#app.wrap, .accounts-wrap.accounts-grid",
+          "row-gap",
+          "18px"
+        ],
+        [
+          "body",
+          "padding-bottom",
+          "86px"
+        ],
+        [
+          ".ledger-tab",
+          "padding",
+          "6px"
+        ],
+        [
+          ".app-loading-copy, .busy-copy",
+          "gap",
+          "3px"
+        ],
+        [
+          ".busy-card",
+          "padding",
+          "18px"
+        ],
+        [
+          ".coverage-note",
+          "gap",
+          "6px"
+        ],
+        [
+          ".coverage-note",
+          "margin",
+          "-4px"
+        ],
+        [
+          ".field-label",
+          "gap",
+          "6px"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".status-line",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".status-line-body .status-line-sub",
+          "font-size",
+          "12.5px"
+        ],
+        [
+          ".offer",
+          "font-size",
+          "13.5px"
+        ],
+        [
+          ".ledger-tab",
+          "font-size",
+          "12px"
+        ],
+        [
+          ".period-live-title",
+          "font-size",
+          "13px"
+        ],
+        [
+          ".field-label",
+          "font-size",
+          "14px"
+        ]
+      ],
+      "important": [
+        [
+          ".offer",
+          "transition",
+          "none !important"
+        ],
+        [
+          ".offer.show",
+          "transform",
+          "translate(-50%, 0) !important"
+        ],
+        [
+          ".ledger-tab, .insight-go",
+          "transition",
+          "none !important"
+        ],
+        [
+          ".table-wrap.sticky table.grid thead th",
+          "-webkit-backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".table-wrap.sticky table.grid thead th",
+          "backdrop-filter",
+          "none !important"
+        ],
+        [
+          ".table-wrap.sticky table.grid thead th",
+          "background",
+          "var(--panel) !important"
+        ]
+      ],
+      "idSelectors": [
+        [
+          "#app.wrap",
+          "selector",
+          "#app.wrap"
+        ],
+        [
+          "#add-btn .btn-ic",
+          "selector",
+          "#add-btn .btn-ic"
+        ],
+        [
+          ":root[data-privacy=\"on\"] #privacy-btn",
+          "selector",
+          ":root[data-privacy=\"on\"] #privacy-btn"
+        ],
+        [
+          "#app.view-enter",
+          "selector",
+          "#app.view-enter"
+        ]
+      ],
+      "multiFileSelectors": [
+        [
+          ".secondary[open] > summary",
+          "selector",
+          ".secondary[open] > summary"
+        ],
+        [
+          ".app-loading",
+          "selector",
+          ".app-loading"
+        ],
+        [
+          ".busy-card",
+          "selector",
+          ".busy-card"
+        ],
+        [
+          ".pass",
+          "selector",
+          ".pass"
+        ],
+        [
+          ".footer",
+          "selector",
+          ".footer"
+        ],
+        [
+          ".insight-go",
+          "selector",
+          ".insight-go"
+        ],
+        [
+          "table.grid th",
+          "selector",
+          "table.grid th"
+        ],
+        [
+          ".table-wrap.sticky table.grid thead th",
+          "selector",
+          ".table-wrap.sticky table.grid thead th"
+        ],
+        [
+          ".filters input",
+          "selector",
+          ".filters input"
+        ],
+        [
+          ".filters select",
+          "selector",
+          ".filters select"
+        ],
+        [
+          ".picker-filter",
+          "selector",
+          ".picker-filter"
+        ],
+        [
+          ".name-field",
+          "selector",
+          ".name-field"
+        ],
+        [
+          "body",
+          "selector",
+          "body"
+        ],
+        [
+          "#app.wrap",
+          "selector",
+          "#app.wrap"
+        ],
+        [
+          ".accounts-wrap.accounts-grid",
+          "selector",
+          ".accounts-wrap.accounts-grid"
+        ],
+        [
+          ".ledger-tabs",
+          "selector",
+          ".ledger-tabs"
+        ],
+        [
+          ".ledger-tab",
+          "selector",
+          ".ledger-tab"
+        ],
+        [
+          ".ledger-tab:hover",
+          "selector",
+          ".ledger-tab:hover"
+        ],
+        [
+          ".ledger-tab.active",
+          "selector",
+          ".ledger-tab.active"
+        ],
+        [
+          ".period-bar",
+          "selector",
+          ".period-bar"
+        ],
+        [
+          ".tx-filters",
+          "selector",
+          ".tx-filters"
+        ],
+        [
+          ".tx-filters .f-search:focus",
+          "selector",
+          ".tx-filters .f-search:focus"
+        ],
+        [
+          ".recent-item",
+          "selector",
+          ".recent-item"
+        ],
+        [
+          ".card.secondary > summary",
+          "selector",
+          ".card.secondary > summary"
+        ],
+        [
+          ":root",
+          "selector",
+          ":root"
+        ],
+        [
+          "[data-theme='dark']",
+          "selector",
+          "[data-theme='dark']"
+        ],
+        [
+          "[data-theme='auto']",
+          "selector",
+          "[data-theme='auto']"
+        ],
+        [
+          ".topbar",
+          "selector",
+          ".topbar"
+        ],
+        [
+          ".period-select",
+          "selector",
+          ".period-select"
+        ],
+        [
+          ".mini",
+          "selector",
+          ".mini"
+        ],
+        [
+          ".wrap",
+          "selector",
+          ".wrap"
+        ],
+        [
+          ".offer",
+          "selector",
+          ".offer"
+        ],
+        [
+          ".vm-number",
+          "selector",
+          ".vm-number"
+        ],
+        [
+          ".card.secondary",
+          "selector",
+          ".card.secondary"
+        ],
+        [
+          ".status-line",
+          "selector",
+          ".status-line"
+        ]
+      ]
+    },
+    "react-ui/AccordionComparison.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "inline-style",
+          "24px auto"
+        ],
+        [
+          "",
+          "inline-style",
+          "16px 0 0"
+        ]
+      ]
+    },
+    "react-ui/components/pfa-spending-limits.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "inline-style",
+          "10px 0 6px"
+        ]
+      ]
+    },
+    "react-ui/components/pfa-transaction-account-filter.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "inline-style",
+          "8px"
+        ]
+      ]
+    },
+    "react-ui/components/pfa-transaction-category-filter.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "inline-style",
+          "0 0 8px"
+        ]
+      ]
+    },
+    "react-ui/components/pfa-transaction-split-editor.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "inline-style",
+          "6px 0"
+        ]
+      ]
+    },
+    "react-ui/components/pfa-transaction-tag-picker.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "inline-style",
+          "2px 0 6px"
+        ]
+      ]
+    },
+    "react-ui/components/ui/accordion.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "tailwind-arbitrary",
+          "[3px]"
+        ]
+      ]
+    },
+    "react-ui/components/ui/chart.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "tailwind-arbitrary",
+          "[2px]"
+        ],
+        [
+          "",
+          "tailwind-arbitrary",
+          "[1.5px]"
+        ],
+        [
+          "",
+          "tailwind-arbitrary",
+          "[2px]"
+        ]
+      ]
+    },
+    "react-ui/components/ui/checkbox.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "tailwind-arbitrary",
+          "[4px]"
+        ],
+        [
+          "",
+          "tailwind-arbitrary",
+          "[3px]"
+        ]
+      ]
+    },
+    "react-ui/components/ui/input.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "tailwind-arbitrary",
+          "[3px]"
+        ]
+      ]
+    },
+    "react-ui/components/ui/radio-group.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "tailwind-arbitrary",
+          "[3px]"
+        ]
+      ]
+    },
+    "react-ui/components/ui/select.jsx": {
+      "staticJsxPx": [
+        [
+          "",
+          "tailwind-arbitrary",
+          "[3px]"
+        ]
+      ]
+    },
+    "react-ui/styles/pfa-card-disclosure.css": {
+      "offScaleSpacing": [
+        [
+          ".pfa-card-disclosure-trigger",
+          "gap",
+          "10px"
+        ],
+        [
+          ".pfa-card-disclosure-trigger",
+          "gap",
+          "14px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".pfa-card-disclosure-trigger:focus-visible",
+          "border-radius",
+          "6px"
+        ]
+      ]
+    },
+    "react-ui/styles/pfa-commitment-timeline.css": {
+      "offScaleFontSizes": [
+        [
+          ".commit-when-chart .recharts-cartesian-axis-tick text",
+          "font-size",
+          "10px"
+        ]
+      ]
+    },
+    "react-ui/styles/pfa-info-popover.css": {
+      "offScaleSpacing": [
+        [
+          ".pfa-info-trigger.is-icon-only:not(.icon-slot-tap)",
+          "padding",
+          "22px"
+        ],
+        [
+          ".pfa-info-trigger.is-icon-only:not(.icon-slot-tap)",
+          "margin",
+          "22px"
+        ]
+      ],
+      "offTokenRadii": [
+        [
+          ".pfa-info-trigger:focus-visible",
+          "border-radius",
+          "4px"
+        ],
+        [
+          ".chart-info-body[data-state='open']",
+          "border-radius",
+          "10px"
+        ]
+      ],
+      "important": [
+        [
+          "html[data-privacy='on'] .chart-info-body.pfa-info-privacy-notice[data-state='open']",
+          "display",
+          "block !important"
+        ]
+      ]
+    },
+    "react-ui/styles/pfa-payoff-chart.css": {
+      "offScaleFontSizes": [
+        [
+          ".fc-payoff-chart .recharts-cartesian-axis-tick text",
+          "font-size",
+          "10px"
+        ]
+      ]
+    },
+    "react-ui/styles/pfa-proportion-bar.css": {
+      "offTokenRadii": [
+        [
+          ".pfa-proportion-target",
+          "border-radius",
+          "inherit"
+        ]
+      ],
+      "important": [
+        [
+          ".pfa-proportion-target",
+          "background",
+          "transparent !important"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".pfa-proportion-legend-button::after",
+          "font-size",
+          "18px"
+        ]
+      ],
+      "offScaleSpacing": [
+        [
+          ".pfa-proportion-legend-button + .proportion-legend-meaning",
+          "margin",
+          "18px"
+        ]
+      ]
+    },
+    "react-ui/styles/pfa-transaction-table.css": {
+      "offTokenRadii": [
+        [
+          ".tx-sort-mobile-btn",
+          "border-radius",
+          "999px"
+        ]
+      ],
+      "offScaleFontSizes": [
+        [
+          ".tx-sort-mobile-btn",
+          "font-size",
+          "12px"
+        ]
+      ]
+    }
+  }
+}

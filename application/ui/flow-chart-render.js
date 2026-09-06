@@ -1,170 +1,145 @@
-/* flow-chart-render.js - the money-in vs money-out diverging bar row for
- * Overview. Two series per month: income rises above a centre break-even line,
- * spending falls below it, both measured from the SAME zero baseline so they
- * are directly comparable - here zero is the meaningful reference (break-even),
- * unlike the income chart's zoomed band. A month where more came in than went
- * out shows a taller up-bar; a short month shows a taller down-bar. Across the
- * row, the shifting balance IS the trend the narrative used to describe in
- * words. Reads roll.trend (analyseRollup) - moves no total. */
-import { requireCtx, MONTHS_SHORT, isPrivacyMode } from '../core/shared-helpers.js';
-import { monthLabelRow, shortMonthOf } from './chart-helpers.js';
+import { requireCtx, MONTHS_SHORT, monthIndex, roundMoney } from '../core/shared-helpers.js';
+import { monthTickOf, chartIsHidden } from './chart-helpers.js';
+import { coverageTimeline } from '../analysis/coverage-map.js';
 
 export function flowChartModel(trend, opts = {}) {
-  const rows = (Array.isArray(trend) ? trend : [])
-    .filter((r) => r && /^\d{4}-\d{2}$/.test(String(r.month)))
+  const recorded = (Array.isArray(trend) ? trend : [])
+    .filter((r) => r && Number.isFinite(monthIndex(r.month)))
     .map((r) => ({
       month: String(r.month),
       income: Math.max(0, Number(r.income) || 0),
       spending: Math.max(0, Number(r.spending) || 0),
       net: Number(r.net) || 0,
+      bankOut: Math.max(0, Number(r.bankOut) || 0),
+      cardOut: Math.max(0, Number(r.cardOut) || 0),
     }))
     .sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
+  const byMonth = new Map(recorded.map((row) => [row.month, row]));
+  const sourceAware = Array.isArray(opts.bankMonths) || Array.isArray(opts.cardMonths);
+  const bankMonths = (sourceAware ? opts.bankMonths || [] : [...byMonth.keys(), ...(opts.recordedMonths || [])]).filter((month) => Number.isFinite(monthIndex(month)));
+  const cardMonths = (sourceAware ? opts.cardMonths || [] : []).filter((month) => Number.isFinite(monthIndex(month)));
+  const timeline = coverageTimeline({ bankMonths, cardMonths, coverage: opts.coverage, ledgers: sourceAware ? ['bank', 'card'] : ['bank'] });
+  const rows = timeline.months.map((entry) => {
+    const row = byMonth.get(entry.month) || { month: entry.month, income: 0, spending: 0, net: 0, bankOut: 0, cardOut: 0 };
+    if (!sourceAware) return { ...row, present: entry.bank !== 'missing' };
+    const bankPresent = entry.bank !== 'missing' && entry.bank !== 'outside';
+    const cardPresent = entry.card !== 'missing' && entry.card !== 'outside';
+    const present = bankPresent || cardPresent;
+    const income = bankPresent ? row.income : null;
+    const spending = present ? roundMoney((bankPresent ? row.bankOut : 0) + (cardPresent ? row.cardOut : 0)) : null;
+    const net = income == null || spending == null ? null : roundMoney(income - spending);
+    const issue = (status, source) => status === 'partial' ? `Partial ${source} statement` : status === 'missing' ? `No ${source} statement` : status === 'outside' ? `${source === 'bank' ? 'Bank' : 'Card'} history unavailable` : null;
+    const incomeIssue = bankMonths.length ? issue(entry.bank, 'bank') : 'No bank statements imported';
+    const spendingIssue = [bankMonths.length ? incomeIssue : null, cardMonths.length ? issue(entry.card, 'card') : null].filter(Boolean).join(' · ');
+    return {
+      month: entry.month,
+      income,
+      spending,
+      net,
+      present,
+      incomeIssue,
+      spendingIssue,
+      incomeIncomplete: entry.bank === 'partial',
+      spendingIncomplete: !!spendingIssue,
+    };
+  });
   if (rows.length < 2) return null;
 
   const maxBars = opts.maxBars && opts.maxBars > 0 ? opts.maxBars : 12;
   const months = rows.slice(-maxBars);
 
-  // Both series share ONE scale, measured from the same centre break-even line
-  // so up and down bars stay directly comparable. The scale is NOT the single
-  // largest value - one bonus-income or big-outflow month would then flatten
-  // every ordinary month into an unreadable stub. Instead it is a ROBUST
-  // reference: the median of all non-zero in/out values sets where a typical
-  // month reaches ~62% height, and true outliers are allowed to exceed that
-  // (soft-capped at 100%). So an ordinary month is clearly legible AND a spike
-  // still reads as taller, without one month deciding the whole axis.
-  const vals = [];
-  for (const r of months) {
-    if (r.income > 0) vals.push(r.income);
-    if (r.spending > 0) vals.push(r.spending);
-  }
-  const sorted = vals.slice().sort((a, b) => a - b);
-  const med = sorted.length
-    ? sorted.length % 2
-      ? sorted[sorted.length >> 1]
-      : (sorted[(sorted.length >> 1) - 1] + sorted[sorted.length >> 1]) / 2
-    : 1;
-  const peakRaw = Math.max(...months.map((r) => Math.max(r.income, r.spending)), 1);
-  // Reference at which a value maps to ~62%; never below a sensible floor, and
-  // never so high that the true peak is off-scale (kept within 1.6x the median
-  // so a genuine spike still visibly exceeds a typical month without dwarfing it).
-  // Reference tuned so an ORDINARY (median) month reaches ~72% of the half-plot,
-  // not 62% - the many small months were rendering as near-invisible slivers.
-  // A lower reference (median-led, only lightly pulled up by a true peak) lifts
-  // every ordinary bar into a readable height while a genuine spike still tops
-  // out near 100%. Floor raised to 8% so even the smallest month is clearly a bar.
-  const ref = Math.max(med * 1.15, peakRaw / 2.4, 1);
-  const scale = (v) => (v <= 0 ? 0 : Math.max(8, Math.min(100, (v / ref) * 72)));
+  const peakRaw = Math.max(...months.map((r) => Math.max(r.income || 0, r.spending || 0, Math.abs(r.net || 0))), 1);
+  const ref = peakRaw * 1.08;
+  const scale = (v) => (v / ref) * 100;
+  const netScale = scale;
   const bars = months.map((r) => ({
     month: r.month,
-    income: r.income,
-    spending: r.spending,
-    net: r.net,
-    incomePct: scale(r.income),
-    spendingPct: scale(r.spending),
+    income: r.present ? r.income : null,
+    spending: r.present ? r.spending : null,
+    net: r.present ? r.net : null,
+    present: r.present,
+    incomeIssue: r.incomeIssue,
+    spendingIssue: r.spendingIssue,
+    incomeIncomplete: r.incomeIncomplete,
+    spendingIncomplete: r.spendingIncomplete,
+    recorded: !r.present || r.income == null || r.spending == null || !!r.incomeIncomplete || !!r.spendingIncomplete,
+    incomePct: scale(r.income || 0),
+    spendingPct: scale(r.spending || 0),
+    netPct: netScale(r.net || 0),
   }));
 
   const peak = peakRaw;
 
-  return { bars, peak, months: months.map((r) => r.month) };
+  const scope = sourceAware ? bankMonths.length && cardMonths.length ? 'Bank and card statements' : bankMonths.length ? 'Bank statements only' : 'Card statements only' : null;
+  return { bars, peak, ref, months: months.map((r) => r.month), scope };
 }
 
 export function createFlowChartRenderer(ctx) {
-  requireCtx(ctx, ['el', 'bankMoney', 'monthLabel'], 'createFlowChartRenderer');
-  const { el, bankMoney, monthLabel } = ctx;
-  const shortMonth = shortMonthOf(MONTHS_SHORT);
-
-  function buildAria(model) {
-    if (isPrivacyMode()) {
-      return `Cash in and out over ${model.bars.length} months. Amounts hidden while privacy mode is on.`;
-    }
-    const ahead = model.bars.filter((b) => b.net >= 0).length;
-    const short = model.bars.length - ahead;
-    const parts = [`Cash in and out over ${model.bars.length} months`];
-    parts.push(`${ahead} month${ahead === 1 ? '' : 's'} ahead`);
-    if (short > 0) parts.push(`${short} short`);
-    return parts.join(', ') + '.';
+  requireCtx(ctx, ['el', 'bankMoney', 'monthLabel', 'monthShort', 'openMonth', 'openStatementCoverage'], 'createFlowChartRenderer');
+  function guardFollowupClick(event) {
+    if (typeof document === 'undefined' || !event || !event.detail) return;
+    const x = event.clientX;
+    const y = event.clientY;
+    const expires = Date.now() + 500;
+    let timer;
+    const remove = () => {
+      document.removeEventListener('pointerdown', suppress, true);
+      document.removeEventListener('click', suppress, true);
+      clearTimeout(timer);
+    };
+    const suppress = (next) => {
+      if (Date.now() > expires) {
+        remove();
+        return;
+      }
+      if (Math.abs(next.clientX - x) <= 10 && Math.abs(next.clientY - y) <= 10) {
+        next.preventDefault();
+        next.stopImmediatePropagation();
+      }
+    };
+    queueMicrotask(() => {
+      document.addEventListener('pointerdown', suppress, true);
+      document.addEventListener('click', suppress, true);
+    });
+    timer = setTimeout(remove, 500);
   }
-
   function renderFlowChart(trend, opts = {}) {
     const model = flowChartModel(trend, opts);
     if (!model) return null;
-
-    const chart = el('div', {
-      class: 'fl-chart',
-      role: 'img',
-      'aria-label': buildAria(model),
-    });
-    const plot = el('div', { class: 'fl-plot' });
-
-    // Two bars per month, side by side from a SHARED baseline, converging on
-    // the exact pattern the account-side trend chart (accounts-render.js's
-    // renderBankTrend / .acct-trend-* CSS) already proves - in and out grow
-    // upward together so "did more come in than went out this month" is
-    // readable at a glance for every month, which the old stacked
-    // (green-over-orange, offset baselines) column made needlessly hard.
-    // These charts share a VISUAL language but not their classes or
-    // behaviour: this one is read-only and percentage-sized (from
-    // flowChartModel's own scale); the account chart is an interactive
-    // click-to-focus button, pixel-sized. Kept as parallel rule sets rather
-    // than shared selectors so neither carries the other's exceptions - see
-    // .fl-pair / .fl-bar in styles.css, which mirror .acct-trend-pair /
-    // .acct-trend-bar deliberately.
-    for (const bar of model.bars) {
-      const ahead = bar.net >= 0;
-      const title =
-        `${monthLabel(bar.month)}: ${bankMoney(bar.income)} in, ${bankMoney(bar.spending)} out ` +
-        `- ${ahead ? 'ahead by' : 'short by'} ${bankMoney(Math.abs(bar.net))}`;
-      const col = el('div', { class: 'fl-col', title });
-
-      col.append(
-        el(
-          'div',
-          { class: 'fl-pair' },
-          el('span', { class: 'fl-bar in', style: `height:${bar.incomePct}%` }),
-          el('span', { class: 'fl-bar out', style: `height:${bar.spendingPct}%` })
-        )
-      );
-
-      plot.append(col);
-    }
-
-    chart.append(plot);
-    chart.append(monthLabelRow(el, model.months, shortMonth, null));
-    chart.append(
-      el(
-        'div',
-        { class: 'fl-legend' },
-        el('span', { class: 'fl-key' }, el('span', { class: 'fl-swatch in' }), 'Cash inflow'),
-        el('span', { class: 'fl-key' }, el('span', { class: 'fl-swatch out' }), 'Cash outflow')
-      )
-    );
-
-    // When both series barely move month to month (a steady salary against
-    // steady fixed commitments - a genuinely common, healthy profile), eight
-    // near-identical bar pairs read as "this didn't load" rather than as the
-    // real, reassuring signal they carry. A monthly bar chart exists to show
-    // CHANGE; when there is honestly almost none, a plain-language line does
-    // the job the bars can't, without pretending flat data has movement.
-    // Only shown when the pattern genuinely holds: every month positive AND
-    // the spread of monthly net is small relative to typical income.
-    const nets = model.bars.map((b) => b.net);
-    const everyMonthAhead = nets.every((n) => n >= 0);
-    const typicalIn =
-      model.bars.reduce((s, b) => s + b.income, 0) / (model.bars.length || 1);
-    const netSpread = Math.max(...nets) - Math.min(...nets);
-    const flatEnough = typicalIn > 0 && netSpread <= typicalIn * 0.15;
-    if (everyMonthAhead && flatEnough && model.bars.length >= 3) {
-      chart.append(
-        el(
-          'p',
-          { class: 'muted small fl-steady-note' },
-          'Steady in, steady out - comfortably ahead each month.'
-        )
-      );
-    }
-
-    return chart;
+    const { bankMoney } = ctx;
+    if (chartIsHidden()) return { hidden: true };
+    const rows = model.bars.map((bar) => ({ ...bar, detail: bar.recorded || bar.net == null ? null : `${bar.net < 0 ? 'Shortfall' : 'Net cash'}: ${bankMoney(bar.net)}` }));
+    const net = rows.reduce((sum, row) => sum + (row.net || 0), 0);
+    const range = `${ctx.monthShort(model.months[0])} - ${ctx.monthShort(model.months[model.months.length - 1])}`;
+    const onSelect = (row, flow, event) => {
+      guardFollowupClick(event);
+      if (!row.present || row[flow] == null) {
+        ctx.openStatementCoverage();
+        return;
+      }
+      ctx.openMonth(row.month, {
+        view: 'activity',
+        activityTab: 'transactions',
+        anchorId: '#acct-tx',
+        flow,
+      });
+    };
+    return {
+      props: {
+        ctx,
+        rows,
+        reference: model.ref,
+        range,
+        scope: model.scope,
+        net,
+        totals: {
+          income: rows.reduce((sum, row) => sum + (row.income || 0), 0),
+          spending: rows.reduce((sum, row) => sum + (row.spending || 0), 0),
+        },
+        monthShort: monthTickOf(MONTHS_SHORT, rows),
+        onSelect,
+      },
+    };
   }
-
   return { renderFlowChart };
 }

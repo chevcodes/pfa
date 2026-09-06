@@ -1,17 +1,18 @@
-/* commitment-income.js - shared commitment-and-income primitive (see spec). */
+import {
+  typicalMonthlyValue,
+  rowBalance,
+  sortedCardStatements,
+  isInternal,
+  dirOf,
+  amtOf,
+  ccyOf,
+  dateOf,
+} from '../core/shared-helpers.js';
+import { resolveGroupMap, groupForCategory } from './plan.js';
+import { paymentEvents } from './payment-obligations.js';
+import { buildIncomeModel, resolveIncomeOptions } from './income-model.js';
 export function resolveOpts(cfg = {}) {
-  const ahead = (cfg && cfg.ahead) || {};
-  const insights = (cfg && cfg.insights) || {};
-  const currency = (cfg && cfg.currency) || {};
-  return {
-    minMonths: ahead.minMonths == null ? 3 : ahead.minMonths,
-    tolerance: ahead.tolerance == null ? 0.15 : ahead.tolerance,
-    maxGapMonths: ahead.maxGapMonths == null ? 2 : ahead.maxGapMonths,
-    lateGraceDays: ahead.lateGraceDays == null ? 5 : ahead.lateGraceDays,
-    baseCurrency: currency.code || 'JMD',
-    incomeFloor: insights.meaningfulChangeMin == null ? 3000 : insights.meaningfulChangeMin,
-    commitmentFloor: 1000,
-  };
+  return resolveIncomeOptions(cfg);
 }
 function ymOf(iso) {
   return String(iso || '').slice(0, 7);
@@ -45,12 +46,6 @@ function nextOccurrenceAfter(asOf, day) {
   }
   return cand;
 }
-function median(nums) {
-  if (!nums.length) return 0;
-  const s = nums.slice().sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
 function maxConsecutiveGap(monthKeys) {
   const idx = monthKeys
     .map((m) => +m.slice(0, 4) * 12 + +m.slice(5, 7))
@@ -59,24 +54,6 @@ function maxConsecutiveGap(monthKeys) {
   let mx = 0;
   for (let i = 1; i < idx.length; i++) mx = Math.max(mx, idx[i] - idx[i - 1]);
   return mx;
-}
-function isInternal(r) {
-  if (r.internalTransfer != null) return !!r.internalTransfer;
-  return String(r.Flow || '') === 'Internal transfer';
-}
-function dirOf(r) {
-  if (r.direction) return r.direction;
-  const f = String(r.Flow || '');
-  return f === 'Cash inflow' ? 'in' : f === 'Cash outflow' ? 'out' : '';
-}
-function amtOf(r) {
-  return Math.abs(Number(r.amount != null ? r.amount : r.Amount) || 0);
-}
-function dateOf(r) {
-  return String(r.date || r.Date || '');
-}
-function ccyOf(r, base) {
-  return String(r.currency || r.Currency || base);
 }
 function counterpartyKeyOf(r) {
   return (
@@ -88,12 +65,14 @@ function counterpartyKeyOf(r) {
   );
 }
 export function detectRecurring(records, direction, opts, asOf = null) {
-  const wantIn = direction === 'in';
+  if (direction === 'in') return buildIncomeModel({ bankRows: records, options: opts, asOf }).streams
+    .map(({ key, label, occurrences, months, typical, typicalDay, lastMonth, recent }) =>
+      ({ key, label, occurrences, months, typical, typicalDay, lastMonth, recent }));
   const by = new Map();
   for (const r of records || []) {
     if (isInternal(r)) continue;
     if (ccyOf(r, opts.baseCurrency) !== opts.baseCurrency) continue;
-    if ((dirOf(r) === 'in') !== wantIn) continue;
+    if (dirOf(r) !== 'out') continue;
     if (asOf && dateOf(r) > asOf) continue;
     const key = counterpartyKeyOf(r);
     if (!by.has(key)) by.set(key, []);
@@ -108,19 +87,19 @@ export function detectRecurring(records, direction, opts, asOf = null) {
     if (months.length < opts.minMonths) continue;
     if (maxConsecutiveGap(months) > opts.maxGapMonths) continue;
     const vals = [...byMonth.values()];
-    const typical = median(vals);
+    const typical = typicalMonthlyValue(vals).amount;
     if (typical <= 0) continue;
     const steady = vals.filter((a) => Math.abs(a - typical) <= typical * opts.tolerance).length;
     if (steady < opts.minMonths) continue;
     const days = rows.map((r) => domOf(dateOf(r))).sort((a, b) => a - b);
     const typicalDay = days[days.length >> 1];
-    const recent = rows
-      .slice()
-      .sort((a, b) => (dateOf(a) < dateOf(b) ? -1 : 1))
+    const recent = [...byMonth.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .slice(-3)
-      .map(amtOf);
+      .map(([, amount]) => amount);
     out.push({
       key,
+      label: String(rows[0].counterpartyLabel || rows[0].description || key),
       occurrences: rows.length,
       months: months.length,
       typical,
@@ -146,28 +125,31 @@ export function twoWayKeys(records, opts, asOf = null) {
   for (const [key, s] of seen) if (s.in >= 2 && s.out >= 2) out.add(key);
   return out;
 }
-export function expectedIncome(bankRecords, opts, asOf) {
-  const cands = detectRecurring(bankRecords, 'in', opts, asOf).filter(
-    (c) => c.typical >= opts.incomeFloor
+/* WHICH REPEATING CREDIT IS "YOUR PAY".
+ *
+ * This is the most consequential guess in the app: it sets the next payday,
+ * which sets the window of payments counted before it, which sets Overview's
+ * lead figure. Until now it was decided by size alone and never mentioned - a
+ * distribution, a regular transfer from family or a second job can outweigh a
+ * salary, and being wrong was invisible.
+ *
+ * The person's answer governs where they have given one, exactly as it does
+ * for every other inference: a payee answered "yes" is the pay whatever its
+ * size, and one answered "no" is out of the running. Size decides only among
+ * the payees nobody has ruled on, and the result says which of the two
+ * happened so a surface can be honest about it.
+ */
+export function payCandidates(bankRecords, opts, asOf) {
+  return detectRecurring(bankRecords, 'in', opts, asOf).filter(
+    (stream) => stream.typical >= opts.incomeFloor
   );
-  if (!cands.length) return null;
-  const inc = cands[0];
-  const med3 = median(inc.recent);
-  const latest = inc.recent[inc.recent.length - 1];
-  const amount = Math.abs(latest - med3) <= med3 * opts.tolerance ? latest : med3;
-  const date = nextOccurrenceAfter(asOf, inc.typicalDay);
-  return {
-    key: inc.key,
-    amount: Math.round(amount * 100) / 100,
-    date,
-    typicalDay: inc.typicalDay,
-    confidence: inc.months >= 6 ? 'high' : 'medium',
-  };
+}
+
+export function expectedIncome(bankRecords, opts, asOf, confirmations = []) {
+  return buildIncomeModel({ bankRows: bankRecords, options: opts, asOf, confirmations }).primaryPay;
 }
 export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) {
-  const stmts = (cardStatements || [])
-    .slice()
-    .sort((a, b) => String(a.statementKey || '').localeCompare(String(b.statementKey || '')));
+  const stmts = sortedCardStatements(cardStatements);
   const latest = stmts[stmts.length - 1] || null;
   if (!latest) return { amount: 0, basis: 'no-card-statement', stale: true };
   const due =
@@ -177,7 +159,9 @@ export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) 
         ? Number(latest.newBalance)
         : null;
   const dueDate = latest.dueDate || latest.payBy || null;
-  if (due == null) return { amount: 0, basis: 'no-amount-due', stale: true };
+  if (due == null || !Number.isFinite(due))
+    return { amount: 0, basis: 'no-amount-due', stale: true };
+  if (due <= 0) return { amount: 0, basis: 'nothing-due', dueDate, stale: false };
   if (!dueDate)
     return {
       amount: 0,
@@ -191,6 +175,7 @@ export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) 
       basis: 'no-income-date',
       stale: true,
       knownAmount: Math.round(due * 100) / 100,
+      dueDate,
     };
   const inWindow = String(dueDate) > String(asOf) && String(dueDate) < String(nextIncomeDate);
   return {
@@ -200,25 +185,47 @@ export function cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate) 
     stale: false,
   };
 }
+/* The person's category -> band placement outranks the detector here too, so a
+ * repeating payment they have filed under a category they put in Free spending
+ * stops being counted as a commitment before payday, and one they put in Fixed
+ * expenses keeps counting. Detection still supplies the amount and the date -
+ * an answer says how a payment should be treated, it cannot say when a payment
+ * with no pattern will next land. */
+function placedBandOf(bankRecords, opts, cfg, groupAssignments) {
+  const groupMap = resolveGroupMap(cfg, groupAssignments);
+  const byKey = new Map();
+  for (const r of bankRecords || []) {
+    const name = r.category || r.Category || '';
+    if (!name || !Object.prototype.hasOwnProperty.call(groupMap, String(name).toLowerCase()))
+      continue;
+    byKey.set(counterpartyKeyOf(r), groupForCategory(name, groupMap) === 'fixed');
+  }
+  return byKey;
+}
+
 export function commitmentsBeforeIncome(
   bankRecords,
   opts,
   asOf,
   nextIncomeDate,
-  manualFutureItems = []
+  manualFutureItems = [],
+  { cfg = {}, groupAssignments = null } = {}
 ) {
   if (!nextIncomeDate) return [];
+  const placed = placedBandOf(bankRecords, opts, cfg, groupAssignments);
   const debits = detectRecurring(bankRecords, 'out', opts, asOf).filter(
-    (d) => d.typical >= opts.commitmentFloor
+    (d) => placed.get(d.key) === true || d.typical >= opts.commitmentFloor
   );
   const tw = twoWayKeys(bankRecords, opts, asOf);
   const items = [];
   for (const d of debits) {
-    if (tw.has(d.key)) continue;
+    if (placed.get(d.key) === false) continue;
+    if (tw.has(d.key) && placed.get(d.key) !== true) continue;
     const due = nextOccurrenceAfter(asOf, d.typicalDay);
     if (due && due > asOf && due < nextIncomeDate)
       items.push({
         key: d.key,
+        label: d.label,
         amount: Math.round(d.typical * 100) / 100,
         date: due,
         basis: 'recurring',
@@ -229,6 +236,7 @@ export function commitmentsBeforeIncome(
     if (md > asOf && md < nextIncomeDate)
       items.push({
         key: m.key || 'manual',
+        label: m.label || 'One-off payment',
         amount: Math.round(Number(m.amount) * 100) / 100,
         date: md,
         basis: 'manual',
@@ -245,13 +253,10 @@ export function liquidBalance(bankRecords, opts, asOf) {
     if (asOf && dateOf(r) > asOf) continue;
     const acct = r.account || r.Account || 'unknown';
     seenAccts.add(acct);
-    const bal =
-      r.balanceAfter != null
-        ? Number(r.balanceAfter)
-        : r['Running Balance'] !== undefined && r['Running Balance'] !== ''
-          ? Number(r['Running Balance'])
-          : null;
-    if (bal == null || Number.isNaN(bal)) continue;
+    // The shared reader (shared-helpers' rowBalance) - the same one Activity's
+    // account chip uses, so the two cannot diverge on which column counts.
+    const bal = rowBalance(r);
+    if (bal == null) continue;
     const seq = r.seq != null ? r.seq : 0;
     const cur = byAcct.get(acct);
     const key = [dateOf(r), seq];
@@ -260,12 +265,26 @@ export function liquidBalance(bankRecords, opts, asOf) {
   }
   let total = 0;
   const perAccount = {};
+  const dates = [];
   for (const [acct, v] of byAcct) {
     total += v.bal;
     perAccount[acct] = v.bal;
+    if (v.date) dates.push(v.date);
   }
   for (const a of seenAccts) if (!(a in perAccount)) staleAccounts++;
-  return { total: Math.round(total * 100) / 100, perAccount, staleAccounts };
+  dates.sort();
+  // WHEN each balance in this sum was last true. The dates were already known
+  // here and thrown away, so every consumer had to date the total "today" -
+  // including the summary a person hands to someone else. A sum of balances
+  // confirmed weeks apart has no single as-of date, so both ends are carried
+  // and the surface says which it means.
+  return {
+    total: Math.round(total * 100) / 100,
+    perAccount,
+    staleAccounts,
+    oldest: dates[0] || null,
+    newest: dates[dates.length - 1] || null,
+  };
 }
 export function commitmentAndIncomePrimitive({
   bankRecords,
@@ -273,11 +292,16 @@ export function commitmentAndIncomePrimitive({
   cfg = {},
   asOf,
   manualFutureItems = [],
+  liquidNow = null,
+  groupAssignments = null,
+  confirmations = [],
+  paymentObligations = [],
 }) {
   const opts = resolveOpts(cfg);
   const gaps = [];
-  const income = expectedIncome(bankRecords, opts, asOf);
-  if (!income) gaps.push('no recurring income detected');
+  const candidates = payCandidates(bankRecords, opts, asOf);
+  const income = expectedIncome(bankRecords, opts, asOf, confirmations);
+  if (!income) gaps.push('no regular pay detected');
   const nextIncomeDate = income ? income.date : null;
   const card = cardLegBeforeIncome(cardStatements, opts, asOf, nextIncomeDate);
   if (card.stale) gaps.push('card leg incomplete: ' + card.basis);
@@ -286,8 +310,14 @@ export function commitmentAndIncomePrimitive({
     opts,
     asOf,
     nextIncomeDate,
-    manualFutureItems
+    manualFutureItems,
+    { cfg, groupAssignments }
   );
+  const governed = new Set(paymentObligations.map((payment) => payment.payeeKey).filter(Boolean));
+  for (let i = commitments.length - 1; i >= 0; i--)
+    if (commitments[i].basis === 'recurring' && governed.has(commitments[i].key)) commitments.splice(i, 1);
+  for (const event of paymentEvents(paymentObligations, bankRecords, asOf, nextIncomeDate || asOf))
+    commitments.push(event);
   // FROZEN CONTRACT (locked correction #2): the card amount expected before the
   // next income belongs UNDER commitments, NOT netted into available balance.
   // So the card leg is added as a commitment item (when it falls in the window)
@@ -297,12 +327,13 @@ export function commitmentAndIncomePrimitive({
   if (card.amount > 0)
     commitments.push({
       key: 'card',
+      label: 'Card payment',
       amount: card.amount,
       date: card.dueDate || nextIncomeDate,
       basis: 'card',
     });
   commitments.sort((a, b) => (String(a.date) < String(b.date) ? -1 : 1));
-  const liquid = liquidBalance(bankRecords, opts, asOf);
+  const liquid = liquidNow || liquidBalance(bankRecords, opts, asOf);
   if (liquid.staleAccounts > 0)
     gaps.push(liquid.staleAccounts + ' account(s) with no current balance');
   const layer1 = Math.round(liquid.total * 100) / 100;
@@ -311,6 +342,7 @@ export function commitmentAndIncomePrimitive({
   return {
     asOf,
     income,
+    payCandidates: candidates.map((c) => ({ key: c.key, label: c.label, typical: c.typical })),
     liquid,
     card: {
       amountExpectedBeforeNextIncome: card.amount,

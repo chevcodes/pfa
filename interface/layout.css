@@ -1,0 +1,119 @@
+@layer pfa-layout {
+  :where(.card-head) {
+    --head-gap: var(--s4);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    margin-bottom: var(--head-gap);
+  }
+
+  :where(.card-title) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+
+  :where(.card) {
+    padding:
+      var(--card-pad-y) var(--card-pad-x)
+      var(--card-pad-y-end, var(--card-pad-y));
+  }
+
+  .card.card-collapsible,
+  details.card.secondary {
+    padding: 0;
+  }
+
+  details.card.secondary {
+    overflow: hidden;
+  }
+
+  details.card.secondary:not([open]) {
+    padding-block: var(--s1);
+  }
+
+  .card.card-compact {
+    --card-pad-y: var(--s3);
+  }
+
+  :where(
+    .card-disclosure > summary,
+    .card-disclosure > .disclosure-body,
+    .pfa-card-disclosure-header,
+    .pfa-card-disclosure-content > .disclosure-body
+  ) {
+    padding-inline: var(--card-pad-x);
+  }
+
+  :where(
+    .card-disclosure > .disclosure-body,
+    .pfa-card-disclosure-content > .disclosure-body
+  ) {
+    padding-block: 0 var(--s4);
+    margin: 0;
+  }
+
+  @media (min-width: 640px) {
+    :where(
+      .card.card-collapsible:not(.card-compact) > .card-disclosure > .disclosure-body,
+      .card.card-collapsible:not(.card-compact) > .pfa-card-disclosure > .pfa-card-disclosure-item > .pfa-card-disclosure-content > .disclosure-body
+    ) {
+      padding-block: 0 var(--s5);
+    }
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--stack-gap, var(--s3));
+  }
+
+  .stack-2 {
+    --stack-gap: var(--s2);
+  }
+
+  .stack-3 {
+    --stack-gap: var(--s3);
+  }
+
+  .stack-4 {
+    --stack-gap: var(--s4);
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--row-gap, var(--s2));
+  }
+
+  .row-2 {
+    --row-gap: var(--s2);
+  }
+
+  .row-3 {
+    --row-gap: var(--s3);
+  }
+
+  .row-4 {
+    --row-gap: var(--s4);
+  }
+
+  .bleed {
+    margin-inline: calc(-1 * var(--card-pad-x));
+    padding-inline: var(--card-pad-x);
+  }
+
+  .icon-slot-tap {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    padding: calc((var(--tap-min) - var(--icon-inline)) / 2);
+    margin: calc((var(--icon-inline) - var(--tap-min)) / 2);
+  }
+}

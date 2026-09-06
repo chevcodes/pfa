@@ -11,6 +11,7 @@ import {
   buildPaceModel,
   makeIntention,
 } from '../application/analysis/category-intentions.js';
+import { makeMoney } from '../application/core/money-format.js';
 
 // idStore semantics: put persists verbatim keyed on .id; delete by id.
 function makeStore() {
@@ -146,9 +147,55 @@ console.log('='.repeat(72));
     'pace row carries the governing record id (remove/edit target is real, not undefined)'
   );
   note(pace.tag === 'ahead-of-pace' ? false : true, 'pace model builds'); // sanity: model exists
+  // Every tag names the RELATIONSHIP TO THE LIMIT. "on track" was retired: it
+  // was shown while spend was already past the ceiling, so the one word a
+  // person would trust contradicted the figures beside it. Still no-guilt -
+  // factual, no grade, no streak - but no longer capable of saying "fine" about
+  // a limit that has been passed.
   note(
-    /^(on track|spending fast|well under|)$/.test(pace.tag),
-    'pace tag is a known no-guilt phrase'
+    /^(over your limit|projected over your limit|within your limit|under your limit|)$/.test(pace.tag),
+    'pace tag names the relationship to the limit, without a grade'
+  );
+  const detailPace = buildPaceModel(
+    paceForMonth({
+      intention: { category: 'Groceries', amount: 100000, source: 'repeating' },
+      targetMonth: '2026-07',
+      spendSoFar: 120000,
+      asOfDay: 31,
+      cfg,
+    }),
+    cfg
+  );
+  note(/\$100k limit/.test(detailPace.detail) && /by \$20k/.test(detailPace.detail) && /Spent so far: \$120k/.test(detailPace.detail), 'spending-limit insight sentences use prose money');
+  const exactMoney = makeMoney(cfg);
+  note(detailPace.amountText === exactMoney(120000) && detailPace.ceilingText === exactMoney(100000), 'the pace headline and evidence amounts stay exact');
+  const slight = buildPaceModel(
+    paceForMonth({
+      intention: { category: 'Groceries', amount: 100000, source: 'repeating' },
+      targetMonth: '2026-07',
+      spendSoFar: 101000,
+      asOfDay: 31,
+      cfg,
+    }),
+    cfg
+  );
+  const material = buildPaceModel(
+    paceForMonth({
+      intention: { category: 'Groceries', amount: 100000, source: 'repeating' },
+      targetMonth: '2026-07',
+      spendSoFar: 106000,
+      asOfDay: 31,
+      cfg,
+    }),
+    cfg
+  );
+  note(
+    slight.tag === 'over your limit' && slight.tone === 'neutral' && !slight.needsAttention,
+    'a 1% limit variance is stated without alert tone'
+  );
+  note(
+    material.tone === 'watch' && material.needsAttention,
+    'a material limit variance carries the decision guard'
   );
 
   // --- 4) REMOVE deletes the right record --------------------------------
