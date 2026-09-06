@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>PFA proof runner</title>
+<link rel="stylesheet" href="../interface/foundation.css" />
+<link rel="stylesheet" href="../interface/glass.css" />
+<link rel="stylesheet" href="../interface/flow-chart.css" />
+<link rel="stylesheet" href="../interface/income-chart.css" />
+<link rel="stylesheet" href="../interface/treemap.css" />
+<link rel="stylesheet" href="../interface/premium.css" />
+<pre id="out">running…</pre>
+<script>window.process={exit(c){if(c)throw new Error('process.exit('+c+')');},exitCode:0,argv:[],env:{},platform:'browser'};</script>
+<script type="module">
+  const FILES = [
+    'b2_render_proof.mjs','b2_resolver_proof.mjs','b3_tag_proof.mjs','b3b_reporting_integration_proof.mjs',
+    'b3b_split_proof.mjs','b4_category_proof.mjs','attention_items_proof.mjs','cross_screen_consistency.mjs',
+    'd_forecast_accuracy_proof.mjs','drill_to_transactions_proof.mjs','e_available_now_proof.mjs',
+    'g_clearcard_proof.mjs','goal_engine_parity_proof.mjs','goal_migrate_proof.mjs','spendable_categories_proof.mjs',
+    'swap_seam_proof.mjs','treemap_geometry_proof.mjs'
+  ];
+  const lines = [];
+  const realLog = console.log.bind(console);
+  console.log = (...a) => { lines.push(a.map(String).join(' ')); realLog(...a); };
+  const results = [];
+  const summary = [];
+  for (const f of FILES) {
+    const start = lines.length;
+    try {
+      await import('./' + f + '?v=' + Date.now());
+      results.push({ file: f, ok: true, out: lines.slice(start) });
+    } catch (e) {
+      results.push({ file: f, ok: false, error: String(e && e.stack || e), out: lines.slice(start) });
+    }
+  }
+  {
+    const wfile = 'treemap_render_proof.mjs';
+    const start = lines.length;
+    try {
+      const res = await new Promise((resolve, reject) => {
+        const w = new Worker('./proof-worker.js', { type: 'module' });
+        const t = setTimeout(() => { w.terminate(); reject(new Error('worker timeout')); }, 15000);
+        w.onmessage = (ev) => { clearTimeout(t); w.terminate(); resolve(ev.data); };
+        w.onerror = (ev) => { clearTimeout(t); w.terminate(); reject(new Error(ev.message || 'worker error')); };
+        w.postMessage(wfile);
+      });
+      results.push({ file: wfile, ok: !res.error, error: res.error, out: res.out });
+    } catch (err) {
+      results.push({ file: wfile, ok: false, error: String(err), out: lines.slice(start) });
+    }
+  }
+  {
+    const start = lines.length;
+    try {
+      const { runChartMotionChecks } = await import('./chart-motion-browser.js');
+      await runChartMotionChecks();
+      results.push({ file: 'chart-motion-browser.js', ok: true, out: lines.slice(start) });
+    } catch (error) {
+      results.push({ file: 'chart-motion-browser.js', ok: false, error: String(error.stack || error), out: lines.slice(start) });
+    }
+  }
+  console.log = realLog;
+  window.__proofResults = results;
+  let tp = 0, tf = 0;
+  const tally = [];
+  for (const r of results) {
+    let p = 0, f = 0;
+    for (const l of r.out) {
+      const m = /checks:\s*(\d+)\s*passed,\s*(\d+)\s*failed/.exec(l);
+      if (m) { p += +m[1]; f += +m[2]; }
+    }
+    if (!r.ok && f === 0) f = 1;
+    tp += p; tf += f;
+    tally.push(r.file + ': ' + p + ' passed, ' + f + ' failed' + (r.ok ? '' : '  [LOAD ERROR: ' + r.error.split('\n')[0] + ']'));
+  }
+  window.__proofSummary = { totalPassed: tp, totalFailed: tf, tally,
+    failLines: results.flatMap(r => r.out.filter(l => /FAIL/.test(l)).map(l => r.file + ' :: ' + l.trim())) };
+  document.getElementById('out').textContent = 'TOTAL: ' + tp + ' passed, ' + tf + ' failed\n\n' + tally.join('\n') + '\n\n' +
+    results.map(r => (r.ok ? 'LOADED ' : 'ERROR  ') + r.file + '\n' + (r.error ? '  ' + r.error + '\n' : '') + r.out.map(l => '  ' + l).join('\n')).join('\n\n');
+  window.__proofDone = true;
+</script>

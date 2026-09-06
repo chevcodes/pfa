@@ -19,6 +19,7 @@
  *  PURE and Node-testable. No DOM, no fetch, no mutation. Tags live in the v4
  *  `tags` store (keyPath 'id').
  * ======================================================================== */
+import { makeMoney } from '../core/money-format.js';
 function r2(n) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
@@ -91,19 +92,9 @@ export function tagTotals(tags, rows) {
 
 /* view-model: number/tag/detail, frozen shape, pronoun-free tag. */
 export function buildTagModel(tt, cfg = {}) {
-  const c = (cfg && cfg.currency) || {};
-  let money;
-  try {
-    const f = new Intl.NumberFormat(c.locale || 'en-JM', {
-      style: 'currency',
-      currency: c.code || 'JMD',
-      minimumFractionDigits: c.decimals == null ? 2 : c.decimals,
-      maximumFractionDigits: c.decimals == null ? 2 : c.decimals,
-    });
-    money = (n) => f.format(Number(n || 0));
-  } catch (_) {
-    money = (n) => (c.symbol || '$') + Number(n || 0).toFixed(2);
-  }
+  // One formatter for the whole app (core/money-format.js): the same output
+  // this block produced, plus the privacy gate every figure must pass.
+  const money = makeMoney(cfg);
 
   let tag = '',
     tone = 'neutral',

@@ -302,60 +302,8 @@
   }
 }
 
-/* the info dropdown: the fuller reasoning, collapsed by default. Reuses the
-   exact details.explainer pattern styles.css already ships (chevron, focus
-   ring), so this is one visual language for "openable detail" app-wide. */
-.vm-detail {
-  margin-top: var(--s1);
-}
-.vm-detail > summary {
-  list-style: none;
-  cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--dim);
-}
-.vm-detail > summary::-webkit-details-marker {
-  display: none;
-}
-/* 8px matches every other disclosure chevron in the app (.secondary /
-   .explainer / .tx-more in styles.css), so the "Why"/"Rate" content-model
-   dropdowns present the same chevron size as the card-level disclosures -
-   one openable-affordance language, not a 7px/8px split. */
-.vm-detail > summary::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-right: 1.6px solid currentColor;
-  border-bottom: 1.6px solid currentColor;
-  transform: rotate(-45deg);
-  transition: transform 0.15s;
-  opacity: 0.6;
-}
-.vm-detail[open] > summary::after {
-  transform: rotate(45deg);
-}
-.vm-detail > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-.vm-detail-body {
-  padding-top: var(--s2);
-  font-size: 13px;
-  color: var(--dim);
-  line-height: 1.5;
-}
-@media (prefers-reduced-motion: reduce) {
-  .vm-detail > summary::after {
-    transition: none;
-  }
-}
+/* (The reduced-motion override that used to sit here died with the private
+   chevron: .disclosure > summary::after carries its own, in premium.css.) */
 
 /* the mandatory reconciling / supporting line (committed-vs-flexible, the
    goal guard verdict) - always attached beneath its figure, never a separate
@@ -538,6 +486,29 @@
   text-align: right;
 }
 
+@media (max-width: 639px) {
+  .scenario-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name amount'
+      'choices choices';
+  }
+  .scenario-row .recurring-name {
+    grid-area: name;
+    min-width: 0;
+    word-break: normal;
+  }
+  .scenario-row .recurring-amt {
+    grid-area: amount;
+  }
+  .scenario-row .seg {
+    grid-area: choices;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+}
+
 /* Grouped segmented control (Keep / Cut half / Cut all) - three connected
    buttons in one bordered container, so they read as a single choice, in the
    same grouped-segmented language as the account slicer but tighter for an
@@ -608,13 +579,6 @@
   }
 }
 
-/* cap the measure of explanatory prose only (not numbers/tags/tables). */
-.vm-detail-body,
-.vm-reconcile,
-.card > p.muted {
-  max-width: 68ch;
-}
-
 /* print: the content model must print solid and dark-on-white; glass never
    reaches print because every glass rule above is @media screen scoped, but
    assert the vm component stays legible if a card is ever included. */
@@ -622,295 +586,12 @@
   .vm-number,
   .vm-label,
   .vm-tag,
-  .vm-detail-body,
   .vm-reconcile {
     color: #10161f !important;
     background: none !important;
   }
   .vm-tag {
     border-color: #cdd5df !important;
-  }
-}
-
-/* =====================================================================
-   forecast-chart.css  -  styles for the honest cash-forecast chart.
-   Additive; append to glass.css (or load after it). No new palette:
-   every colour derives from the existing config-driven tokens. All
-   screen-scoped; the chart never enters the print/report path.
-   ===================================================================== */
-@media screen {
-  .fc-chart-wrap {
-    width: 100%;
-    overflow: hidden;
-    margin: var(--s2) 0 var(--s2);
-    /* positioning context for .fc-overlay, the HTML label layer that
-       replaces every SVG <text> element this chart used to draw. */
-    position: relative;
-  }
-  .fc-chart {
-    width: 100%;
-    height: 150px;
-    display: block;
-  }
-
-  /* gridlines only - quiet, muted. Every label (axis values/dates, the
-     trough callout, event names) now lives in .fc-overlay below, as real
-     HTML text: SVG <text> inside this chart's stretched, non-uniform
-     viewBox rendered every glyph distorted, which is what read as blurred. */
-  .fc-grid {
-    stroke: var(--edge);
-    stroke-width: 1;
-    opacity: 0.6;
-  }
-
-  /* The HTML label overlay: a plain sibling layer positioned over the SVG,
-     the same proven pattern the treemap already uses (treemap-render.js's
-     .tm-overlay / treemap.css) for exactly this reason - real CSS-pixel
-     text that never inherits the picture's own stretch or zoom. */
-  .fc-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-  }
-  .fc-label {
-    position: absolute;
-    white-space: nowrap;
-    line-height: 1;
-  }
-  /* Every label in this chart sits ABOVE its reference point (an axis
-     gridline, an event tick, the trough), so the vertical lift is shared;
-     only the horizontal anchor varies per label. */
-  .fc-label.anchor-start {
-    transform: translate(0, -100%);
-  }
-  .fc-label.anchor-mid {
-    transform: translate(-50%, -100%);
-  }
-  .fc-label.anchor-end {
-    transform: translate(-100%, -100%);
-  }
-  .fc-axis-money {
-    color: var(--dim);
-    font-size: 9px;
-  }
-  .fc-axis-date {
-    color: var(--dim);
-    font-size: 9px;
-  }
-
-  /* The filled AREA under the projected line - the app's bold flat filled-
-     shape language, so the forecast reads as a solid form (where is cash
-     heading) rather than a thin line. A confident accent fill. */
-  .fc-area {
-    fill: color-mix(in srgb, var(--accent) 24%, transparent);
-    stroke: none;
-  }
-  /* The uncertainty band: the same accent, lighter, sitting behind the area -
-     a soft extension of the projection, thickening to the right. Reads as
-     "the same forecast, less certain", one colour family, not a grey slab. */
-  .fc-band {
-    fill: color-mix(in srgb, var(--accent) 10%, transparent);
-    stroke: none;
-  }
-  /* the projected balance line: crisp on top of its area. Non-scaling stroke
-     (set on the element) keeps it a true even width under the viewBox stretch. */
-  .fc-line {
-    stroke: var(--accent);
-    stroke-width: 2;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-  }
-
-  /* Verdict-first hero: the plain toned sentence that leads the card, answering
-     "am I okay". Larger and bolder than body text but NOT hero-number size -
-     it is a sentence, the loudest thing on the card, toned to the safe-line
-     comparison. The three colours reuse the app's own good/warn/bad tokens. */
-  .fc-verdict {
-    font-size: 16px;
-    font-weight: 650;
-    line-height: 1.35;
-    max-width: 60ch;
-  }
-  .fc-verdict-good {
-    color: var(--fg);
-  }
-  .fc-verdict-warn {
-    color: var(--fg);
-  }
-  .fc-verdict-bad {
-    color: var(--fg);
-  }
-  /* A small tone dot leads the verdict so tone never relies on wording alone,
-     matching the app's dot convention (colour on the dot, text stays --fg). */
-  .fc-verdict::before {
-    content: '';
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    margin-right: 8px;
-    vertical-align: baseline;
-    background: var(--dim);
-  }
-  .fc-verdict-good::before {
-    background: var(--good);
-  }
-  .fc-verdict-warn::before {
-    background: var(--warn);
-  }
-  .fc-verdict-bad::before {
-    background: var(--bad, var(--warn));
-  }
-  [data-theme='dark'] .fc-verdict-good::before {
-    background: var(--down);
-  }
-  [data-theme='dark'] .fc-verdict-warn::before {
-    background: var(--up);
-  }
-
-  /* Three quiet supporting stats in a row: labelled figures, none in hero size,
-     so the low point reads as one fact among three, never as a balance. */
-  .fc-stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 28px;
-    margin-top: 4px;
-  }
-  .fc-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .fc-stat-value {
-    font-size: 15px;
-    font-weight: 650;
-    color: var(--fg);
-    font-variant-numeric: tabular-nums;
-  }
-  /* the firm/wide divider: a quiet dashed vertical rule where the trustworthy
-     near-term ends and the wide far-term begins */
-  .fc-divider {
-    stroke: var(--dim);
-    stroke-width: 1;
-    stroke-dasharray: 4 4;
-    opacity: 0.7;
-  }
-
-  /* the trough marker: the near-term low, the trustworthy output. A firm low
-     is the accent; a 'wide'-reliability low is muted so it never over-claims. */
-  .fc-trough {
-    stroke: var(--panel);
-    stroke-width: 2;
-  }
-  .fc-trough-firm {
-    fill: var(--warn);
-  } /* the dip a person acts on, no safe line set */
-  .fc-trough-wide {
-    fill: var(--dim);
-  }
-  /* Safe-line-aware tones (used only when a real floor is asserted): warm
-     when the projected low genuinely dips below the person's own safe line,
-     calm green when it clears it - judged against a real number, never
-     against reliability alone. */
-  .fc-trough-warn {
-    fill: var(--warn);
-  }
-  /* .fc-trough-firm above is reused as the "clears the safe line" calm state
-     when a floor is asserted, so no separate calm class is needed here. */
-  .fc-trough-label {
-    color: var(--fg);
-    font-size: 10px;
-    font-weight: 650;
-  }
-  .fc-ev-label {
-    color: var(--dim);
-    font-size: 8.5px;
-  }
-  .fc-ev-label-estimated {
-    opacity: 0.85;
-  }
-
-  /* event markers. Direction carries meaning too (in = calm green tick above,
-     out = warm tick), but SOLID vs DASHED is the recorded-vs-estimated signal,
-     never colour alone. */
-  .fc-ev {
-    stroke-width: 2;
-  }
-  .fc-ev-in {
-    stroke: var(--flow-in, var(--down));
-  }
-  .fc-ev-out {
-    stroke: var(--flow-out, var(--up));
-  }
-  .fc-ev-recorded {
-    stroke-width: 2.4;
-  } /* solid: a known payment */
-  .fc-ev-estimated {
-    opacity: 0.85;
-  } /* dashed via attribute */
-  .fc-ev-clickable {
-    cursor: pointer;
-  }
-  .fc-ev-clickable:hover,
-  .fc-ev-clickable:focus-visible {
-    stroke-width: 3.2;
-    outline: none;
-  }
-
-  /* legend: names every signal in words (colour/style never the only cue) */
-  .fc-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
-    margin-top: var(--s2);
-  }
-  .fc-legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .fc-key {
-    width: 16px;
-    height: 0;
-    border-top-width: 2.5px;
-    border-top-style: solid;
-    display: inline-block;
-  }
-  .fc-key-line {
-    border-top-color: var(--accent);
-  }
-  .fc-key-area {
-    height: 10px;
-    border: 0;
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--accent) 24%, transparent);
-  }
-  .fc-key-band {
-    height: 10px;
-    border: 0;
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-  .fc-key-cone {
-    height: 10px;
-    border: 0;
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-  }
-  .fc-key-recorded {
-    border-top-color: var(--fg);
-  }
-  .fc-key-estimated {
-    border-top-style: dashed;
-    border-top-color: var(--fg);
-  }
-}
-
-/* the chart is screen-only; never attempt to print the interactive SVG */
-@media print {
-  .fc-chart-wrap,
-  .fc-legend {
-    display: none !important;
   }
 }
 
@@ -1069,7 +750,7 @@
       }
       .insight:hover .insight-go {
         opacity: 1;
-        color: var(--accent);
+        color: var(--accent-text);
       }
     }
   }
@@ -1116,110 +797,27 @@
 }
 
 /* =====================================================================
-   Privacy mode - blurs every figure on screen, without removing it from
-   the document. A blur (not a placeholder glyph or asterisks) is the
-   deliberate choice: it reads as "content genuinely present, out of
-   focus" rather than "something was redacted here", which announces
-   there is something worth digging for. Driven by a single root
-   attribute (:root[data-privacy='on']), set and persisted the same way
-   theme already is (document.documentElement.dataset.privacy,
-   Store.setMeta('privacy', ...)) - read anywhere via isPrivacyMode()
-   (shared-helpers.js). Screen-only; print and export are explicitly
-   exempted below, since privacy mode is a presentation state, never a
-   data-redaction one - "Copy summary" and the printed report both share
-   real figures on purpose and must never be touched by this.
+   Privacy mode - RETIRED from this file.
 
-   .num is this app's real, pre-existing, broadly-applied figure class
-   (table cells, .amt, .recent-amt, .foreign-amt, the print report's own
-   .rp .num). The remaining classes are figure-bearing surfaces that do
-   NOT carry .num themselves (standalone chart labels styled directly).
-   This list reflects every confirmed figure-bearing class found this
-   pass; it is not a claim of exhaustive coverage - a further figure
-   surface may still turn up later, most likely wherever a figure is
-   interpolated directly into a sentence (an insight or caption's own
-   template literal) rather than given its own dedicated element, which
-   this attribute-selector approach cannot reach at all.
+   What used to live here was a hand-maintained list of figure-bearing
+   classes blurred by :root[data-privacy='on'], plus two hardcoded bar
+   overrides. It could only ever reach a figure that happened to have its
+   own element AND happened to be on the list, so the Available-now
+   headline, every amount written into a sentence, every hover title and
+   every aria-label stayed fully legible with the figures "hidden" - and
+   nothing failed loudly when a new figure surface was added.
+
+   Privacy is now a product-level contract, not a stylesheet trick:
+     - application/core/privacy.js holds the state and the exempt paths
+       (print, "Copy summary", export);
+     - application/core/money-format.js is the ONE formatter every screen
+       and every analysis model calls, so a figure cannot be rendered
+       without passing the gate;
+     - shape-encoded figures declare themselves with markProportional()
+       at construction, and charts return one shared placeholder;
+     - the remaining presentation rules live in premium.css, which loads
+       after this file.
    ===================================================================== */
-:root[data-privacy='on'] .num,
-:root[data-privacy='on'] .hero-amount,
-:root[data-privacy='on'] .vm-number,
-:root[data-privacy='on'] .fact-value,
-:root[data-privacy='on'] .sec-value,
-:root[data-privacy='on'] .fc-axis-money,
-:root[data-privacy='on'] .fc-trough-label,
-:root[data-privacy='on'] .fc-ev-label,
-:root[data-privacy='on'] .tm-value {
-  filter: blur(7px);
-  /* A blurred figure that can still be selected and copied would defeat
-     the feature at the exact moment it matters most - a screenshot or a
-     copy-paste would still carry the real digits underneath the blur.
-     -webkit- prefix ordered before the unprefixed property, matching this
-     app's own established prefix convention (see backdrop-filter pairs
-     throughout this file). */
-  -webkit-user-select: none;
-  user-select: none;
-  transition: filter 0.15s ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  :root[data-privacy='on'] .num,
-  :root[data-privacy='on'] .hero-amount,
-  :root[data-privacy='on'] .vm-number,
-  :root[data-privacy='on'] .fact-value,
-  :root[data-privacy='on'] .sec-value,
-  :root[data-privacy='on'] .fc-axis-money,
-  :root[data-privacy='on'] .fc-trough-label,
-  :root[data-privacy='on'] .fc-ev-label,
-  :root[data-privacy='on'] .tm-value {
-    transition: none;
-  }
-}
-
-/* Proportional charts and bars encode a figure TWICE - once as printed
-   text (blurred above) and once as physical shape (bar height, tile
-   area, commitment-bar width). A dominant bar or tile still says "this
-   is clearly the biggest" even with every number blurred, which only
-   half-satisfies "hide the figures". The flow chart's bars and the
-   regular-commitments bar are pure CSS height/width percentages, so they
-   flatten here directly; !important is required because the real
-   value still lives as an inline style per element (flow-chart-
-   render.js, cards-render.js's renderCommitRow) and only an !important
-   author rule can override an inline style. Equalised to ONE flat value
-   (not just "shorter") so no relative comparison survives at all - an
-   honestly uninformative shape while privacy mode is on. The treemap's
-   tiles are real SVG width/height attributes, not CSS-driven, so its
-   equivalent fix lives in treemap-render.js itself (JS-side), not here. */
-:root[data-privacy='on'] .fl-bar {
-  height: 45% !important;
-}
-:root[data-privacy='on'] .commit-bar-fill {
-  width: 45% !important;
-}
-
-/* Print and export are deliberate acts of SHARING real figures on
-   purpose - privacy mode must never reach either. Matches the exact
-   pattern the vm component and the forecast chart already use for their
-   own print exemptions (both @media print, both !important) rather than
-   inventing a second convention. */
-@media print {
-  .num,
-  .hero-amount,
-  .vm-number,
-  .fact-value,
-  .sec-value,
-  .fc-axis-money,
-  .fc-trough-label,
-  .fc-ev-label,
-  .tm-value {
-    filter: none !important;
-    -webkit-user-select: auto !important;
-    user-select: auto !important;
-  }
-  .fl-bar,
-  .commit-bar-fill {
-    height: revert !important;
-    width: revert !important;
-  }
-}
 
 /* =====================================================================
    Keep the support area (Data & settings) quiet on every screen. It is a
@@ -1361,10 +959,6 @@ body.dense .vm-number {
   letter-spacing: -0.3px;
 }
 
-body.dense .hero-amount {
-  font-size: 34px;
-}
-
 body.dense table.grid {
   font-size: 13px;
 }
@@ -1387,32 +981,30 @@ body.dense .recurring-amt {
   border-radius: 10px;
 }
 
-@media screen {
-  .fc-chart {
-    height: 174px;
-  }
-  .fc-axis-money,
-  .fc-axis-date {
-    font-size: 11px;
-    text-shadow: 0 1px 2px var(--panel);
-  }
-  .fc-trough-label {
-    padding: 3px 5px;
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--panel) 88%, transparent);
-    font-size: 11px;
-  }
-  .fc-ev-label {
-    font-size: 9.5px;
-  }
+/* ---------------------------------------------------------------------------
+ * Modal layering, and the page behind one.
+ *
+ * The floating chrome was declared at --z-banner (120) and --z-toast (130),
+ * both ABOVE --z-overlay-backdrop (100). Measured with a dialog open on the
+ * Activity tab: elementFromPoint at the back-to-top button's centre returned
+ * the button's own arrow - it rendered bright over the dimmed backdrop and was
+ * still clickable through it. The dev pill sat on top of the backdrop too.
+ *
+ * A modal is modal. While one is up, the floating chrome gets out of the way
+ * and the page behind stops scrolling under it.
+ * ------------------------------------------------------------------------- */
+body.modal-open .to-top,
+body.modal-open #pfa-mock-switcher {
+  display: none;
 }
-@media screen and (max-width: 639px) {
-  .fc-chart {
-    height: 184px;
-  }
-  .fc-axis-money,
-  .fc-axis-date,
-  .fc-trough-label {
-    font-size: 10.5px;
-  }
+body.modal-open {
+  overflow: hidden;
+}
+/* The busy overlay blocks interaction while work is in flight, so nothing may
+   float above it either - it was at 80, under the export menu (110) and both
+   banners (120), so a statement could be imported with the export menu open on
+   top of the "working" curtain. It sits above those and below the toast, which
+   is status and must stay readable. */
+.busy {
+  z-index: 125;
 }

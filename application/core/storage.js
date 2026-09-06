@@ -13,6 +13,7 @@ import {
   categoryRuleFromStoreRecord,
   categoryRuleStoreRecord,
 } from '../../settings/category-rules.js';
+import { ncbTransactionIdentity } from '../statements/read-statements.js';
 
 export const DB_NAME = 'pfa';
 
@@ -27,7 +28,7 @@ export const DB_NAME = 'pfa';
 // The upgrade ONLY creates the new stores; nothing existing is read, rewritten
 // or dropped in onupgradeneeded, so the operation commits atomically or not at
 // all and can never leave the database half-migrated.
-export const DB_VERSION = 4;
+export const DB_VERSION = 7;
 
 // Record-level schema version, stored in meta under SCHEMA_VERSION_KEY. This is
 // deliberately SEPARATE from DB_VERSION: DB_VERSION governs which object stores
@@ -39,7 +40,7 @@ export const DB_VERSION = 4;
 // did not change. Read once at boot (Store.ensureSchema) and written forward
 // only, never backward, so a file from an older app upgrades but a newer file is
 // never silently downgraded.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const SCHEMA_VERSION_KEY = 'schemaVersion';
 
 // The v4 stores, declared once so openDB (create) and ensureSchema (verify)
@@ -53,9 +54,36 @@ const V4_STORES = [
   { name: 'manualAssets', keyPath: 'id' },
 ];
 
+const V5_STORES = [{ name: 'investmentStatements', keyPath: 'hash' }];
+
+const V6_STORES = [{ name: 'balanceUpdates', keyPath: 'id' }];
+
+// v7 adds the ONE confirmation store - every "the person told us this" answer,
+// whatever inference it is about. It replaces two meta id-lists, a per-record
+// flag and a meta account list; see analysis/confirmations.js for the shape and
+// for why there is exactly one of these.
+const V7_STORES = [{ name: 'confirmations', keyPath: 'id' }];
+
+export const RESTORABLE_STORES = [
+  'transactions',
+  'statements',
+  'rules',
+  'bankTransactions',
+  'bankStatements',
+  'cardStatements',
+  ...V4_STORES.map((store) => store.name),
+  ...V5_STORES.map((store) => store.name),
+  ...V6_STORES.map((store) => store.name),
+  ...V7_STORES.map((store) => store.name),
+];
+
+let openPromise = null;
+
 export function openDB() {
-  return new Promise((resolve, reject) => {
+  if (openPromise) return openPromise;
+  openPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let blocked = false;
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       // --- v1..v3 (unchanged) ---
@@ -76,10 +104,42 @@ export function openDB() {
         if (!db.objectStoreNames.contains(s.name))
           db.createObjectStore(s.name, { keyPath: s.keyPath });
       }
+      for (const s of V5_STORES) {
+        if (!db.objectStoreNames.contains(s.name))
+          db.createObjectStore(s.name, { keyPath: s.keyPath });
+      }
+      for (const s of V6_STORES) {
+        if (!db.objectStoreNames.contains(s.name))
+          db.createObjectStore(s.name, { keyPath: s.keyPath });
+      }
+      for (const s of V7_STORES) {
+        if (!db.objectStoreNames.contains(s.name))
+          db.createObjectStore(s.name, { keyPath: s.keyPath });
+      }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (blocked) {
+        db.close();
+        return;
+      }
+      db.onversionchange = () => {
+        db.close();
+        openPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      openPromise = null;
+      reject(req.error);
+    };
+    req.onblocked = () => {
+      blocked = true;
+      openPromise = null;
+      reject(new Error('Storage upgrade is blocked by another open app window.'));
+    };
   });
+  return openPromise;
 }
 
 export function tx(db, store, mode) {
@@ -90,6 +150,35 @@ export function reqP(r) {
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
+}
+
+function transactionP(transaction) {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error || new Error('Storage write aborted.'));
+    transaction.onerror = () => {};
+  });
+}
+
+async function write(db, stores, queue) {
+  const transaction = db.transaction(stores, 'readwrite');
+  const done = transactionP(transaction);
+  let result;
+  try {
+    result = await queue(transaction);
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // Already aborted or already committed - either way the transaction is
+      // no longer ours to cancel, and the original error below is the one
+      // worth reporting.
+    }
+    await done.catch(() => {});
+    throw error;
+  }
+  await done;
+  return result;
 }
 
 // One shared factory for the "list of {id}-keyed records" stores the v4
@@ -110,32 +199,101 @@ function idStore(name) {
     },
     async put(rec) {
       const db = await openDB();
-      return reqP(tx(db, name, 'readwrite').put(rec));
+      return write(db, name, (transaction) => reqP(transaction.objectStore(name).put(rec)));
     },
     async putMany(recs) {
       const db = await openDB();
-      const s = tx(db, name, 'readwrite');
-      await Promise.all((recs || []).map((r) => reqP(s.put(r))));
+      return write(db, name, (transaction) => {
+        const s = transaction.objectStore(name);
+        return Promise.all((recs || []).map((r) => reqP(s.put(r))));
+      });
     },
     async delete(id) {
       const db = await openDB();
-      return reqP(tx(db, name, 'readwrite').delete(id));
+      return write(db, name, (transaction) => reqP(transaction.objectStore(name).delete(id)));
     },
     async clear() {
       const db = await openDB();
-      return reqP(tx(db, name, 'readwrite').clear());
+      return write(db, name, (transaction) => reqP(transaction.objectStore(name).clear()));
     },
     // Atomic replace: clear + put-all in ONE transaction, so the store is never
     // left empty if the app is interrupted mid-write (same rationale as
     // replaceTransactions below).
     async replace(recs) {
       const db = await openDB();
-      const s = tx(db, name, 'readwrite');
-      const clearReq = reqP(s.clear());
-      const putReqs = (recs || []).map((r) => reqP(s.put(r)));
-      await Promise.all([clearReq, ...putReqs]);
+      return write(db, name, (transaction) => {
+        const s = transaction.objectStore(name);
+        const clearReq = reqP(s.clear());
+        const putReqs = (recs || []).map((r) => reqP(s.put(r)));
+        return Promise.all([clearReq, ...putReqs]);
+      });
     },
   };
+}
+
+// v1 -> v2: an NCB card transaction's identity never included the card's own
+// account, so two different NCB cards' statements for the same month could
+// hash a boilerplate row (annual fee, GCT, interest) identically and drop
+// the second card's real transaction as "already present" - see
+// ncbTransactionIdentity in read-statements.js. Fixing the formula going
+// forward is not enough on its own: a stored row's `id` never changes on
+// disk, so re-importing an already-imported NCB statement would compute a
+// NEW-formula id that no longer matches the OLD one on file, and the
+// transaction would be added a second time instead of recognised as a dupe.
+// This migration re-keys existing NCB rows (identifiable by their ncbDisc
+// field, which only NCB rows ever carry) to the new formula, so re-imports
+// stay duplicate-free for data that already existed before this fix.
+//
+// The one piece an old row never recorded is exactly the account this fix
+// adds - so it is recovered from the card-statement SUMMARY records, which
+// have always carried their own account. When a billing month has exactly
+// one card-statement summary, every one of that month's rows can only have
+// come from that one card, so the match is exact. A month with two or more
+// summaries (a genuine multi-card collision) cannot be disambiguated from
+// the row alone; those rows are left on their pre-existing id rather than
+// guessed at, which is no worse than before this fix.
+// Pure decision logic, split out from the IndexedDB plumbing below so it is
+// unit-testable without a live (or fake) database: given every stored
+// transaction and every stored card-statement summary, decide which
+// transactions need re-keying and what their migrated record should be.
+export function planNcbIdentityMigration(allTxns, allCardStatements) {
+  const accountsByMonth = new Map();
+  for (const cs of allCardStatements || []) {
+    if (!cs || !cs.statementKey) continue;
+    const list = accountsByMonth.get(cs.statementKey) || [];
+    list.push(cs.account);
+    accountsByMonth.set(cs.statementKey, list);
+  }
+  const updates = [];
+  for (const t of allTxns || []) {
+    if (!t || t.ncbDisc == null || t.account) continue; // not an unmigrated NCB row
+    const accounts = [...new Set((accountsByMonth.get(t.statementKey) || []).filter(Boolean))];
+    if (accounts.length !== 1) continue; // ambiguous month: leave unmigrated
+    const withAccount = { ...t, account: accounts[0] };
+    const newId = ncbTransactionIdentity(withAccount);
+    if (newId === t.id) continue;
+    updates.push({ oldId: t.id, record: { ...withAccount, id: newId } });
+  }
+  return updates;
+}
+
+async function migrateNcbTransactionIdentity() {
+  const db = await openDB();
+  await write(db, ['transactions', 'cardStatements'], async (transaction) => {
+    const txStore = transaction.objectStore('transactions');
+    const csStore = transaction.objectStore('cardStatements');
+    const [allTxns, allCardStatements] = await Promise.all([
+      reqP(txStore.getAll()),
+      reqP(csStore.getAll()),
+    ]);
+    const updates = planNcbIdentityMigration(allTxns, allCardStatements);
+    const ops = [];
+    for (const u of updates) {
+      ops.push(reqP(txStore.delete(u.oldId)));
+      ops.push(reqP(txStore.put(u.record)));
+    }
+    return Promise.all(ops);
+  });
 }
 
 export const Store = {
@@ -145,19 +303,25 @@ export const Store = {
   },
   async putTransactions(recs) {
     const db = await openDB();
-    const s = tx(db, 'transactions', 'readwrite');
-    await Promise.all(recs.map((r) => reqP(s.put(r))));
+    return write(db, 'transactions', (transaction) => {
+      const s = transaction.objectStore('transactions');
+      return Promise.all(recs.map((r) => reqP(s.put(r))));
+    });
   },
   async clearTransactions() {
     const db = await openDB();
-    return reqP(tx(db, 'transactions', 'readwrite').clear());
+    return write(db, 'transactions', (transaction) =>
+      reqP(transaction.objectStore('transactions').clear())
+    );
   },
   async replaceTransactions(records) {
     const db = await openDB();
-    const s = tx(db, 'transactions', 'readwrite');
-    const clearReq = reqP(s.clear());
-    const putReqs = records.map((r) => reqP(s.put(r)));
-    await Promise.all([clearReq, ...putReqs]);
+    return write(db, 'transactions', (transaction) => {
+      const s = transaction.objectStore('transactions');
+      const clearReq = reqP(s.clear());
+      const putReqs = records.map((r) => reqP(s.put(r)));
+      return Promise.all([clearReq, ...putReqs]);
+    });
   },
   async hasStatement(hash) {
     const db = await openDB();
@@ -165,7 +329,9 @@ export const Store = {
   },
   async putStatement(rec) {
     const db = await openDB();
-    return reqP(tx(db, 'statements', 'readwrite').put(rec));
+    return write(db, 'statements', (transaction) =>
+      reqP(transaction.objectStore('statements').put(rec))
+    );
   },
   async allStatements() {
     const db = await openDB();
@@ -173,11 +339,15 @@ export const Store = {
   },
   async deleteStatement(hash) {
     const db = await openDB();
-    return reqP(tx(db, 'statements', 'readwrite').delete(hash));
+    return write(db, 'statements', (transaction) =>
+      reqP(transaction.objectStore('statements').delete(hash))
+    );
   },
   async clearStatements() {
     const db = await openDB();
-    return reqP(tx(db, 'statements', 'readwrite').clear());
+    return write(db, 'statements', (transaction) =>
+      reqP(transaction.objectStore('statements').clear())
+    );
   },
   async allRules() {
     const db = await openDB();
@@ -187,25 +357,29 @@ export const Store = {
   },
   async putRules(recs) {
     const db = await openDB();
-    const s = tx(db, 'rules', 'readwrite');
-    await Promise.all(
-      recs
-        .map((r) => categoryRuleStoreRecord(r))
-        .filter(Boolean)
-        .map((r) => reqP(s.put(r)))
-    );
+    return write(db, 'rules', (transaction) => {
+      const s = transaction.objectStore('rules');
+      return Promise.all(
+        recs
+          .map((r) => categoryRuleStoreRecord(r))
+          .filter(Boolean)
+          .map((r) => reqP(s.put(r)))
+      );
+    });
   },
   async clearRules() {
     const db = await openDB();
-    return reqP(tx(db, 'rules', 'readwrite').clear());
+    return write(db, 'rules', (transaction) => reqP(transaction.objectStore('rules').clear()));
   },
   async replaceRules(recs) {
     const db = await openDB();
-    const s = tx(db, 'rules', 'readwrite');
-    const clearReq = reqP(s.clear());
-    const cleaned = recs.map((r) => categoryRuleStoreRecord(r)).filter(Boolean);
-    const putReqs = cleaned.map((r) => reqP(s.put(r)));
-    await Promise.all([clearReq, ...putReqs]);
+    return write(db, 'rules', (transaction) => {
+      const s = transaction.objectStore('rules');
+      const clearReq = reqP(s.clear());
+      const cleaned = recs.map((r) => categoryRuleStoreRecord(r)).filter(Boolean);
+      const putReqs = cleaned.map((r) => reqP(s.put(r)));
+      return Promise.all([clearReq, ...putReqs]);
+    });
   },
   async getMeta(key, dflt) {
     const db = await openDB();
@@ -214,7 +388,18 @@ export const Store = {
   },
   async setMeta(key, value) {
     const db = await openDB();
-    return reqP(tx(db, 'meta', 'readwrite').put({ key, value }));
+    return write(db, 'meta', (transaction) =>
+      reqP(transaction.objectStore('meta').put({ key, value }))
+    );
+  },
+  async setMetaMany(entries) {
+    const db = await openDB();
+    return write(db, 'meta', (transaction) => {
+      const s = transaction.objectStore('meta');
+      return Promise.all(
+        (entries || []).map(({ key, value }) => reqP(s.put({ key, value })))
+      );
+    });
   },
   // Bank ledger (Phase 1).
   async allBankTransactions() {
@@ -223,19 +408,25 @@ export const Store = {
   },
   async putBankTransactions(recs) {
     const db = await openDB();
-    const s = tx(db, 'bankTransactions', 'readwrite');
-    await Promise.all(recs.map((r) => reqP(s.put(r))));
+    return write(db, 'bankTransactions', (transaction) => {
+      const s = transaction.objectStore('bankTransactions');
+      return Promise.all(recs.map((r) => reqP(s.put(r))));
+    });
   },
   async clearBankTransactions() {
     const db = await openDB();
-    return reqP(tx(db, 'bankTransactions', 'readwrite').clear());
+    return write(db, 'bankTransactions', (transaction) =>
+      reqP(transaction.objectStore('bankTransactions').clear())
+    );
   },
   async replaceBankTransactions(records) {
     const db = await openDB();
-    const s = tx(db, 'bankTransactions', 'readwrite');
-    const clearReq = reqP(s.clear());
-    const putReqs = records.map((r) => reqP(s.put(r)));
-    await Promise.all([clearReq, ...putReqs]);
+    return write(db, 'bankTransactions', (transaction) => {
+      const s = transaction.objectStore('bankTransactions');
+      const clearReq = reqP(s.clear());
+      const putReqs = records.map((r) => reqP(s.put(r)));
+      return Promise.all([clearReq, ...putReqs]);
+    });
   },
   async hasBankStatement(hash) {
     const db = await openDB();
@@ -243,7 +434,9 @@ export const Store = {
   },
   async putBankStatement(rec) {
     const db = await openDB();
-    return reqP(tx(db, 'bankStatements', 'readwrite').put(rec));
+    return write(db, 'bankStatements', (transaction) =>
+      reqP(transaction.objectStore('bankStatements').put(rec))
+    );
   },
   async allBankStatements() {
     const db = await openDB();
@@ -251,11 +444,15 @@ export const Store = {
   },
   async deleteBankStatement(hash) {
     const db = await openDB();
-    return reqP(tx(db, 'bankStatements', 'readwrite').delete(hash));
+    return write(db, 'bankStatements', (transaction) =>
+      reqP(transaction.objectStore('bankStatements').delete(hash))
+    );
   },
   async clearBankStatements() {
     const db = await openDB();
-    return reqP(tx(db, 'bankStatements', 'readwrite').clear());
+    return write(db, 'bankStatements', (transaction) =>
+      reqP(transaction.objectStore('bankStatements').clear())
+    );
   },
   // Card statement records (Recommendations 1-4).
   async hasCardStatement(hash) {
@@ -264,7 +461,9 @@ export const Store = {
   },
   async putCardStatement(rec) {
     const db = await openDB();
-    return reqP(tx(db, 'cardStatements', 'readwrite').put(rec));
+    return write(db, 'cardStatements', (transaction) =>
+      reqP(transaction.objectStore('cardStatements').put(rec))
+    );
   },
   async allCardStatements() {
     const db = await openDB();
@@ -272,11 +471,40 @@ export const Store = {
   },
   async deleteCardStatement(hash) {
     const db = await openDB();
-    return reqP(tx(db, 'cardStatements', 'readwrite').delete(hash));
+    return write(db, 'cardStatements', (transaction) =>
+      reqP(transaction.objectStore('cardStatements').delete(hash))
+    );
   },
   async clearCardStatements() {
     const db = await openDB();
-    return reqP(tx(db, 'cardStatements', 'readwrite').clear());
+    return write(db, 'cardStatements', (transaction) =>
+      reqP(transaction.objectStore('cardStatements').clear())
+    );
+  },
+
+  async restoreSnapshot(snapshot) {
+    const db = await openDB();
+    const records = snapshot && snapshot.stores ? snapshot.stores : {};
+    const missing = RESTORABLE_STORES.filter((name) => !Array.isArray(records[name]));
+    if (missing.length) throw new Error(`Restore snapshot is missing: ${missing.join(', ')}.`);
+    return write(db, [...RESTORABLE_STORES, 'meta'], (transaction) => {
+      const requests = [];
+      for (const name of RESTORABLE_STORES) {
+        const s = transaction.objectStore(name);
+        requests.push(reqP(s.clear()));
+        const values = records[name];
+        const cleaned =
+          name === 'rules'
+            ? values.map((value) => categoryRuleStoreRecord(value)).filter(Boolean)
+            : values;
+        for (const value of cleaned) requests.push(reqP(s.put(value)));
+      }
+      const meta = transaction.objectStore('meta');
+      for (const [key, value] of Object.entries((snapshot && snapshot.meta) || {})) {
+        requests.push(reqP(meta.put({ key, value })));
+      }
+      return Promise.all(requests);
+    });
   },
 
   // --- v4 stores (Stage 1+). Each is the shared idStore surface, so a caller
@@ -288,6 +516,9 @@ export const Store = {
   goals: idStore('goals'),
   forecastSnapshots: idStore('forecastSnapshots'),
   manualAssets: idStore('manualAssets'),
+  investmentStatements: idStore('investmentStatements'),
+  balanceUpdates: idStore('balanceUpdates'),
+  confirmations: idStore('confirmations'),
 
   // Read the stored record-level schema version, run any forward migrations,
   // then stamp the current SCHEMA_VERSION. Called ONCE at boot, after openDB has
@@ -314,6 +545,25 @@ export const Store = {
     // Each step is additive and re-runnable. There is nothing to backfill for
     // the initial introduction (the v4 stores are simply empty on first open),
     // so the only action is to stamp the version forward.
+    //
+    // ensureSchema runs on every boot, unguarded, before the app renders
+    // anything - so a migration step must NEVER let a thrown error reach the
+    // caller. Every other step at this call site (fxRates, merchants, a few
+    // lines up in start()) degrades gracefully on failure rather than
+    // blocking boot; a migration is exactly the same kind of best-effort
+    // step, done here rather than left un-migrated, and safely retried on
+    // the next boot rather than left half-applied.
+    if (stored < 2) {
+      try {
+        await migrateNcbTransactionIdentity();
+      } catch (error) {
+        console.warn(
+          'NCB card identity migration could not complete; existing data is unchanged and this will be retried on the next launch.',
+          error
+        );
+        return { ok: true, migrated: false, from: stored, version: stored };
+      }
+    }
     await this.setMeta(SCHEMA_VERSION_KEY, SCHEMA_VERSION);
     return {
       ok: true,

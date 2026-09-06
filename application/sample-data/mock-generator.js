@@ -1,10 +1,11 @@
-import { roundMoney, MONTHS_SHORT } from '../core/shared-helpers.js';
+import { roundMoney, MONTHS_SHORT, fnv1a } from '../core/shared-helpers.js';
 import {
   transactionIdentity,
   bankTransactionIdentity,
   cardStatementHash,
   bankStatementHash,
 } from '../statements/read-statements.js';
+import { holdingKey } from '../statements/read-investments.js';
 import {
   CARD_MERCHANTS,
   CARD_AMOUNTS,
@@ -128,7 +129,6 @@ function cardRow(dateIso, desc, amount, opts = {}) {
     ...t,
     id: transactionIdentity(t),
     categoryOverride: null,
-    reviewDismissed: false,
     lastChanged: new Date().toISOString(),
     originDevice: 'mock',
   };
@@ -279,17 +279,25 @@ function buildCardLedger(persona, rng) {
   return { records, statements, perStatement };
 }
 
-function buildBankLedgerForAccount(persona, acct, rng) {
+function buildBankLedgerForAccount(persona, acct, rng, cardPaymentsByMonth = null) {
   const months = monthSequence(persona.months);
   const records = [];
   const statements = [];
   const parses = [];
+  // One closing balance per month index (including a skipped month, which
+  // simply carries the prior balance forward), so a caller that needs the
+  // account's balance trend - the goal-history builder, most notably - can
+  // read it directly rather than re-deriving it from records.
+  const monthlyClosing = [];
   let running = acct.opening;
   let seq = 0;
   const skip = new Set(acct.skip || []);
 
   months.forEach(({ y, m }, monthIdx) => {
-    if (skip.has(monthIdx)) return;
+    if (skip.has(monthIdx)) {
+      monthlyClosing.push(roundMoney(running));
+      return;
+    }
     const dim = lastDayOf(y, m);
     const events = [];
     const raw = (d) => `${String(d).padStart(2, '0')}${MON_ABBR[m - 1].toUpperCase()}`;
@@ -430,14 +438,25 @@ function buildBankLedgerForAccount(persona, acct, rng) {
       });
     }
     if (acct.cardPayment && persona.hasCard) {
-      events.push({
-        date: iso(y, m, 10),
-        rawDate: raw(10),
-        type: 'PC-BILL PAYMENT',
-        desc: `TRANSFER TO ${persona.cardAccount}`,
-        direction: 'out',
-        amount: roundMoney(30000 + rng() * 40000),
-      });
+      const hasSchedule = Array.isArray(cardPaymentsByMonth);
+      const scheduled = hasSchedule ? Number(cardPaymentsByMonth[monthIdx]) || 0 : null;
+      const amount = hasSchedule
+        ? roundMoney(Math.abs(scheduled))
+        : roundMoney(30000 + rng() * 40000);
+      // A fresh card has no prior statement to pay in month one. Once a card
+      // schedule is supplied, zero means exactly that rather than an invented
+      // bank debit. Older/persona-only callers without a schedule retain the
+      // original realistic fallback band.
+      if (amount > 0) {
+        events.push({
+          date: iso(y, m, 10),
+          rawDate: raw(10),
+          type: 'PC-BILL PAYMENT',
+          desc: `TRANSFER TO ${persona.cardAccount}`,
+          direction: 'out',
+          amount,
+        });
+      }
     }
     // A transfer between the person's own accounts. The amount can differ by
     // account, so a move out of the Jamaican account (a larger figure) and the
@@ -494,6 +513,7 @@ function buildBankLedgerForAccount(persona, acct, rng) {
       monthRows.push(row);
     }
     records.push(...monthRows);
+    monthlyClosing.push(roundMoney(running));
 
     const period = `01 ${MON_ABBR[m - 1]} ${y} - ${String(dim).padStart(2, '0')} ${MON_ABBR[m - 1]} ${y}`;
     const stObj = {
@@ -516,20 +536,139 @@ function buildBankLedgerForAccount(persona, acct, rng) {
       importedAt: new Date().toISOString(),
     });
   });
-  return { records, statements, parses };
+  return { records, statements, parses, monthlyClosing };
 }
 
-function buildBankLedger(persona, rng) {
+function buildBankLedger(persona, rng, cardPaymentsByMonth = null) {
   const records = [];
   const statements = [];
   const parses = [];
+  const monthlyClosing = {};
   for (const acct of persona.accounts || []) {
-    const built = buildBankLedgerForAccount(persona, acct, rng);
+    const built = buildBankLedgerForAccount(persona, acct, rng, cardPaymentsByMonth);
     records.push(...built.records);
     statements.push(...built.statements);
     parses.push(...built.parses);
+    monthlyClosing[acct.number] = built.monthlyClosing;
   }
-  return { records, statements, parses };
+  return { records, statements, parses, monthlyClosing };
 }
 
-export { hashSeed, makeRng, buildCardLedger, buildBankLedger, ymOf };
+/* ===========================================================================
+ *  The unit-trust/investment position a persona's UNIT TRUST INVESTMENT-style
+ *  bank sweep actually feeds. Produces one monthly investment-statement record
+ *  per month, shaped exactly like what the real Scotia parser produces
+ *  (read-investments.js's parseScotiaInvestmentStatement), so the app's own
+ *  investments analysis (analysis/investments.js) reads it identically to a
+ *  genuinely imported statement - value/growth trend, the 10%/20% drop
+ *  watch/alert thresholds, all of it. A single fund holding is enough: real
+ *  single-position unit-trust-only accounts look exactly like this.
+ * ======================================================================== */
+function buildInvestmentStatements(persona, rng) {
+  const plan = persona.investmentPlan;
+  if (!plan) return { statements: [] };
+  const months = monthSequence(persona.months);
+  const statements = [];
+  const growthRate = plan.growthRate == null ? 0.012 : plan.growthRate;
+  const dipShare = plan.dipShare == null ? -0.14 : plan.dipShare;
+  let value = plan.openingValue;
+  let price = plan.openingPrice || 20;
+
+  months.forEach(({ y, m }, monthIdx) => {
+    const contribution = plan.monthlyContribution || 0;
+    const base = value + contribution;
+    const isDip = plan.dipMonthIndex === monthIdx;
+    const rate = isDip ? dipShare : growthRate * (0.6 + rng() * 0.8);
+    const growth = roundMoney(base * rate);
+    const newValue = roundMoney(Math.max(0, base + growth));
+    price = roundMoney(price * (1 + (isDip ? rate * 0.5 : 0.004 + rng() * 0.004)));
+    const quantity = price > 0 ? roundMoney(newValue / price) : 0;
+    const avgCostRaw = roundMoney(price * 0.93);
+    const statedChangePct =
+      value > 0 ? Math.round(((newValue - value) / value) * 10000) / 100 : null;
+    const periodStart = iso(y, m, 1);
+    const periodEnd = iso(y, m, lastDayOf(y, m));
+
+    const h = {
+      key: holdingKey('fund', plan.account, plan.description, plan.provider || 'scotia'),
+      provider: plan.provider || 'scotia',
+      kind: 'fund',
+      section: 'Unit Trust',
+      subAccount: plan.account,
+      description: plan.description,
+      currency: 'JMD',
+      quantity,
+      avgCostRaw,
+      costBasisType: 'unit',
+      price,
+      yield: null,
+      value: newValue,
+      valueBase: null,
+      lastMonthValue: monthIdx === 0 ? null : value,
+      statedChangePct: monthIdx === 0 ? null : statedChangePct,
+      unrealisedGainLoss: null,
+      provenance: {
+        quantity: 'statement',
+        purchaseCost: 'statement',
+        price: 'statement',
+        yield: 'absent',
+        unrealisedGainLoss: 'absent',
+        currentValue: 'statement',
+        valueBase: 'absent',
+        lastMonthValue: monthIdx === 0 ? 'absent' : 'statement',
+        statedChangePct: monthIdx === 0 ? 'absent' : 'statement',
+        provider: plan.provider || 'scotia',
+      },
+    };
+
+    statements.push({
+      hash: fnv1a(`investment|${plan.account}|${periodEnd}`),
+      provider: plan.provider || 'scotia',
+      account: plan.account,
+      periodStart,
+      periodEnd,
+      printedTotal: newValue,
+      fxRates: {},
+      classTotals: [{ label: 'Unit Trust', value: newValue }],
+      pagesDeclared: 2,
+      pagesSeen: [1, 2],
+      activityPresent: true,
+      cashActivitySection: true,
+      cashActivity: contribution
+        ? [
+            {
+              date: iso(y, m, 26),
+              type: 'D',
+              amount: contribution,
+              currency: 'JMD',
+              cashAccount: plan.account,
+            },
+          ]
+        : [],
+      holdings: [h],
+      warnings: [],
+      provenance: {
+        account: 'statement',
+        periodStart: 'statement',
+        periodEnd: 'statement',
+        printedTotal: 'statement',
+        fxRates: 'statement',
+        cashActivity: 'statement',
+      },
+      source_file: 'Mock Investment Statement.pdf',
+    });
+
+    value = newValue;
+  });
+  return { statements };
+}
+
+export {
+  hashSeed,
+  makeRng,
+  buildCardLedger,
+  buildBankLedger,
+  buildInvestmentStatements,
+  monthSequence,
+  ymOf,
+};

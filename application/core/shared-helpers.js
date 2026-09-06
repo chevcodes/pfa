@@ -1,3 +1,15 @@
+import { figuresHidden } from './privacy.js';
+export {
+  figuresHidden,
+  privateViewOn,
+  withExactFigures,
+  markProportional,
+  hiddenChartLabel,
+  screenReaderFigure,
+  HIDDEN_WORD,
+  HIDDEN_SENTENCE,
+} from './privacy.js';
+
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
 export { MONTHS };
@@ -11,6 +23,25 @@ export const DEV_SIGNATURE = 'chevcodes';
 // re-declared independently as an identical array in app.js (service-worker
 // registration) and mock-personas.js (the sample-data switcher's gate).
 export const LOCAL_DEV_HOSTS = ['localhost', '127.0.0.1', '::1', '0.0.0.0'];
+
+// A development machine is not only these four literal names. Serving the app
+// to a phone on the same wifi means a LAN address, and macOS/Bonjour names it
+// <machine>.local - on either, the four-name list said "production", the
+// service worker registered, and every later edit was served from its cache.
+// Recognising the whole local family means the worker is skipped wherever the
+// app is genuinely being developed, not only on the loopback name.
+export function isLocalDevHost(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  if (!h) return false;
+  if (LOCAL_DEV_HOSTS.includes(h)) return true;
+  if (h.endsWith('.local') || h.endsWith('.localhost')) return true;
+  if (/^127\./.test(h)) return true; // whole loopback range, not just .0.0.1
+  if (/^10\./.test(h)) return true; // RFC1918 private
+  if (/^192\.168\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (/^169\.254\./.test(h)) return true; // link-local
+  return false;
+}
 // FNV-1a: a small, fast, deterministic string hash. Used for stable
 // transaction identity and statement content hashing. Not cryptographic;
 // it only needs to be stable and collision-resistant enough for dedupe.
@@ -21,6 +52,11 @@ export function fnv1a(str) {
     h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
   }
   return ('00000000' + h.toString(16)).slice(-8);
+}
+export function recordMissingRequiredField(warnings, sourceFile, field) {
+  const warning = `${sourceFile || 'This statement'}: ${field} could not be read; it may not merge correctly.`;
+  if (Array.isArray(warnings) && !warnings.includes(warning)) warnings.push(warning);
+  return warning;
 }
 export function toIso(d) {
   // "28-Nov-2024" -> "2024-11-28". Leaves anything unrecognised untouched.
@@ -59,6 +95,127 @@ export function cutAtBranchHyphen(s) {
   return str;
 }
 
+/* A bank narrative is not free text. It is a channel code, then optionally a
+ * direction word, then the other party, then routing and reference digits:
+ *
+ *     ACH SENIOR,DEL
+ *     BPYMT:1618995/DELANO SENIOR
+ *     ELink TRF-To Shanell Racquelia Dellop
+ *     IOR Transfer from CHEVAUGHN JOHNSON 0908
+ *
+ * THE declared list of channel codes. Before this existed the leading strip was
+ * written out by hand in three places - the resolver's bank profile, the
+ * counterparty reader, and the Accounts list - and they had already drifted:
+ * only two of the three understood a channel code in front of "Transfer", and
+ * only two understood "trf from" as well as "trf to", so the same row could
+ * read one way in the transaction list and another in Accounts. One list, one
+ * parser, so a channel learned here is understood everywhere at once.
+ *
+ * `label` is what a person should see. null means the channel adds nothing
+ * worth saying - a plain "Transfer to X" needs no "(via Transfer)".
+ */
+export const TRANSFER_CHANNELS = [
+  { re: /^e-?link\s*(?:trf|transfer)\b[\s:.,-]*/i, label: 'e-Link' },
+  { re: /^bpymt\b[\s:.,-]*/i, label: 'bill payment', implies: 'to' },
+  { re: /^ach\b[\s:.,-]*/i, label: 'ACH' },
+  { re: /^(?:[a-z]{2,5}\s+)?transfer\b[\s:.,-]*/i, label: null },
+  { re: /^(?:[a-z]{2,5}\s+)?trf\b[\s:.,-]*/i, label: null },
+];
+
+// Routing and reference cruft that rides in front of, or behind, the party
+// name once the channel code is off. The separator class deliberately includes
+// "/" so a bill-payment reference ("BPYMT:1618995/DELANO SENIOR") is cut the
+// same way a comma- or space-separated one already was.
+//
+// The trailing-contact strip removes a support address or status marker that a
+// processor appends after its own name ("UBER * PENDING help.uber.co"). It is
+// end-anchored and only ever removes a dotted address or the word PENDING, so
+// a star-separated descriptor whose REAL name follows the star is untouched.
+function stripPartyAffixes(s) {
+  return String(s || '')
+    .replace(/^[\d]{2,}[\s,/-]+/, '')
+    .replace(/^\d{4,}[-/]/, '')
+    .replace(/\s*\*?\s*\bpending\b/i, ' ')
+    .replace(/\s*\*?\s*\b[a-z][\w-]*(?:\.[a-z][\w-]*)+\.?\s*$/i, '')
+    .replace(/[\s,-]+\d{3,}\s*$/, '')
+    .replace(/^[\s,:/*-]+/, '')
+    .replace(/[\s,:/*-]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/* Split a bank narrative into the three things a person actually wants to know:
+ * which channel moved the money, which way it went, and who the other party is.
+ *
+ * Returns { channel, direction, party }. `channel` is the display label or
+ * null, `direction` is 'to' | 'from' | null when the narrative states it
+ * (the caller supplies the amount's own direction when it does not), and
+ * `party` is the name with every channel, routing and reference token removed.
+ * Pure; it never reads an amount and never decides a category.
+ */
+export function parseTransferNarrative(text) {
+  let s = String(text == null ? '' : text)
+    .replace(/\s+/g, ' ')
+    .trim();
+  let channel = null;
+  let direction = null;
+  for (const c of TRANSFER_CHANNELS) {
+    const cut = s.replace(c.re, '');
+    if (cut === s) continue;
+    channel = c.label;
+    if (c.implies) direction = c.implies;
+    s = cut;
+    break;
+  }
+  // The direction word sits AFTER the channel code in every observed shape
+  // ("ELink TRF-To ...", "IOR Transfer from ..."), so it is read here rather
+  // than inside each channel's own pattern.
+  const dir = s.match(/^(to|from)\b[\s:.,-]*/i);
+  if (dir) {
+    direction = dir[1].toLowerCase();
+    s = s.slice(dir[0].length);
+  }
+  // isTransfer is the honest test for "did this narrative actually describe a
+  // movement between parties". A descriptor that names neither a channel nor a
+  // direction is a shop, an employer or a printed bank fee - not a transfer -
+  // and callers must be able to tell, so they leave it worded as it came.
+  return {
+    channel,
+    direction,
+    isTransfer: channel !== null || direction !== null,
+    party: stripPartyAffixes(s),
+  };
+}
+
+/* The sentence a person reads on a bank row: who, which way, and how.
+ *
+ * `fallbackDirection` is the row's own direction ('in' | 'out'). It supplies
+ * the way the money went ONLY for a narrative that names a channel but no
+ * direction word - "ACH SENIOR,DEL" is a transfer whichever way it ran, and the
+ * amount already knows which.
+ *
+ * Returns '' for a narrative that is not a transfer at all - a shop, an
+ * employer, or a bank fee the statement printed in its own words. Those rows
+ * must keep reading exactly as they came (ncb_bank_reader_proof pins it, so a
+ * person can reconcile a fee against the paper statement), so the caller keeps
+ * whatever it was already showing rather than being handed a rewritten name.
+ */
+export function transferSentence(text, fallbackDirection, titleCase) {
+  const { channel, direction, isTransfer, party } = parseTransferNarrative(text);
+  if (!isTransfer) return '';
+  // The same first-comma-segment convention transactionName() already applies:
+  // a trailing ",DEL" is a truncated second name, not part of the party.
+  const short = String(party || '').split(',')[0].trim();
+  const name = typeof titleCase === 'function' ? titleCase(short) : short;
+  if (!name) return '';
+  const way =
+    direction || (fallbackDirection === 'in' ? 'from' : fallbackDirection === 'out' ? 'to' : null);
+  if (!way) return name;
+  const moved = channel === 'bill payment' ? 'Bill payment' : 'Transfer';
+  const via = channel && channel !== 'bill payment' ? ` (via ${channel})` : '';
+  return `${moved} ${way} ${name}${via}`;
+}
+
 // Capitalise the first letter of a sentence/word, leaving everything else
 // untouched. Previously re-derived independently in three places (app.js's
 // renderOverview, the pre-consolidation buildOverviewInsights, and the
@@ -68,25 +225,35 @@ export function capitaliseFirst(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-// Shared money-formatting core, used by both money0 (app.js, card side) and
-// bankMoney (accounts-render.js, bank side, which layers a currency-prefix
-// branch on top). Previously each independently re-derived the identical
-// locale/decimals/negative-sign/toLocaleString logic; bankMoney additionally
-// guarded with Number(n) || 0 so a bad amount rendered as symbol+0.00, while
-// money0 did not, so the identical bad amount would have rendered as
-// "$NaN" - a small, silent divergence the duplication itself produced. The
-// shared core applies that same NaN-safe guard everywhere now.
-export function formatMoney(n, symbol, locale, decimals) {
-  const neg = n < 0;
-  return (
-    (neg ? '-' : '') +
-    symbol +
-    Math.abs(Number(n) || 0).toLocaleString(locale, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })
-  );
+export function joinWithAnd(parts) {
+  if (parts.length < 2) return parts[0] || '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
+
+/* THE way a list of months is named on screen.
+ *
+ * Four surfaces state a fact about statement completeness, and three of them
+ * carried their own hand-written version of "name the first two and count the
+ * rest" - one of which produced three "and"s in a row. Naming the months is
+ * the whole point of those sentences: a person told "3 months are only partly
+ * imported" cannot act on it until they know which three. Takes the label
+ * function, so it stays free of any month-formatting module. */
+export function namedMonths(months, label, cap = 2) {
+  const list = (months || []).filter(Boolean);
+  if (!list.length) return '';
+  const name = typeof label === 'function' ? label : (m) => m;
+  const shown = list.slice(0, cap).map(name);
+  if (list.length > cap) shown.push(`${list.length - cap} more`);
+  return joinWithAnd(shown);
+}
+
+// Shared money-formatting core, used by money0 (app-controller, card side)
+// and bankMoney (accounts-render, bank side, which layers a currency-prefix
+// branch on top). Now a thin re-export of THE formatter
+// (core/money-format.js), which applies the privacy gate before it formats,
+// so a figure cannot reach the screen without passing it. Kept here under its
+// original name so every existing call site is unchanged.
+export { formatMoney, makeMoney, makeMoneyShort, makeForeignMoney } from './money-format.js';
 
 // Whether the person has asked the system to minimise motion. Guarded so this
 // module stays importable in Node (tests) where window/matchMedia are absent.
@@ -98,18 +265,12 @@ export function prefersReducedMotion() {
   );
 }
 
-// Whether privacy mode is currently on - a screen-presentation state only
-// (blur), never a data-redaction one; export, print and "Copy summary"
-// all read the real, unblurred figures regardless of this. Read directly
-// from the root element's dataset, the same mechanism theme already uses
-// (document.documentElement.dataset.theme), so no ctx wiring is needed at
-// any call site - any render file can call this the same way several
-// already call document.getElementById directly (focusTransactionRow).
-// Guarded for Node/test environments exactly like prefersReducedMotion.
+// Whether figures are currently hidden. Delegates to the privacy contract
+// (core/privacy.js) so this name, the money formatter and every chart all
+// read ONE switch, and so the deliberate exact-figure paths (print, copy,
+// export) suspend it in one place rather than each re-asserting an exemption.
 export function isPrivacyMode() {
-  return (
-    typeof document !== 'undefined' && document.documentElement.dataset.privacy === 'on'
-  );
+  return figuresHidden();
 }
 // The ONE smooth-scroll helpers every drill-down, "see all" and the new
 // back-to-top button now share. Previously the same
@@ -125,6 +286,40 @@ export function smoothScrollToTop() {
     behavior: prefersReducedMotion() ? 'auto' : 'smooth',
   });
 }
+/* MAKE A TARGET VISIBLE BEFORE ANYTHING MEASURES OR FOCUSES IT.
+ *
+ * Two callers carried a byte-identical copy of the ancestor-opening loop, and
+ * neither opened the target's OWN disclosure - but every anchor in this app
+ * points at a card, and a card IS a collapsible. So a link landed a person on
+ * the shut card it sent them to, one tap short of the thing that sent them:
+ * Overview's "Details" on "you added $400k to your investments" scrolled to a
+ * closed "Investments" showing a different figure. One caller (the balance
+ * updater) opened its own card by hand first, which is the workaround this
+ * replaces.
+ *
+ * Ancestors, then the target's own disclosure - never the ones nested inside
+ * it, so nothing else unfolds.
+ */
+export function revealDisclosures(node) {
+  if (!node) return false;
+  let opened = false;
+  let cur = node;
+  while (cur) {
+    if (cur.tagName === 'DETAILS' && !cur.open) {
+      cur.open = true;
+      opened = true;
+    }
+    cur = cur.parentElement;
+  }
+  if (typeof node.querySelector !== 'function') return opened;
+  const own = node.tagName === 'DETAILS' ? node : node.querySelector(':scope > details');
+  if (own && !own.open) {
+    own.open = true;
+    opened = true;
+  }
+  return opened;
+}
+
 export function smoothScrollToEl(target) {
   if (typeof document === 'undefined') return;
   const node = typeof target === 'string' ? document.querySelector(target) : target;
@@ -134,18 +329,22 @@ export function smoothScrollToEl(target) {
   // collapsed disclosure previously measured a hidden, zero-height box and
   // landed nowhere meaningful, since the content genuinely was not rendered
   // open yet.
-  let cur = node;
-  while (cur) {
-    if (cur.tagName === 'DETAILS' && !cur.open) cur.open = true;
-    cur = cur.parentElement;
-  }
+  // ARRIVING BEATS GLIDING. Opening the card grows the document - measured here
+  // from 1,282px to 2,147px - and a reflow that large cancels a smooth scroll
+  // outright: the card opened and the page did not move at all, which is worse
+  // than arriving at a shut card. So a jump is used exactly when something was
+  // opened, and the glide is kept for every other anchor, where nothing moves
+  // underneath it. Deliberately NOT deferred to requestAnimationFrame: rAF does
+  // not run in a hidden tab, and a person returning to a backgrounded tab would
+  // find the card open and the page still at the top, with nothing to say why.
+  const opened = revealDisclosures(node);
   const stack = document.querySelector('.topbar-stack');
   const chrome = stack ? stack.getBoundingClientRect().height : 0;
   const top = node.getBoundingClientRect().top + window.scrollY - chrome - 12;
   window.scrollTo({
     top: Math.max(0, top),
     left: 0,
-    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    behavior: opened || prefersReducedMotion() ? 'auto' : 'smooth',
   });
   // Move focus to whatever was just scrolled to - preventScroll stops the
   // browser's own default focus-scroll fighting the scroll just performed.
@@ -160,6 +359,31 @@ export function smoothScrollToEl(target) {
   // shimmed, since this app's supported range is expected to be modern
   // evergreen browsers; noted here rather than silently left unexamined.
   if (node.focus) node.focus({ preventScroll: true });
+}
+
+// THE one destination for every sentence in this app about how complete the
+// imported statements are. Overview's "Based on N of M months", both missing-
+// month insights and the Account-statements gap line all said their own
+// version of the same fact and led nowhere (one of them scrolled to the
+// transactions a person DOES have, which is the opposite of what it said).
+// They now all land here, on the card that names the months and carries the
+// way to add them. The fallback runs only when that card is not on screen at
+// all, so a sentence is never a door onto nothing.
+export const STATEMENT_COVERAGE_ID = 'statement-coverage';
+
+// "2 of 5 statements reconcile" is printed on three surfaces and the word was
+// only ever defined on one of them - the printed report. One definition, read
+// from here by every surface that uses the word.
+export const RECONCILE_MEANS =
+  'A statement reconciles when its opening balance plus each transaction on it reaches the printed closing balance, to the cent.';
+
+export function openStatementCoverage(fallback) {
+  if (typeof document !== 'undefined' && document.getElementById(STATEMENT_COVERAGE_ID)) {
+    smoothScrollToEl('#' + STATEMENT_COVERAGE_ID);
+    return true;
+  }
+  if (typeof fallback === 'function') fallback();
+  return false;
 }
 
 // Fails loudly and specifically at FACTORY-CONSTRUCTION time when a factory's
@@ -243,7 +467,9 @@ export function withConfigDefaults(cfg) {
 // this file.
 export function monthIndex(ym) {
   const m = /^(\d{4})-(\d{2})$/.exec(String(ym == null ? '' : ym));
-  return m ? +m[1] * 12 + (+m[2] - 1) : NaN;
+  if (!m) return NaN;
+  const month = +m[2];
+  return month >= 1 && month <= 12 ? +m[1] * 12 + (month - 1) : NaN;
 }
 
 // The signed distance, in months, from a to b ('YYYY-MM' keys). NaN when
@@ -307,12 +533,12 @@ export const MONTHS_SHORT = [
   'Dec',
 ];
 
-export function isoDate(value) {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10);
-  }
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value == null ? '' : value));
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+export function formatMonthYear(ym) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym == null ? '' : ym));
+  if (!m) return String(ym == null ? '' : ym);
+  const mi = +m[2] - 1;
+  if (mi < 0 || mi > 11) return String(ym);
+  return `${MONTHS_SHORT[mi]}-${m[1].slice(2)}`;
 }
 
 export function formatDisplayDate(iso) {
@@ -322,6 +548,27 @@ export function formatDisplayDate(iso) {
   const mi = +m[2] - 1;
   if (mi < 0 || mi > 11) return s;
   return `${m[3]}-${MONTHS_SHORT[mi]}-${m[1].slice(2)}`;
+}
+
+const DISPLAY_DATE = new RegExp(`\\b(\\d{2}-(?:${MONTHS_SHORT.join('|')})-\\d{2})\\b`);
+
+export function displayText(text, doc = document) {
+  const parts = String(text).split(DISPLAY_DATE);
+  if (parts.length === 1) return doc.createTextNode(parts[0]);
+  const line = doc.createElement('span');
+  parts.forEach((part, i) => {
+    if (i % 2) {
+      const date = doc.createElement('span');
+      date.className = 'nowrap';
+      date.textContent = part;
+      line.append(date);
+    } else if (part) line.append(doc.createTextNode(part));
+  });
+  return line;
+}
+
+export function isoToday(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 export function yieldToBrowser() {
@@ -352,6 +599,66 @@ export function addDaysIso(iso, days) {
   const ms = Date.UTC(+m[1], +m[2] - 1, +m[3]) + days * 86400000;
 
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+export function daysBetweenIso(from, to) {
+  return Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / 86400000);
+}
+
+/* A whole number as a word, so a sentence reads as speech rather than as a
+ * readout. Above twelve, digits are clearer than words.
+ *
+ * THE list, in one place. cushion.js's monthWord delegates here rather than
+ * keeping its own copy, so "seven weeks" and "seven months" cannot end up
+ * spelled two different ways on two screens. */
+export const COUNT_WORDS = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six',
+  'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+];
+
+export function countWord(n) {
+  const i = Math.round(Number(n) || 0);
+  return i >= 0 && i < COUNT_WORDS.length ? COUNT_WORDS[i] : String(i);
+}
+
+/* A gap in days, said the way a person would say it - "about a month", "about
+ * seven weeks" - never "47 days".
+ *
+ * Nobody decides anything in 47-day units, and the exact count reads as
+ * machine output precisely when the surface is trying to sound like a person.
+ * The exact figure is not lost: the surfaces that use this phrase carry the
+ * day count behind the app's one info bubble, where anyone who wants the
+ * working can find it.
+ *
+ * The bands are chosen so the phrase stays PROPORTIONATE at the low end. A
+ * monthly account one day late reads "about a month" - true, and no cause for
+ * alarm - rather than being rounded up into sounding overdue. Weeks carry the
+ * middle, where a person genuinely counts in weeks, and months take over once
+ * weeks stop being how anyone would say it. Takes days (from daysBetweenIso,
+ * the one day-count in the app) so no caller re-derives a duration. */
+export function roundedDurationPhrase(days) {
+  const d = Math.max(0, Math.round(Number(days) || 0));
+  if (d <= 0) return 'today';
+  if (d === 1) return 'a day';
+  if (d < 7) return 'a few days';
+  if (d < 11) return 'about a week';
+  if (d < 28) return `about ${countWord(Math.round(d / 7))} weeks`;
+  // 28-34: the ordinary monthly account, a few days either side of its cycle.
+  if (d < 35) return 'about a month';
+  if (d < 56) return `about ${countWord(Math.round(d / 7))} weeks`;
+  const months = Math.round(d / 30.44);
+  return months <= 1 ? 'about a month' : `about ${countWord(months)} months`;
+}
+
+export function accountShortLabel(account, accounts = []) {
+  const value = String(account == null ? '' : account);
+  const last4 = value.slice(-4);
+  const collides =
+    (accounts || []).filter((item) => {
+      const other = item && typeof item === 'object' ? item.account : item;
+      return String(other == null ? '' : other).slice(-4) === last4;
+    }).length > 1;
+  return collides || value.length <= 4 ? value : '…' + last4;
 }
 
 export function isoDay(iso) {
@@ -409,29 +716,28 @@ export function ledgerIsNarrowed(state) {
   const f = state.filter,
     bf = state.bankFilter;
   return (
+    !!f.ruleKey ||
+    !!(bf && bf.ruleKey) ||
     f.category !== 'all' ||
     f.kind !== 'all' ||
     f.merchant !== '' ||
     f.reviewOnly ||
     f.foreignOnly ||
+    (f.spendingLens && f.spendingLens !== 'all') ||
     f.min != null ||
     f.max != null ||
     f.search !== '' ||
     bf.payeeKey !== '' ||
     (bf.kind && bf.kind !== 'all') ||
+    (bf.spendingLens && bf.spendingLens !== 'all') ||
     bf.search !== '' ||
     (state.bankAccount && state.bankAccount !== 'all')
   );
 }
 
-// Bank rows carry no spend category, merchant identity, foreign flag or
-// review status at all (confirmed against the corpus: 0 bank rows have a
-// Category) - so a category/merchant/reviewOnly/foreignOnly drill can never
-// meaningfully narrow them; they are hidden entirely rather than sailing
-// through unfiltered underneath a card-only drill.
 export function bankRowsInapplicable(state) {
   const f = state.filter;
-  return f.category !== 'all' || f.merchant !== '' || f.reviewOnly || f.foreignOnly;
+  return f.merchant !== '' || f.foreignOnly;
 }
 
 // The mirror: cards carry no bank-style payee/counterparty identity, so a
@@ -466,10 +772,14 @@ export function cardRowsInapplicable(state) {
 // toggling ITSELF off (a deselect) should not force a scroll, only a
 // genuinely NEW selection should.
 export function drillToTransactions(deps, patch, opts = {}) {
-  const { state, trackUsage, resetBankDrillFacets, applyFilter } = deps || {};
-  const missing = ['state', 'trackUsage', 'resetBankDrillFacets', 'applyFilter'].filter(
-    (k) => typeof (deps || {})[k] === 'undefined'
-  );
+  const { state, trackUsage, resetBankDrillFacets, applyFilter, applyBankPatch } = deps || {};
+  const missing = [
+    'state',
+    'trackUsage',
+    'resetBankDrillFacets',
+    'applyFilter',
+    'applyBankPatch',
+  ].filter((k) => typeof (deps || {})[k] === 'undefined');
   if (missing.length) {
     throw new Error(
       `drillToTransactions: missing required dependenc${missing.length === 1 ? 'y' : 'ies'}: ${missing.join(', ')}.`
@@ -486,6 +796,11 @@ export function drillToTransactions(deps, patch, opts = {}) {
   }
   state.activityTab = 'transactions';
   resetBankDrillFacets();
+  // A drill that is true of BOTH ledgers - a personal rule files card rows and
+  // bank rows alike - sets the bank side here, after the reset and before
+  // applyFilter renders, rather than growing a second drill helper beside this
+  // one. Every existing caller passes nothing and is unchanged.
+  if (opts.bankPatch) applyBankPatch(opts.bankPatch);
   applyFilter(patch, { expand: true, scroll });
 }
 
@@ -552,14 +867,617 @@ export function focusTransactionRow(id) {
   if (typeof document === 'undefined') return;
   const node = document.getElementById(id);
   if (!node) return;
-  let cur = node;
-  while (cur) {
-    if (cur.tagName === 'DETAILS' && !cur.open) cur.open = true;
-    cur = cur.parentElement;
-  }
+  revealDisclosures(node);
   node.scrollIntoView({
     behavior: prefersReducedMotion() ? 'auto' : 'smooth',
     block: 'center',
   });
   if (node.focus) node.focus({ preventScroll: true });
+}
+
+// A prefilled field is a trap: the value already there is the thing you came to
+// replace, but clicking in only drops a caret beside it, so every edit starts
+// with a select-all or a run of backspaces. Selecting on focus means the first
+// keystroke replaces the value.
+//
+// Measured against a bare control on a real click: no handler leaves the caret
+// where you clicked ([6,6] in a 9-character value); this selects the lot
+// ([0,9]). A drag still wins - the drag re-selects after focus has run - so a
+// deliberate partial selection is not hijacked.
+//
+// Number inputs report selectionStart as null (the spec withholds the selection
+// API from them), so on those this can only be confirmed by typing, not by
+// reading properties. Synthetic mouse events prove nothing here either: being
+// untrusted, they never move the real caret. Verify with a real click.
+//
+// Deliberately NOT applied to search fields (Activity's transaction search, the
+// Plan category filter). You return to a search box to refine what you typed;
+// wiping it on focus would be the opposite of helpful.
+export function selectOnFocus(input) {
+  if (!input || typeof input.addEventListener !== 'function') return input;
+  input.addEventListener('focus', () => input.select());
+  return input;
+}
+
+export const NAME_MAX_LENGTH = 40;
+
+export function cleanName(value, max = NAME_MAX_LENGTH) {
+  return String(value == null ? '' : value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+export function bankAccountIdentity(account) {
+  const raw = String(account == null ? '' : account);
+  const digits = raw.replace(/\D/g, '');
+  return digits ? digits.slice(-4) : raw.trim().toUpperCase();
+}
+
+export function accountNameKey(kind, account) {
+  return kind === 'bank'
+    ? `bank:${bankAccountIdentity(account)}`
+    : `${kind}:${String(account == null ? '' : account)}`;
+}
+
+export function accountName(names, kind, account) {
+  const value = names && typeof names === 'object' ? names[accountNameKey(kind, account)] : null;
+  return typeof value === 'string' && value ? value : null;
+}
+
+export function accountNamesOnly(names) {
+  const out = {};
+  if (!names || typeof names !== 'object' || Array.isArray(names)) return out;
+  for (const [key, value] of Object.entries(names)) {
+    const clean = cleanName(value);
+    if (/^(bank|investment):./.test(key) && clean) out[key] = clean;
+  }
+  return out;
+}
+
+// The modified z-score (Iglewicz-Hoaglin): how far one value sits from the
+// middle of a set, measured in units of the set's own typical wobble rather
+// than its standard deviation. 0.6745 puts MAD on the same scale as a standard
+// deviation for normal data. Used by every "unusually large/spiking" check
+// that compares ONE value against its own peer history - the per-merchant
+// large-charge flag (reporting-core.js), the large-bank-outflow flag
+// (bank-analysis.js), and the category-spike flag (reporting-insights.js).
+export const MODIFIED_Z_CONST = 0.6745;
+export const OUTLIER_Z_CUT = 3.5;
+
+export function modifiedZ(value, centre, mad) {
+  if (!(mad > 0)) return Infinity;
+  return (MODIFIED_Z_CONST * (value - centre)) / mad;
+}
+
+// Below this many months there is not enough history for POSITION in a sorted
+// list to mean anything. Note this is no longer the threshold for "can we find
+// the typical value at all" - recurrence works from two months. It only decides
+// which fallback runs when nothing repeats.
+export const ROBUST_MIN_MONTHS = 4;
+
+// Two months "agree" when they are within this much of each other. Wide enough
+// that ordinary variation in a salary - a few thousand either way, a different
+// number of working days - still reads as the same recurring amount; tight
+// enough that a month carrying two payments (typically +50% or more) never
+// gets absorbed into the cluster it should be excluded from.
+export const AGREEMENT_TOLERANCE = 0.08;
+
+/* Which amount actually REPEATS in a run of monthly totals.
+ *
+ * Position in a sorted list is weak evidence. A median asks "what sits in the
+ * middle"; it cannot tell a value that recurs every month from one that merely
+ * happens to land mid-list. Recurrence is the stronger signal, and it is the
+ * one a person would use themselves: the typical month is the one that keeps
+ * happening.
+ *
+ * For each value, count how many months agree with it within
+ * AGREEMENT_TOLERANCE. The value with the most agreement anchors the cluster;
+ * ties go to the LOWER anchor (see the safety asymmetry in typicalMonthlyValue).
+ * Returns null when nothing repeats at all.
+ */
+export function repeatingCluster(values, tolerance = AGREEMENT_TOLERANCE) {
+  const vals = (values || []).map(Number).filter((v) => Number.isFinite(v));
+  if (vals.length < 2) return null;
+  const agrees = (a, b) => {
+    const scale = Math.max(Math.abs(a), Math.abs(b));
+    if (!(scale > 0)) return true;
+    return Math.abs(a - b) / scale <= tolerance;
+  };
+  let best = null;
+  for (const anchor of vals) {
+    const members = vals.filter((v) => agrees(v, anchor));
+    if (
+      !best ||
+      members.length > best.members.length ||
+      // Tie: prefer the lower anchor. Understating a typical month is the
+      // recoverable error; overstating it is not.
+      (members.length === best.members.length && anchor < best.anchor)
+    ) {
+      best = { anchor, members };
+    }
+  }
+  return best && best.members.length >= 2 ? best : null;
+}
+
+/* THE typical monthly figure, for every noisy monthly series in the app.
+ *
+ * ONE method, so improving it improves every figure at once: the Plan's
+ * take-home, the cushion target, typical outflow, typical committed spending,
+ * the size of a recurring payment.
+ *
+ * The method, in order:
+ *
+ *  1. RECURRENCE FIRST. Find the amount that actually repeats (see
+ *     repeatingCluster) and average the months that agree with it. This is the
+ *     primary route at EVERY history length, which is the point: it needs two
+ *     months, not four, so the person most exposed to a bad estimate - a new
+ *     user with one unusual month among two - is protected by the main method
+ *     rather than by a fallback.
+ *
+ *  2. Nothing repeats, and there is enough history for position to mean
+ *     something: take the MEDIAN. With four or more mutually disagreeing
+ *     months, the middle is a defensible read and is already resistant to one
+ *     extreme value.
+ *
+ *  3. Nothing repeats, and there is barely any history: take the LOWEST.
+ *     This is the case the old plain-average handled worst, and it is the most
+ *     common case for a new user. Two months of 285,000 and 500,000 average to
+ *     392,500 - a figure that occurred in neither month and is 38% above the
+ *     one that might well be normal.
+ *
+ *     The choice is asymmetric because the CONSEQUENCES are asymmetric. This
+ *     figure sets the cushion target and the Plan's take-home. Overstating it
+ *     inflates the free-spending band and tells someone they have room they do
+ *     not have; understating it makes the plan slightly tighter than it needs
+ *     to be and corrects itself the moment a third month arrives. Between a
+ *     harmful error and a conservative one, with no evidence to separate them,
+ *     take the conservative one.
+ *
+ *  4. One month: that month, said plainly, flagged as a single reading.
+ *
+ * Returns { amount, basis, monthsSeen, monthsUsed, excluded }, where basis is
+ * 'repeating' | 'median' | 'lowest' | 'single' | 'none' - a figure this
+ * load-bearing should be able to say where it came from.
+ */
+export function typicalMonthlyValue(values, opts = {}) {
+  const tolerance = opts.tolerance == null ? AGREEMENT_TOLERANCE : opts.tolerance;
+  const vals = (values || []).map((v) => Number(v) || 0).filter((v) => Number.isFinite(v));
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  if (!vals.length) {
+    return { amount: 0, basis: 'none', monthsSeen: 0, monthsUsed: 0, excluded: [] };
+  }
+  if (vals.length === 1) {
+    return { amount: vals[0], basis: 'single', monthsSeen: 1, monthsUsed: 1, excluded: [] };
+  }
+  const cluster = repeatingCluster(vals, tolerance);
+  if (cluster) {
+    const kept = cluster.members;
+    const keptCount = new Map();
+    for (const v of kept) keptCount.set(v, (keptCount.get(v) || 0) + 1);
+    const excluded = [];
+    for (const v of vals) {
+      const left = keptCount.get(v) || 0;
+      if (left > 0) keptCount.set(v, left - 1);
+      else excluded.push(v);
+    }
+    return {
+      amount: mean(kept),
+      basis: 'repeating',
+      monthsSeen: vals.length,
+      monthsUsed: kept.length,
+      excluded,
+    };
+  }
+  // Nothing repeats.
+  if (vals.length >= ROBUST_MIN_MONTHS) {
+    return {
+      amount: median(vals),
+      basis: 'median',
+      monthsSeen: vals.length,
+      monthsUsed: vals.length,
+      excluded: [],
+    };
+  }
+  const lowest = Math.min(...vals);
+  return {
+    amount: lowest,
+    basis: 'lowest',
+    monthsSeen: vals.length,
+    monthsUsed: 1,
+    excluded: vals.filter((v) => v !== lowest),
+  };
+}
+
+// A full annual cycle. Below this many months, a run of monthly totals has not
+// yet met the costs that arrive once a year, so an average of it is low and
+// cannot know that it is. At or above it, the cycle is inside the window.
+export const FULL_YEAR_MONTHS = 12;
+
+/* The PLAIN average of every month there is - deliberately NOT
+ * typicalMonthlyValue, and the difference matters.
+ *
+ * typicalMonthlyValue answers "what does a normal month look like", so it sets
+ * the unusual months aside. That is right for income, where a month carrying
+ * two salary payments is noise.
+ *
+ * It is wrong for a cost of living. The months that look unusual - the annual
+ * insurance, the property tax, the car service - are exactly the costs a safety
+ * net has to cover, and they are unusual only in WHEN they land, not in whether
+ * they happen. Setting them aside would size the net against the cheap months
+ * and miss the expensive ones by design.
+ *
+ * So every month counts, once, at face value. This also gives the figure a
+ * property nothing else here has: at twelve months or more the window contains
+ * one whole annual cycle, so the lumps are in the average automatically and no
+ * detection of them is needed at any point.
+ *
+ * Returns { amount, monthsSeen, monthsUsed, fullYear } - monthsUsed equals
+ * monthsSeen because nothing is ever dropped, and both are kept so a caller can
+ * read this shape the same way it reads typicalMonthlyValue's.
+ */
+export function averageMonthlyValue(values) {
+  const vals = (values || []).map((v) => Number(v) || 0).filter((v) => Number.isFinite(v));
+  if (!vals.length) {
+    return { amount: 0, monthsSeen: 0, monthsUsed: 0, fullYear: false };
+  }
+  const amount = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return {
+    amount,
+    monthsSeen: vals.length,
+    monthsUsed: vals.length,
+    fullYear: vals.length >= FULL_YEAR_MONTHS,
+  };
+}
+
+/* THE running-balance reader. One definition of "what balance does this row
+ * report", shared by every function that answers "what is this account's latest
+ * balance".
+ *
+ * Statements supply this under two different names depending on the parse path:
+ * `balanceAfter` from the bank parser, and a raw `Running Balance` column on
+ * rows that came through a generic import. Activity's account chip read only
+ * the first; Position's liquidBalance read both. An account whose most recent
+ * movement carried the column but not the field therefore showed its LATEST
+ * balance on Position and an older one on Activity - the same account reading
+ * $1,052,352.71 on one tab and $944,106.45 on the other, while accounts whose
+ * rows happened to carry balanceAfter agreed exactly and made the difference
+ * look like a rounding quirk rather than two different readers.
+ *
+ * Returns null when the row reports no balance at all, which callers use to
+ * skip it rather than treat it as a zero balance.
+ */
+export function rowBalance(r) {
+  if (!r) return null;
+  if (r.balanceAfter != null && r.balanceAfter !== '') {
+    const v = Number(r.balanceAfter);
+    return Number.isFinite(v) ? v : null;
+  }
+  const col = r['Running Balance'];
+  if (col !== undefined && col !== '' && col !== null) {
+    const v = Number(col);
+    return Number.isFinite(v) ? v : null;
+  }
+  return null;
+}
+
+/* THE bank-row classification primitives: is this row an internal transfer,
+ * which way did it move, how big is it, what currency is it in, and when.
+ * Six analysis files (commitment-income.js, committed-flexible.js, plan.js,
+ * set-aside.js, plan-autoassign.js, spend-breakdown.js) each hand-rolled
+ * their own byte-identical copy of some subset of these, plus two more
+ * (position.js, forecast.js) re-derived the internal-transfer/currency check
+ * inline without even naming it a function. They agreed only because nobody
+ * had changed one copy without the others yet - these are the inputs every
+ * income, commitment, and balance figure in the app is built from, so a
+ * silent drift here is exactly the "two numbers, two sources" failure the
+ * rest of the app is built to prevent. One definition, read everywhere.
+ */
+export function isInternal(r) {
+  if (r.internalTransfer != null) return !!r.internalTransfer;
+  return String(r.Flow || '') === 'Internal transfer';
+}
+export function dirOf(r) {
+  if (r.direction) return r.direction;
+  const f = String(r.Flow || '');
+  return f === 'Cash inflow' ? 'in' : f === 'Cash outflow' ? 'out' : '';
+}
+export function amtOf(r) {
+  return Math.abs(Number(r.amount != null ? r.amount : r.Amount) || 0);
+}
+export function ccyOf(r, base) {
+  return String(r.currency || r.Currency || base);
+}
+export function dateOf(r) {
+  return String(r.date || r.Date || '');
+}
+
+/* THE card-statement ordering, and THE "which one is latest".
+ *
+ * Ten call sites had each written this sort out by hand, and an eleventh
+ * (the Plan tab's card leg) ordered by `periodEnd || source_file` instead of
+ * statementKey - a genuinely different key, so the Plan tab could consider a
+ * different statement "latest" than the goal engine did, and the card balance
+ * on one screen could belong to a different statement than the same balance on
+ * another. Ordering IS a calculation: it decides which figures the whole app
+ * then reads.
+ *
+ * statementKey is the ordering key because it is the one field guaranteed to
+ * sort chronologically as a string. Missing keys sort first rather than
+ * throwing, so a half-parsed statement can never become "latest" by accident.
+ */
+export function sortedCardStatements(statements) {
+  return (statements || [])
+    .slice()
+    .sort((a, b) => String((a && a.statementKey) || '').localeCompare(String((b && b.statementKey) || '')));
+}
+
+export function latestCardStatement(statements) {
+  const sorted = sortedCardStatements(statements);
+  return sorted.length ? sorted[sorted.length - 1] : null;
+}
+
+/* THE measurement of the app's own fixed chrome.
+ *
+ * Two bars are pinned over the page: the sticky header stack at the top and,
+ * on phones, the fixed view switcher at the bottom. Every offset that had to
+ * clear them was a hand-written constant - body { padding-bottom: 72px } for a
+ * bar that actually measures 69, and nothing at all for scroll anchoring.
+ *
+ * The cost of the missing one was measurable: scrollIntoView({block:'start'})
+ * left 175px of its target behind the header, and block:'end' left 69px behind
+ * the bottom bar. "Show me this transaction" scrolled to a row you could not
+ * see. scroll-padding is the native fix and it covers EVERY scroll - anchors,
+ * focus moves, and the browser's own - but it needs a number, and the only
+ * honest number is the measured one.
+ *
+ * So the bars are measured once per render and published as custom properties;
+ * CSS composes the rest. One source, so a bar that changes height (a longer
+ * label, a wrapped row, a notch) can never leave an offset stale.
+ */
+export function syncLayoutInsets() {
+  if (typeof document === 'undefined' || !document.documentElement) return;
+  const root = document.documentElement;
+  const px = (n) => Math.round(n) + 'px';
+  const height = (sel) => {
+    const node = document.querySelector(sel);
+    if (!node || node.hidden) return 0;
+    const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+    return rect ? rect.height : 0;
+  };
+  const stackH = height('.topbar-stack');
+  const topbarH = height('.topbar');
+  root.style.setProperty('--stack-h', px(stackH));
+  root.style.setProperty('--topbar-h', px(topbarH));
+  // How far the header may scroll away on a phone: only as far as leaves
+  // something pinned. On the first-run screen there are no statements yet, so
+  // the period bar has nothing to select and collapses to zero height - and
+  // detaching by the topbar's full height there would scroll the ENTIRE header
+  // away, taking the Add button with it, on the one screen whose only job is
+  // adding a statement. Nothing to pin means nothing detaches.
+  const pinnable = stackH - topbarH;
+  root.style.setProperty('--topbar-detach', px(pinnable > 8 ? topbarH : 0));
+  // Only the bottom bar that is actually docked counts. On desktop the switcher
+  // sits inside the period bar and covers nothing, so the inset must be zero
+  // rather than the height of a bar that is not in the way. The class alone is
+  // not the test - it is set at every width; being fixed is what makes the bar
+  // an obstacle, so that is what is asked.
+  const dock = document.querySelector('.ledger-switch');
+  const docked =
+    dock && !dock.hidden && typeof getComputedStyle === 'function'
+      ? getComputedStyle(dock).position === 'fixed'
+      : false;
+  root.style.setProperty('--dock-bottom', px(docked ? height('.ledger-switch') : 0));
+  // The bottom banner is chrome too, and the page reserved a hardcoded 132px
+  // for it. Measured at 375px it stands 217px tall - the mobile layout turns it
+  // into a three-row grid - so 63px of content sat under a banner the layout
+  // believed it had cleared. It is only ever one at a time (bannerAlreadyShown
+  // enforces that), so the tallest visible one is the answer.
+  // (A banner used to be measured here so the page could reserve room beneath a
+  // FIXED bar. The notice banners now sit in the document flow, so they occupy
+  // their own space and there is nothing left to reserve - the measurement, and
+  // the class of bug where the reservation and the real height drift apart,
+  // both went with the floating position.)
+}
+
+/* THE scroll-affordance rule for horizontal strips.
+ *
+ * A row that scrolls sideways has to say so. Both of the app's strips (the
+ * category chips, the account slicer) ended in a hard vertical cut with no
+ * fade, no arrow and no guaranteed part-chip - the transaction filters measured
+ * 1124px of chips in a 347px row with the tenth chip starting at exactly the
+ * clipping edge, so a whole category sat invisible behind a clean straight line.
+ *
+ * This marks which side has more, and CSS fades that side only. Marking both
+ * sides unconditionally would be a decoration; marking the real state is
+ * information. Idempotent, so calling it again after a re-render is free.
+ */
+export function markScrollAffordance(node) {
+  if (!node || typeof node.addEventListener !== 'function') return node;
+  node.classList.add('hscroll');
+  const paint = () => {
+    const slack = node.scrollWidth - node.clientWidth;
+    if (slack <= 2) {
+      node.removeAttribute('data-overflow');
+      return;
+    }
+    const atStart = node.scrollLeft <= 2;
+    const atEnd = node.scrollLeft >= slack - 2;
+    node.setAttribute('data-overflow', atStart ? 'end' : atEnd ? 'start' : 'both');
+  };
+  if (!node._affordanceBound) {
+    node._affordanceBound = true;
+    node.addEventListener('scroll', paint, { passive: true });
+    if (typeof ResizeObserver === 'function') {
+      // The strip's own width changes with the card, and its content changes
+      // with the period. Either can turn a scrolling row into a complete one.
+      new ResizeObserver(paint).observe(node);
+    }
+  }
+  paint();
+  // A strip is usually marked at the moment it is built - before it is in the
+  // document and before its chips are in it - where both widths read 0 and the
+  // row looks complete. ResizeObserver does not help: adding children does not
+  // change the container's own box, so it never fires a second time. One frame
+  // later the row is attached, filled and measurable.
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(paint);
+  return node;
+}
+
+/* THE modal contract. Every overlay in the app, not just the ones that happen
+ * to share a factory.
+ *
+ * Measured on the live app before this existed, with a dialog open:
+ *   document.activeElement            BODY  (focus never entered the dialog)
+ *   background buttons still tabbable 51
+ *   #app aria-hidden                  absent
+ *   body overflow                     visible (the page scrolled underneath)
+ *   Escape                            did nothing
+ *   .to-top at the pointer            hit-tested ON TOP of the backdrop
+ *
+ * Escape was implemented six times elsewhere - the info popover, the chart
+ * tooltip, the Activity narrow, the row detail, the plan editor, the export
+ * menu - and not once on the surface where it is most expected.
+ *
+ * Three overlays existed, built three ways: the shared openModal path, the
+ * passphrase prompt (its own construction, and the most security-sensitive
+ * dialog in the app), and the import progress box. They now all enter through
+ * here. `dismissible: false` is for the progress box, which is deliberately
+ * not escapable - it still gets focus containment and an inert background.
+ */
+const FOCUSABLE_SELECTOR =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
+
+const modalStack = [];
+
+export function enterModal(overlay, opts = {}) {
+  if (typeof document === 'undefined' || !overlay) return () => {};
+  const {
+    dismissible = true,
+    onDismiss = null,
+    returnFocus: requestedReturnFocus = null,
+  } = opts;
+  const box = overlay.querySelector('[role="dialog"]') || overlay.firstElementChild || overlay;
+  const returnFocus =
+    requestedReturnFocus ||
+    (document.activeElement && document.activeElement !== document.body ? document.activeElement : null);
+
+  if (box && !box.getAttribute('aria-modal')) box.setAttribute('aria-modal', 'true');
+  document.body.classList.add('modal-open');
+
+  // ORDER MATTERS, twice over. Focus moves BEFORE the background is hidden,
+  // because a browser refuses to apply aria-hidden to a subtree that still
+  // holds focus. And it moves synchronously first: deferring to a frame alone
+  // left activeElement on the opener, because the click that opened the dialog
+  // was still settling.
+  const first = box.querySelector(FOCUSABLE_SELECTOR);
+  const target = first || box;
+  if (!first && box.tabIndex < 0) box.tabIndex = -1;
+  const takeFocus = () => {
+    if (!overlay.isConnected || box.contains(document.activeElement)) return;
+    try {
+      target.focus({ preventScroll: true });
+    } catch {
+      /* nothing focusable; the Tab handler below still holds focus in */
+    }
+  };
+  takeFocus();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(takeFocus);
+
+  const app = document.getElementById('app');
+  if (app) app.setAttribute('aria-hidden', 'true');
+
+  const onKey = (e) => {
+    if (!overlay.isConnected) return;
+    if (modalStack[modalStack.length - 1] !== entry) return;
+    if (e.key === 'Escape' && dismissible) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onDismiss) onDismiss();
+      else release();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const items = [...box.querySelectorAll(FOCUSABLE_SELECTOR)].filter((n) => {
+      const r = n.getBoundingClientRect();
+      return r.width > 0 || r.height > 0;
+    });
+    if (!items.length) {
+      e.preventDefault();
+      return;
+    }
+    const head = items[0];
+    const tail = items[items.length - 1];
+    const active = document.activeElement;
+    // Wrap at both ends, and catch focus having escaped entirely - a re-render
+    // can remove the node that had it.
+    if (!box.contains(active)) {
+      e.preventDefault();
+      (e.shiftKey ? tail : head).focus();
+    } else if (e.shiftKey && active === head) {
+      e.preventDefault();
+      tail.focus();
+    } else if (!e.shiftKey && active === tail) {
+      e.preventDefault();
+      head.focus();
+    }
+  };
+
+  let released = false;
+  function release() {
+    if (released) return;
+    released = true;
+    document.removeEventListener('keydown', onKey, true);
+    const at = modalStack.indexOf(entry);
+    if (at >= 0) modalStack.splice(at, 1);
+    // Only the last modal out restores the page.
+    if (!modalStack.length) {
+      document.body.classList.remove('modal-open');
+      if (app) app.removeAttribute('aria-hidden');
+    }
+    if (returnFocus && document.contains(returnFocus)) {
+      try {
+        returnFocus.focus({ preventScroll: true });
+      } catch {
+        /* the opener may have been re-rendered away; nothing to return to */
+      }
+    }
+  }
+
+  const entry = { overlay, release };
+  modalStack.push(entry);
+  document.addEventListener('keydown', onKey, true);
+  return release;
+}
+
+/* THE reader for "what is this transaction called".
+ *
+ * Two ledgers, two record shapes: a card row carries displayName/description, a
+ * bank row carries counterpartyLabel. The transaction list knew that; the
+ * dialogs did not, and each had written its own guess.
+ *
+ * Measured, before this: opening "+ Custom label" on ANY bank transaction gave
+ * a dialog headed
+ *
+ *     Custom label “”
+ *
+ * - an empty quoted name, on every bank row in the app, because the dialog
+ * read displayName || description and a bank row has neither. The card row
+ * beside it read "Custom label “Cannonball Cafe”" correctly. One reader, so a
+ * dialog can no longer disagree with the row that opened it.
+ */
+export function transactionName(row) {
+  if (!row) return '';
+  const first = (s) => String(s || '').split(',')[0].replace(/\s+/g, ' ').trim();
+  // narrative comes first on a bank row: it is the finished sentence
+  // ("Transfer to Senior (via ACH)"), already parsed, cased and comma-cut, so
+  // reading it here keeps a row and the dialog it opens naming the transaction
+  // identically - which is the whole reason this reader exists.
+  return (
+    first(row.narrative) ||
+    first(row.displayName) ||
+    first(row.counterpartyLabel) ||
+    first(row.description) ||
+    ''
+  );
 }

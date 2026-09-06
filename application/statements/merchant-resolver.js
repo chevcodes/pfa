@@ -28,7 +28,7 @@ import {
   compileMerchantIntelligence,
   resolveMerchant,
 } from '../../settings/merchant-intelligence.js';
-import { requireCtx } from '../core/shared-helpers.js';
+import { parseTransferNarrative, requireCtx } from '../core/shared-helpers.js';
 
 /* -----------------------------------------------------------------------------
  *  PUBLIC CONTRACT
@@ -129,18 +129,14 @@ import { requireCtx } from '../core/shared-helpers.js';
 // so the incidental-institution strip only ever touches true institutions.
 const DEFAULT_INSTITUTION_SECTOR_RE = /financial\s*-\s*(bank|credit union|building society)/i;
 
-// The 'bank' profile's leading/trailing strips - the exact chain
-// normaliseCounterparty runs today, lifted verbatim so behaviour is unchanged.
+// The 'bank' profile's leading/trailing strips. This used to write the chain
+// out by hand; it now delegates to the ONE shared narrative parser
+// (shared-helpers.js), which is the same parser the counterparty reader and the
+// Accounts list use. Three hand-written copies had already drifted apart - only
+// some of them understood a channel code in front of "Transfer", or "trf from"
+// as well as "trf to" - so a channel taught to one was invisible to the others.
 function bankPrefixStrip(cleaned) {
-  return String(cleaned || '')
-    .replace(/^(?:[A-Z]{2,5}\s+)?transfer\s+(to|from)\s+/i, '')
-    .replace(/^trf\s+(to|from):?\s+/i, '')
-    .replace(/^\d{2,}[,\s-]+/, '') // leading reference group ("12345 ", "12, ")
-    .replace(/^\d{4,}-/, '') // "1234-" style prefix
-    .replace(/[\s,-]+\d{3,}\s*$/, '') // trailing account tail
-    .replace(/[\s,-]+$/, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  return parseTransferNarrative(cleaned).party;
 }
 
 function firstSegmentLower(s) {

@@ -41,7 +41,7 @@
     },
     {
       "canonicalName": "Hi-Lo Food Stores",
-      "aliases": ["^hi-?lo\\b", "^hi-?lo\\s*food", "^hi-?lo\\s*-"],
+      "aliases": ["^hi[\\s-]?lo\\b", "^hi[\\s-]?lo\\s*food", "^hi[\\s-]?lo\\s*-"],
       "brand": "Hi-Lo",
       "parentOrganisation": "GK Foods & Services Ltd (GraceKennedy)",
       "merchantGroup": "Hi-Lo",
@@ -53,7 +53,7 @@
       "confidence": "high",
       "ownershipVerified": true,
       "website": "hilofoodstoresja.com",
-      "notes": "Division of GK Foods, wholly-owned by GraceKennedy since 1984. Alias anchored to segment start so a trailing \"-Hilo\" location tail (e.g. Thiiah's Juices -Hilo) is not mis-grouped as Hi-Lo.",
+      "notes": "Division of GK Foods, wholly-owned by GraceKennedy since 1984. Alias anchored to segment start so a trailing \"-Hilo\" location tail (e.g. Thiiah's Juices -Hilo) is not mis-grouped as Hi-Lo. The separator is a class, not a literal hyphen, because the brand is printed both ways (\"HI-LO - MANOR PARK\" and \"HI LO-MANOR PARK\").",
       "reviewRequired": false,
       "sourceEvidence": {
         "transaction": "observed from users",
@@ -63,8 +63,32 @@
       }
     },
     {
+      "canonicalName": "Progressive Foods",
+      "aliases": ["progressive\\s*foods", "progressive\\s*grocers"],
+      "brand": "Progressive Foods",
+      "parentOrganisation": "Progressive Grocers of Jamaica Ltd - independent",
+      "merchantGroup": "Progressive Foods",
+      "businessType": "Supermarket",
+      "category": "Groceries",
+      "sector": "Retail - Grocery",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": true,
+      "website": "pgjamaica.com",
+      "notes": "Locally owned supermarket chain founded 1999, 30+ branches across Kingston and St Catherine. One entry covers every branch: the branch tail after the hyphen is cut by the shared branch rule before matching, so PTMORE and PORT group here rather than forming separate merchants.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": [
+          "pgjamaica.com / pgj.world (Progressive Grocers of Jamaica Limited, founded 1999, 30+ store locations)",
+          "Jamaica Beacon Media 2024 (Sing Chin, founder of Super Valu Group and co-founder of Progressive)"
+        ]
+      }
+    },
+    {
       "canonicalName": "Loshusan Supermarket",
-      "aliases": ["^loshusan"],
+      "aliases": ["loshusan"],
       "brand": "Loshusan",
       "parentOrganisation": "Loshusan family",
       "merchantGroup": "Loshusan",
@@ -76,11 +100,14 @@
       "confidence": "high",
       "ownershipVerified": true,
       "website": "",
-      "notes": "Independent Kingston 6 supermarket. Alias anchored to segment start so a person named Loshusan (e.g. \"Michelle Loshusan and...\") is not mis-grouped as the supermarket.",
+      "notes": "Independent Kingston 6 supermarket at Barbican. The alias is deliberately NOT anchored: card charges are also printed under the registered company name, which carries a given name in front of Loshusan. That form is the same supermarket, so it must group here rather than read as a private person.",
       "reviewRequired": false,
       "sourceEvidence": {
         "transaction": "observed from users",
-        "research": ["gleaner 2025 Monarch pharmacies acquired by Fontana; ex-Loshusan/Gerk Ltd"]
+        "research": [
+          "gleaner 2025 Monarch pharmacies acquired by Fontana; ex-Loshusan/Gerk Ltd",
+          "jamaicaindex.com company listing (Loshusan Vincent & Sons Ltd, 1 Barbican Rd, Kingston 6)"
+        ]
       }
     },
     {
@@ -626,7 +653,15 @@
     },
     {
       "canonicalName": "TransJamaican Highway",
-      "aliases": ["transjam", "transjamaican", "highway\\s*2000", "my\\s*t-?tag", "t-?tag"],
+      "aliases": [
+        "transjam",
+        "transjamaican",
+        "highway\\s*2000",
+        "my\\s*t-?tag",
+        "t-?tag",
+        "jio-?\\s*e-?tag",
+        "jamaican?\\s*infrastructure\\s*operator"
+      ],
       "brand": "TransJamaican Highway",
       "parentOrganisation": "TransJamaican Highway Ltd (JSE:TJH), with Jamaica Infrastructure Operators (JIO) as operator",
       "merchantGroup": "Toll Roads",
@@ -638,13 +673,14 @@
       "confidence": "high",
       "ownershipVerified": true,
       "website": "transjamhighways.com",
-      "notes": "East-West Leg of Highway 2000 (T1), Jamaica's first toll road - Portmore, Spanish Town, Vineyards and May Pen plazas. Distinct from the North-South Highway (T3), which is a separate entry. Card charges are usually T-Tag account top-ups (via the My T-Tag app, website, or agents); high-frequency commuter cost.",
+      "notes": "East-West Leg of Highway 2000 (T1), Jamaica's first toll road - Portmore, Spanish Town, Vineyards and May Pen plazas. Distinct from the North-South Highway (T3), which is a separate entry. Card charges are usually T-Tag account top-ups (via the My T-Tag app, website, or agents); high-frequency commuter cost. Top-ups are billed by the operator, so the descriptor may name JIO rather than the concessionaire.",
       "reviewRequired": false,
       "sourceEvidence": {
         "transaction": "proactively added for future-user coverage; not in the attached dataset",
         "research": [
           "transjamhighways.com (TransJamaican Highway Ltd, concessionaire of Highway 2000 East-West / T1)",
-          "tollguru.com/jamaica-toll (East-West operated by TransJamaican Highway Ltd with Jamaica Infrastructure Operators; T-Tag RFID)"
+          "tollguru.com/jamaica-toll (East-West operated by TransJamaican Highway Ltd with Jamaica Infrastructure Operators; T-Tag RFID)",
+          "transjamhighways.com FAQ (the T-Tag is issued by Jamaican Infrastructure Operator Limited (JIO) on behalf of TransJamaican Highway Limited)"
         ]
       }
     },
@@ -865,7 +901,7 @@
     },
     {
       "canonicalName": "Flow Jamaica",
-      "aliases": ["\\bflow\\b", "cable\\s*&?\\s*wireless"],
+      "aliases": ["\\bflow\\b", "cable\\s*&?\\s*wireless", "columbus\\s*communications"],
       "brand": "Flow",
       "parentOrganisation": "Cable & Wireless / Liberty Latin America",
       "merchantGroup": "Flow",
@@ -877,11 +913,14 @@
       "confidence": "high",
       "ownershipVerified": true,
       "website": "discoverflow.co",
-      "notes": "Cable & Wireless Jamaica + Columbus trading as FLOW.",
+      "notes": "Cable & Wireless Jamaica + Columbus trading as FLOW. A bill payment may be printed under the legal entity Columbus Communications Jamaica Ltd rather than the Flow brand.",
       "reviewRequired": false,
       "sourceEvidence": {
         "transaction": "observed from users",
-        "research": ["our.org.jm OUR (Cable & Wireless / Columbus trading as FLOW)"]
+        "research": [
+          "our.org.jm OUR (Cable & Wireless / Columbus trading as FLOW)",
+          "bnamericas.com company profile (Columbus Communications Jamaica Ltd. trades as Flow Jamaica; subsidiary of Liberty Latin America)"
+        ]
       }
     },
     {
@@ -1012,7 +1051,7 @@
     },
     {
       "canonicalName": "National Water Commission",
-      "aliases": ["\\bnwc\\b", "national\\s*water"],
+      "aliases": ["\\bnwcj?\\b", "national\\s*water"],
       "brand": "NWC",
       "parentOrganisation": "National Water Commission",
       "merchantGroup": "NWC",
@@ -1201,6 +1240,30 @@
       "sourceEvidence": {
         "transaction": "observed from users",
         "research": []
+      }
+    },
+    {
+      "canonicalName": "Liguanea Drug & Garden Centre",
+      "aliases": ["liguanea\\s*drug"],
+      "brand": "Liguanea Drug & Garden Centre",
+      "parentOrganisation": "Liguanea Drug & Garden Centre - independent",
+      "merchantGroup": "Liguanea Drug & Garden Centre",
+      "businessType": "Pharmacy",
+      "category": "Pharmacy & Health",
+      "sector": "Healthcare - Pharmacy",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": false,
+      "website": "",
+      "notes": "Pharmacy at Liguanea Plaza, Old Hope Road, Kingston 6, trading since 1989; an NHF/JADEP pharmacy that also sells garden and wellness goods. Distinct from Liguanea Lane Pharmacy, which is a separate entry.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": [
+          "pharmacydirectoryjm.com NHF/JADEP pharmacy directory (Liguanea Drug & Garden Centre)",
+          "findyello.com Jamaica listing (Liguanea Drug & Gdn Cen, Kingston 6)"
+        ]
       }
     },
     {
@@ -1938,7 +2001,7 @@
       "parentOrganisation": "Boss Destinations Limited",
       "merchantGroup": "Boss Destinations",
       "businessType": "Restaurant/Bar",
-      "category": "Dining & Takeout",
+      "category": "Entertainment & Recreation",
       "sector": "Food Service - Restaurant",
       "country": "JM",
       "categoryConfidence": "medium",
@@ -2851,6 +2914,30 @@
       }
     },
     {
+      "canonicalName": "Ziggy's Restaurant & Lounge",
+      "aliases": ["zig+y'?s"],
+      "brand": "Ziggy's",
+      "parentOrganisation": "Ziggy's Restaurant & Lounge - independent",
+      "merchantGroup": "Ziggy's",
+      "businessType": "Restaurant",
+      "category": "Dining & Takeout",
+      "sector": "Food Service - Restaurant",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": false,
+      "website": "",
+      "notes": "Jamaican restaurant and lounge at Manor Centre, Constant Spring Road, Kingston 8; dine-in, takeout and delivery. The alias allows a repeated letter because the name is printed with an extra g on some statements.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": [
+          "findglocal.com listing (Ziggy's Manor Centre, Shop 15 Manor Centre, 195 Constant Spring Road, Kingston 8)",
+          "connectingjamaica.com directory (Ziggy Restaurant & Lounge; Jamaican cuisine, dine in, take out and delivery)"
+        ]
+      }
+    },
+    {
       "canonicalName": "Macau Gaming Lounge & Bar",
       "aliases": ["macau"],
       "brand": "Macau Gaming Lounge",
@@ -3463,6 +3550,7 @@
     {
       "canonicalName": "Google",
       "aliases": [
+        "^google\\b",
         "google\\s*\\*",
         "google\\s*play",
         "youtubepremium",
@@ -3482,7 +3570,7 @@
       "confidence": "high",
       "ownershipVerified": true,
       "website": "google.com",
-      "notes": "Collapses Google digital charges - 'GOOGLE *<service>', Google Play, YouTube Premium, Google One/storage and Google Cloud - into one group. Underlying purchase varies (apps, storage, media) but all are Google-billed digital services.",
+      "notes": "Collapses Google digital charges - 'GOOGLE *<service>', Google Play, YouTube Premium, Google One/storage and Google Cloud - into one group. Underlying purchase varies (apps, storage, media) but all are Google-billed digital services. Some charges carry a bare reference token instead of the '*service' suffix, so the segment-anchored alias catches the shape the named-service aliases miss.",
       "reviewRequired": false,
       "sourceEvidence": {
         "transaction": "proactively added for future-user coverage; not in the attached dataset",
@@ -4967,6 +5055,27 @@
           "bbb.org business profile (legal entity iHerb LLC, Irvine CA; Reza Faraee Member Manager, Emun Zabihi CEO)",
           "pitchbook.com company profile (IPO registration announced 30-Jun-2026, $500M)"
         ]
+      }
+    },
+    {
+      "canonicalName": "Taurus Garden",
+      "aliases": ["taurus\\s*garden"],
+      "brand": "Taurus Garden",
+      "parentOrganisation": "Taurus Garden - independent",
+      "merchantGroup": "Taurus Garden",
+      "businessType": "Restaurant (Chinese)",
+      "category": "Dining & Takeout",
+      "sector": "Food Service - Restaurant",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": false,
+      "website": "",
+      "notes": "Chinese and Asian-fusion restaurant in Kingston.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": ["supplied by the product owner as known Jamaican merchant data"]
       }
     },
     {
@@ -6732,6 +6841,27 @@
       }
     },
     {
+      "canonicalName": "Systems & Innovations",
+      "aliases": ["systems?\\s*(?:&|and)\\s*innovations?"],
+      "brand": "Systems & Innovations",
+      "parentOrganisation": "Systems & Innovations Ltd - independent",
+      "merchantGroup": "Systems & Innovations",
+      "businessType": "Electronics Retail",
+      "category": "Retail & Department",
+      "sector": "Retail - Electronics",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": false,
+      "website": "",
+      "notes": "Kingston electronics and technology store: consumer electronics, computer accessories and office supplies.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": ["supplied by the product owner as known Jamaican merchant data"]
+      }
+    },
+    {
       "canonicalName": "Tankweld",
       "aliases": ["tank\\s*-?weld", "tankweld"],
       "brand": "Tank-Weld",
@@ -7418,6 +7548,53 @@
       "sourceEvidence": {
         "transaction": "observed from users",
         "research": []
+      }
+    },
+    {
+      "canonicalName": "Super Eleven",
+      "aliases": ["super\\s*eleven"],
+      "brand": "Super Eleven",
+      "parentOrganisation": "Super Eleven - independent",
+      "merchantGroup": "Super Eleven",
+      "businessType": "Department Store",
+      "category": "Retail & Department",
+      "sector": "Retail - Department",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": false,
+      "website": "",
+      "notes": "Variety and department store at Hung Way Shopping Mall, Municipal Boulevard, Portmore; homeware, decor and general merchandise. Not a supermarket despite the Super prefix, so it sits in Retail rather than Groceries.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": [
+          "portmore.biz business listing (Super Eleven, Shop 9 Hung Way Shopping Mall, Lot 3 Municipal Boulevard, Cookson Pen, Portmore)"
+        ]
+      }
+    },
+    {
+      "canonicalName": "MyCart Express",
+      "aliases": ["mycart\\s*express", "my\\s*cart\\s*express"],
+      "brand": "MyCart Express",
+      "parentOrganisation": "MyCart Express - independent",
+      "merchantGroup": "MyCart Express",
+      "businessType": "Freight Forwarder",
+      "category": "Courier & Shipping",
+      "sector": "Logistics - Courier",
+      "country": "JM",
+      "categoryConfidence": "high",
+      "confidence": "high",
+      "ownershipVerified": false,
+      "website": "mycartexpress.com",
+      "notes": "Jamaican courier and package-forwarding service with islandwide branches; customers are given a US shipping address and collect at a chosen branch. Ownership left unverified: no corporate filing was found, only the company's own channels.",
+      "reviewRequired": false,
+      "sourceEvidence": {
+        "transaction": "observed from users",
+        "research": [
+          "app.mycartexpress.com (MyCart Express: free US shipping address, branch pickup, package tracking)",
+          "pitchbook.com company profile (MyCart Express, courier and shipping services, headquartered in Jamaica)"
+        ]
       }
     },
     {

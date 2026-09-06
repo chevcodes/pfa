@@ -36,12 +36,18 @@ import {
   addDaysIso,
   isoDay,
   detectSustainedRise,
+  withExactFigures,
+  RECONCILE_MEANS,
 } from '../core/shared-helpers.js';
-import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
+import { renderReport, renderBankReport, renderOverviewReport,
+  renderPlanSection,
+} from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
 
 import { capForPrint } from './reporting-core.js';
 import { detectIncompleteMonth, periodCoverageNote } from './reporting-periods.js';
+import { makeForeignMoney } from '../core/money-format.js';
+import { buildPlanPrintModel } from './plan-print.js';
 /* ===========================================================================
  *  Print-model orchestration + report driver  (Stage 5 of the split)
  *  --------------------------------------------------------------------------- 
@@ -67,7 +73,6 @@ export function createPrintReports(ctx) {
       'isReview',
       'catColour',
       'money0',
-      'moneyShort',
       'pct',
       'monthLabel',
       'monthShort',
@@ -98,7 +103,6 @@ export function createPrintReports(ctx) {
     isReview,
     catColour,
     money0,
-    moneyShort,
     pct,
     monthLabel,
     monthShort,
@@ -110,11 +114,38 @@ export function createPrintReports(ctx) {
     cleanCounterparty,
     overviewModel,
   } = ctx;
+  const foreignMoney = makeForeignMoney();
+  const generatedOn = () => formatDisplayDate(new Date().toISOString().slice(0, 10));
+  const periodText = (period) =>
+    !period || !period.from || !period.to
+      ? period ? period.label : 'All time'
+      : period.from === period.to
+        ? monthShort(period.from)
+        : `${monthShort(period.from)} to ${monthShort(period.to)}`;
 
   // Build the report for whichever ledger is on screen and return true if it was
   // populated. Shared by the Export menu AND the browser's own Ctrl+P (via the
   // beforeprint listener in wireChrome), so both build the correct report - the
   // fix for a raw Ctrl+P producing a blank page because nothing built the report.
+  function buildPlanReportSection() {
+    if (typeof ctx.planModel !== 'function') return null;
+    try {
+      const built = ctx.planModel();
+      if (!built) return null;
+      const model = buildPlanPrintModel({
+        plan: built.raw,
+        model: built.model,
+        cfg: state.cfg,
+        meta: { period: resolved() ? resolved().label : '' },
+      });
+      return renderPlanSection(document, model);
+    } catch (err) {
+      // A report must still print if the plan cannot be built.
+      console.warn('Plan section skipped in report:', err);
+      return null;
+    }
+  }
+
   function buildReportForCurrentView() {
     // Round 3: Right Now shows both ledgers together, exactly like Overview,
     // so printing from it produces the SAME combined report Overview already
@@ -148,11 +179,25 @@ export function createPrintReports(ctx) {
       )
     );
     try {
-      const node = overviewView
-        ? renderOverviewReport(document, buildOverviewPrintModel())
-        : accountsView
-          ? renderBankReport(document, buildBankPrintModel())
-          : renderReport(document, buildPrintModel());
+      // A printed report is a deliberate act of sharing REAL figures, so the
+      // whole model build runs with the privacy gate suspended (privacy.js).
+      // Private view is a screen state, never a data redaction - this is the
+      // one place that exemption is declared, rather than each formatter
+      // re-asserting it for itself.
+      const node = withExactFigures(() => {
+        const report = overviewView
+          ? renderOverviewReport(document, buildOverviewPrintModel())
+          : accountsView
+            ? renderBankReport(document, buildBankPrintModel())
+            : renderReport(document, buildPrintModel());
+        // The plan belongs on every printed report, not only the one printed
+        // from the Plan tab: it is the intention the rest of the figures are
+        // being measured against. Appended, never substituted, and silently
+        // skipped when there is not enough data to build one.
+        const planSection = buildPlanReportSection();
+        if (planSection) report.appendChild(planSection);
+        return report;
+      });
       host.appendChild(node);
     } catch (err) {
       console.error(err);
@@ -277,7 +322,7 @@ export function createPrintReports(ctx) {
     return {
       app: state.cfg.app.name,
       scope,
-      generated: new Date().toLocaleString(state.cfg.currency.locale),
+      generated: generatedOn(),
       currencyCode: state.cfg.currency.code,
       privacy: 'Generated on this device. Your statement data never leaves it.',
       // C3 (S20): same USD note as the Overview model, keyed off a.foreignAccounts
@@ -322,7 +367,7 @@ export function createPrintReports(ctx) {
       statements: stmts,
       reconNote: stmts.length
         ? allReconciled
-          ? 'Every imported statement reconciles: opening balance plus each transaction reaches the printed closing balance to the cent.'
+          ? `Every imported statement reconciles. ${RECONCILE_MEANS}`
           : 'Some statements did not fully reconcile. The result column shows the first difference found.'
         : null,
       filtersText: one
@@ -338,8 +383,8 @@ export function createPrintReports(ctx) {
     const p = resolved();
     return {
       app: state.cfg.app.name,
-      period: p ? p.label : 'All time',
-      generated: new Date().toLocaleString(state.cfg.currency.locale),
+      period: periodText(p),
+      generated: generatedOn(),
       currencyCode: state.cfg.currency.code,
       privacy: 'Generated on this device. Your statement data never leaves it.',
       hasCard: !!roll.hasCard,
@@ -373,7 +418,7 @@ export function createPrintReports(ctx) {
         net: (tr.net >= 0 ? '+' : '') + bankMoney(tr.net),
       })),
       trendNote: roll.hasCard
-        ? 'Spending each month is money leaving your accounts plus card purchases. Own-account transfers and card payments are excluded, so nothing is counted twice.'
+        ? 'Spending each month is money leaving your accounts plus card purchases and fees. Own-account transfers and card payments are excluded, so nothing is counted twice.'
         : 'Cash outflow each month, with transfers between your own accounts excluded.',
       outflows: (ov.topOutflows || []).map((g) => ({
         label: cleanCounterparty(g.label),
@@ -408,7 +453,7 @@ export function createPrintReports(ctx) {
     const f = state.filter;
 
     const parts = [];
-    if (f.month !== 'all') parts.push(monthLabel(f.month));
+    if (f.month !== 'all') parts.push(monthShort(f.month));
     if (f.category !== 'all') parts.push(isReview(f.category) ? 'To review' : f.category);
     if (f.merchant) parts.push(f.merchantLabel || f.merchant);
     if (f.kind !== 'all')
@@ -505,7 +550,7 @@ export function createPrintReports(ctx) {
     const txns = rows.map((r) => ({
       date: formatDisplayDate(r.date),
       description: r.displayName || r.description,
-      foreign: r.foreign || '',
+      foreign: foreignMoney(r.foreign),
       category: isReview(r.category) ? 'To review' : r.category,
       colour: catColour(r.category),
       kind: kindLabel[r.kind] || r.kind,
@@ -515,11 +560,11 @@ export function createPrintReports(ctx) {
 
     return {
       app: state.cfg.app.name,
-      period: a.label,
+      period: periodText(p),
       filtersText: parts.length
         ? `Filtered to: ${parts.join(' · ')}`
         : 'All transactions in this period.',
-      generated: new Date().toLocaleString(state.cfg.currency.locale),
+      generated: generatedOn(),
       currencyCode: state.cfg.currency.code,
       privacy: 'Generated on this device. Your statement data never leaves it.',
       coverageNote: periodCoverageNote(state.coverage, p),
@@ -542,9 +587,10 @@ export function createPrintReports(ctx) {
       trend: {
         bars,
         avg: hist || 0,
-        avgLabel: hist ? moneyShort(hist) : null,
         avgMoney: hist ? money0(hist) : null,
-        moneyShort,
+        // Exact-figure axis formatter for the chart's gridlines and average
+        // line - the printed report never shortens money, even on a chart.
+        formatAxisMoney: money0,
         palette: reportChartPalette(),
       },
       categories: cats,

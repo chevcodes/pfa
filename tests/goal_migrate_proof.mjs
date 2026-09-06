@@ -77,11 +77,37 @@ console.log('GOAL MIGRATION PROOF');
     id: 'g1',
     type: 'cushion',
     targetDays: 60,
+    targetMonths: 5,
+    basis: 'expenses',
     trigger: null,
     active: true,
   };
   const once = ensureMigrated(alreadyNew);
   note(once === alreadyNew, 'already-new goal passes through unchanged (idempotent)');
+
+  // A goal saved when the target was a multiple of INCOME carries no basis.
+  // The months the person chose must survive untouched, but the goal has to be
+  // marked so the card can say what those months now measure - a target that
+  // silently changed meaning is the one outcome this migration exists to stop.
+  const fromIncome = { id: 'g3', type: 'cushion', targetMonths: 8, active: true };
+  const rebased = ensureMigrated(fromIncome);
+  note(rebased.targetMonths === 8, 'the months a person chose survive the re-basing exactly');
+  note(
+    rebased.basis === 'expenses' && rebased.rebasedFrom === 'income',
+    'and it is flagged as re-based, so the change is stated rather than silent'
+  );
+  note(ensureMigrated(rebased) === rebased, 'flagging happens once, then it is stable');
+  note(fromIncome.rebasedFrom === undefined, 'the stored goal itself is never mutated');
+  // A cushion saved before the goal measured months has no targetMonths. It is
+  // structurally "new" (no .params), so migrateGoal never sees it - without a
+  // top-up here the engine would read undefined and size the safety pile at
+  // zero. The top-up is additive: everything already saved is carried over.
+  const preMonths = { id: 'g2', type: 'cushion', targetDays: 60, active: true };
+  const topped = ensureMigrated(preMonths);
+  note(
+    topped.targetMonths === 5 && topped.targetDays === 60 && topped.id === 'g2',
+    'a cushion predating months gets the default target, keeping its saved fields'
+  );
   // and migrating an old goal twice is stable
   const old = {
     type: 'runway',

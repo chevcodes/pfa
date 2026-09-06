@@ -8,6 +8,7 @@ import {
   classifyInternalTransfers,
   applyLedgerRules,
   analyseBankActivity,
+  analyseRollup,
   bankFlowOverTime,
   overviewVerdict,
   detectBankStandingDebits,
@@ -31,15 +32,28 @@ import {
   withConfigDefaults,
   DEV_SIGNATURE,
   LOCAL_DEV_HOSTS,
-  MONTHS_SHORT,
+  formatMonthYear,
+  isoToday,
 } from '../core/shared-helpers.js';
 import { compileRules } from '../statements/categorise.js';
 import { compileBrandRules } from '../../settings/category-rules.js';
 import { compileFromRaw } from '../statements/merchant-resolver.js';
+import { migrateGoal } from '../analysis/goal-migrate.js';
+import { evaluateGoal } from '../analysis/goals.js';
+import { makeIntention } from '../analysis/category-intentions.js';
+import { latestValueMovement } from '../analysis/investments.js';
+import { monthlyCostOfLiving } from '../analysis/plan.js';
 import { PERSONAS, PERSONA_LABELS } from './mock-data.js';
-import { hashSeed, makeRng, buildCardLedger, buildBankLedger, ymOf } from './mock-generator.js';
+import {
+  hashSeed,
+  makeRng,
+  buildCardLedger,
+  buildBankLedger,
+  buildInvestmentStatements,
+  monthSequence,
+  ymOf,
+} from './mock-generator.js';
 
-const MON_ABBR = MONTHS_SHORT;
 const MOCK_FLAG_KEY = 'mockPersonaLoaded';
 const IS_LOCAL_DEV = typeof location !== 'undefined' && LOCAL_DEV_HOSTS.includes(location.hostname);
 
@@ -48,13 +62,8 @@ function money(n, currency) {
   return sym + Number(n || 0).toFixed(2);
 }
 
-function monthLabel(ym) {
-  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
-  return m ? `${MON_ABBR[+m[2] - 1]} ${m[1]}` : String(ym || '');
-}
-
 async function loadAnalysisContext() {
-  const res = await fetch(new URL('../settings/config.json', import.meta.url));
+  const res = await fetch(new URL('../../settings/config.json', import.meta.url));
   const cfg = withConfigDefaults(await res.json());
   const compiled = compileRules(cfg.categories);
   const brandRules = compileBrandRules(cfg);
@@ -62,7 +71,7 @@ async function loadAnalysisContext() {
   let resolver = null;
   try {
     const mFile = (cfg.merchants && cfg.merchants.file) || 'jamaica-merchants.json';
-    const mRes = await fetch(new URL('../settings/' + mFile, import.meta.url));
+    const mRes = await fetch(new URL('../../settings/' + mFile, import.meta.url));
     const rawMerchants = await mRes.json();
     const cleanupRules = [];
     for (const r of (cfg.bankDescriptorCleanup && cfg.bankDescriptorCleanup.rules) || []) {
@@ -112,12 +121,11 @@ function buildCardRows(records, ctx) {
 function classifiedBank(bankRecords, persona, ctx) {
   const myAccounts = (persona.accounts || []).map((a) => a.number);
   const cardAccounts = [persona.cardAccount].filter(Boolean);
-  const base = classifyInternalTransfers(bankRecords, myAccounts, cardAccounts, ctx.resolver);
+  const base = classifyInternalTransfers(bankRecords, myAccounts, cardAccounts, ctx.resolver, []);
   return applyLedgerRules(base, {
-    confirmedIncomeIds: new Set(),
-    roundTripIds: new Set(),
-    sharedAccounts: [],
-    householdPayees: [],
+    confirmations: [],
+    sharedAccounts: persona.sharedAccountNumbers || [],
+    householdPayees: persona.householdPayeeNames || [],
   });
 }
 
@@ -146,6 +154,105 @@ function missingSequenceMonths(months) {
     if (cur < last && !set.has(cur)) gaps.push(cur);
   }
   return gaps;
+}
+
+function isoMonthsAgo(n) {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Builds the frozen goal history a real person would have accumulated had
+// they set this goal `createdMonthsAgo` months back and used the app every
+// month since. Computed with the SAME pure engine functions
+// (migrateGoal/evaluateGoal) the real monthly check-in
+// (ui/app-goals.js's checkMonthlyGoalIfDue) uses, fed the persona's own
+// generated month-end JMD balance, so every entry is a genuine reading -
+// never an invented met/not-met flag - and stays byte-consistent with
+// whatever the live goal card would say about the same numbers.
+function goalExpenseBasis(persona, card, bank, ctx) {
+  const cardRows = card ? buildCardRows(card.records, ctx) : [];
+  const cardSummary = summarise(cardRows, {
+    keepUpper: ctx.keepUpper,
+    smallWords: ctx.smallWords,
+    brandRules: ctx.brandRules,
+    merchants: ctx.merchants,
+    fallback: ctx.cfg.special.fallback,
+  });
+  const bankRecords = bank ? classifiedBank(bank.records, persona, ctx) : [];
+  const trend = analyseRollup({
+    bankRecords,
+    cardSpendTotal: 0,
+    cardSpendByMonth: cardSummary.by_month_outflow,
+    cardStatements: [],
+  }).trend;
+  return monthlyCostOfLiving(trend, isoToday());
+}
+
+async function buildGoalHistory(persona, jmdMonthEndBalances, expenseBasis, cfg) {
+  const plan = persona.goalPlan;
+  if (!plan || !jmdMonthEndBalances) return null;
+  const months = monthSequence(persona.months);
+  const monthlyExpenses = Number(expenseBasis && expenseBasis.amount) || 0;
+  const targetMonths = plan.targetMonths || 5;
+  const createdIdx = Math.max(0, persona.months - (plan.createdMonthsAgo || 6));
+  const created = months[createdIdx];
+  const createdAt = `${created.y}-${String(created.m).padStart(2, '0')}-03`;
+  const financeGoal = {
+    type: plan.type || 'runway',
+    params: { targetMonths, basis: 'expenses' },
+    createdAt,
+  };
+  const migrated = migrateGoal(financeGoal);
+  if (!migrated) return { financeGoal, financeGoalLog: [] };
+
+  const log = [];
+  for (let i = createdIdx; i < months.length; i++) {
+    const { y, m } = months[i];
+    const saved = jmdMonthEndBalances[i] == null ? 0 : jmdMonthEndBalances[i];
+    const evaluated = evaluateGoal(
+      migrated,
+      {
+        typicalMonthlyExpenses: monthlyExpenses,
+        liquidNow: saved,
+        expensesMonthsOfData: (expenseBasis && expenseBasis.monthsUsed) || 0,
+      },
+      cfg
+    );
+    if (!evaluated) continue;
+    log.push({
+      month: ymOf(y, m),
+      type: migrated.type,
+      targetDays: migrated.targetDays ?? null,
+      targetMonths: migrated.targetMonths ?? null,
+      targetDate: migrated.targetDate ?? null,
+      amount: migrated.amount ?? null,
+      met: evaluated.progress.met,
+      headline: evaluated.model.detail,
+    });
+  }
+  return { financeGoal, financeGoalLog: log.slice(-24) };
+}
+
+// The persona's combined JMD balance at the end of each month, summed across
+// every JMD account - a foreign-currency account is never blended in, the
+// same discipline analyseBankActivity's own foreignAccounts split holds to.
+// Shared by loadPersona (to feed buildGoalHistory) and verifyPersona (so the
+// console check runs the identical figure the load path would have used).
+function jmdMonthEndBalancesOf(persona, bank) {
+  const jmdAccounts = (persona.accounts || []).filter((a) => !a.currency || a.currency === 'JMD');
+  if (!jmdAccounts.length) return null;
+  const balances = [];
+  for (let i = 0; i < persona.months; i++) {
+    let sum = 0;
+    for (const a of jmdAccounts) {
+      const series = bank.monthlyClosing[a.number];
+      if (series && series[i] != null) sum += series[i];
+    }
+    balances.push(roundMoney(sum));
+  }
+  return balances;
 }
 
 async function verifyPersona(name, overrides = {}) {
@@ -342,7 +449,11 @@ async function verifyPersona(name, overrides = {}) {
   let bankBuilt = null;
   let recsAll = [];
   if (persona.hasBank) {
-    bankBuilt = buildBankLedger(persona, rng);
+    bankBuilt = buildBankLedger(
+      persona,
+      rng,
+      cardBuilt ? cardBuilt.perStatement.map((statement) => statement.payments) : null
+    );
     recsAll = classifiedBank(bankBuilt.records, persona, ctx);
 
     console.group('6. BANK reconciliation + balance-chain invariant');
@@ -507,7 +618,7 @@ async function verifyPersona(name, overrides = {}) {
       coverage,
       bankMoney: money,
       prevLabel: () => 'the previous period',
-      monthLabel,
+      monthLabel: formatMonthYear,
       bankMonthsList,
       onNavigate: () => {},
       onDrillToPayee: () => () => {},
@@ -531,6 +642,53 @@ async function verifyPersona(name, overrides = {}) {
     console.groupEnd();
   }
 
+  if (persona.investmentPlan) {
+    console.group('10. INVESTMENTS (value series + movementTone)');
+    const inv = buildInvestmentStatements(persona, rng);
+    console.table(
+      inv.statements.map((s) => ({
+        periodEnd: s.periodEnd,
+        printedTotal: s.printedTotal,
+        contribution: (s.cashActivity[0] || {}).amount || 0,
+      }))
+    );
+    const movement = latestValueMovement(inv.statements);
+    console.log('latestValueMovement (most recent month vs prior):', movement);
+    console.log(
+      `=> tone: ${movement ? movement.tone : 'n/a'} (watch >= 10% drop excl. contribution, alert >= 20%)`
+    );
+    console.groupEnd();
+  }
+
+  if (persona.goalPlan && persona.hasBank) {
+    console.group('11. GOAL HISTORY (migrateGoal + evaluateGoal, real engine)');
+    const jmdBalances = jmdMonthEndBalancesOf(persona, bankBuilt);
+    const expenseBasis = goalExpenseBasis(persona, cardBuilt, bankBuilt, ctx);
+    const goalHistory = await buildGoalHistory(persona, jmdBalances, expenseBasis, ctx.cfg);
+    console.log('jmdMonthEndBalances:', jmdBalances);
+    console.log('monthlyCostOfLiving (same source as live goal card):', expenseBasis);
+    console.log('financeGoal:', goalHistory && goalHistory.financeGoal);
+    console.table(
+      (goalHistory ? goalHistory.financeGoalLog : []).map((g) => ({
+        month: g.month,
+        met: g.met,
+        headline: g.headline,
+      }))
+    );
+    console.groupEnd();
+  }
+
+  if ((persona.sharedAccountNumbers || []).length && persona.hasBank) {
+    console.group('12. HOUSEHOLD (shared account + payee exclusion)');
+    const householdRows = recsAll.filter((r) => r.household);
+    console.log(
+      'household-tagged rows:',
+      householdRows.length,
+      householdRows.slice(0, 3).map((r) => `${r.date} ${r.description} ${r.signedAmount}`)
+    );
+    console.groupEnd();
+  }
+
   console.groupEnd();
   return { seedStr, seedInt };
 }
@@ -548,6 +706,7 @@ async function hasRealDataPresent() {
   if ((await Store.allStatements()).length) return true;
   if ((await Store.allBankStatements()).length) return true;
   if ((await Store.allCardStatements()).length) return true;
+  if (Store.investmentStatements && (await Store.investmentStatements.all()).length) return true;
   return false;
 }
 
@@ -567,28 +726,99 @@ async function loadPersona(name, overrides = {}) {
   const rng = makeRng(hashSeed(String(overrides.seed || persona.seed)));
 
   await clearPersona(false);
+  // Mark the workspace before the first multi-store write. If a later write
+  // fails (a bad fixture shape, quota issue, or a developer typo), the partial
+  // records are still unmistakably sample data: the next load may replace
+  // them and a real import will clear them instead of mistaking them for the
+  // person's own statements.
+  await Store.setMeta(MOCK_FLAG_KEY, name);
 
+  let cardBuilt = null;
   if (persona.hasCard) {
-    const card = buildCardLedger(persona, rng);
-    await Store.replaceTransactions(card.records);
-    for (const st of card.statements) await Store.putCardStatement(st);
+    cardBuilt = buildCardLedger(persona, rng);
+    await Store.replaceTransactions(cardBuilt.records);
+    for (const st of cardBuilt.statements) await Store.putCardStatement(st);
     await Store.putStatement({
       hash: 'mock-card',
       source_file: 'Mock Card Statements.pdf',
-      period: card.statements[card.statements.length - 1].statementKey,
+      period: cardBuilt.statements[cardBuilt.statements.length - 1].statementKey,
       importedAt: new Date().toISOString(),
     });
     await Store.setMeta('bankCardAccounts', [persona.cardAccount].filter(Boolean));
   }
 
+  let jmdMonthEndBalances = null;
+  let bankBuilt = null;
   if (persona.hasBank) {
-    const bank = buildBankLedger(persona, rng);
-    await Store.replaceBankTransactions(bank.records);
-    for (const st of bank.statements) await Store.putBankStatement(st);
+    bankBuilt = buildBankLedger(
+      persona,
+      rng,
+      cardBuilt ? cardBuilt.perStatement.map((statement) => statement.payments) : null
+    );
+    await Store.replaceBankTransactions(bankBuilt.records);
+    for (const st of bankBuilt.statements) await Store.putBankStatement(st);
     await Store.setMeta(
       'bankMyAccounts',
       (persona.accounts || []).map((a) => a.number)
     );
+
+    jmdMonthEndBalances = jmdMonthEndBalancesOf(persona, bankBuilt);
+  }
+
+  if (persona.sharedAccountNumbers || persona.householdPayeeNames) {
+    await Store.setMeta('bankSharedAccounts', persona.sharedAccountNumbers || []);
+    await Store.setMeta('bankHouseholdPayees', persona.householdPayeeNames || []);
+  }
+
+  if (persona.investmentPlan) {
+    const inv = buildInvestmentStatements(persona, rng);
+    for (const st of inv.statements) await Store.investmentStatements.put(st);
+  }
+
+  if (persona.goalPlan && jmdMonthEndBalances) {
+    const ctx = await loadAnalysisContext();
+    const expenseBasis = goalExpenseBasis(persona, cardBuilt, bankBuilt, ctx);
+    const goalHistory = await buildGoalHistory(
+      persona,
+      jmdMonthEndBalances,
+      expenseBasis,
+      ctx.cfg
+    );
+    if (goalHistory) {
+      await Store.setMeta('financeGoal', goalHistory.financeGoal);
+      await Store.setMeta('financeGoalLog', goalHistory.financeGoalLog);
+    }
+  }
+
+  if (persona.budgetPlan) {
+    const { fixed, setAside, free, groups } = persona.budgetPlan;
+    await Store.setMeta('planTarget', { fixed, setAside, free, v: 2, savedAt: isoToday() });
+    if (groups) await Store.setMeta('planGroups', groups);
+  }
+
+  if (Array.isArray(persona.categoryIntentions)) {
+    for (const it of persona.categoryIntentions) {
+      await Store.categoryIntentions.put(
+        makeIntention({
+          category: it.category,
+          amount: it.amount,
+          kind: 'repeating',
+          effectiveFrom: isoMonthsAgo(persona.months).slice(0, 7),
+        })
+      );
+    }
+  }
+
+  if (persona.manualAsset) {
+    const ma = persona.manualAsset;
+    await Store.manualAssets.put({
+      id: `mock_asset_${name}`,
+      class: ma.class,
+      label: ma.label,
+      amount: ma.amount,
+      kind: ma.kind || 'asset',
+      lastReviewed: isoMonthsAgo(ma.staleMonthsAgo || 0),
+    });
   }
 
   const loadedAt = new Date().toISOString();
@@ -611,12 +841,34 @@ async function clearPersona(reload = true) {
   await Store.clearBankTransactions();
   await Store.clearBankStatements();
   await Store.clearCardStatements();
+  await Store.tags.clear();
+  await Store.transactionSplits.clear();
+  await Store.goals.clear();
+  await Store.forecastSnapshots.clear();
+  if (Store.investmentStatements) await Store.investmentStatements.clear();
+  if (Store.balanceUpdates) await Store.balanceUpdates.clear();
+  if (Store.confirmations) await Store.confirmations.clear();
+  // categoryIntentions and manualAssets were left out here - a persona that
+  // wrote either (loadPersona below now can) would leak into the next
+  // persona, or into "Clear to an empty app", without this.
+  if (Store.categoryIntentions) await Store.categoryIntentions.clear();
+  if (Store.manualAssets) await Store.manualAssets.clear();
   await Store.setMeta('bankCardAccounts', []);
   await Store.setMeta('bankMyAccounts', []);
-  await Store.setMeta('bankConfirmedIncomeIds', []);
-  await Store.setMeta('bankRefundIncomeIds', []);
-  await Store.setMeta('bankRoundTripIds', []);
+  await Store.setMeta('bankSharedAccounts', []);
+  await Store.setMeta('bankHouseholdPayees', []);
+  // financeGoal itself was left out here - only its log was cleared, so a
+  // loaded goal survived "Clear to an empty app" and any persona load after it.
+  await Store.setMeta('financeGoal', null);
+  await Store.setMeta('financeGoalLog', []);
+  await Store.setMeta('financeGoalBoundary', null);
+  await Store.setMeta('planTarget', null);
+  await Store.setMeta('planGroups', null);
+  await Store.setMeta('planDraft', null);
+  await Store.setMeta('accountNames', null);
   await Store.setMeta('firstName', null);
+  await Store.setMeta('firstNameSource', null);
+  await Store.setMeta('lastForecastSnapshotDate', null);
   await Store.setMeta('lastImportedFrom', null);
   await Store.setMeta(MOCK_FLAG_KEY, null);
   if (reload) {
@@ -633,13 +885,13 @@ function mountPersonaSwitcher() {
   host.id = 'pfa-mock-switcher';
   host.setAttribute(
     'style',
-    'position:fixed;left:12px;bottom:12px;z-index:2147483000;font:13px system-ui,Segoe UI,Roboto,sans-serif;color:#10161f;'
+    'position:relative;margin:12px;z-index:auto;font:13px system-ui,Segoe UI,Roboto,sans-serif;color:#10161f;'
   );
 
   const panel = document.createElement('div');
   panel.setAttribute(
     'style',
-    'display:none;width:300px;padding:12px;background:#fff;border:2px dashed #B4460E;border-radius:12px;box-shadow:0 8px 30px rgba(16,24,40,.18);margin-bottom:8px;'
+    'display:none;width:min(300px,calc(100vw - 24px));box-sizing:border-box;padding:12px;background:#fff;border:2px dashed #B4460E;border-radius:12px;box-shadow:0 8px 30px rgba(16,24,40,.18);margin-bottom:8px;'
   );
 
   const title = document.createElement('div');
@@ -654,9 +906,10 @@ function mountPersonaSwitcher() {
   status.setAttribute('style', 'margin-bottom:10px;font-weight:650;');
 
   const select = document.createElement('select');
+  select.name = 'sample-persona';
   select.setAttribute(
     'style',
-    'width:100%;padding:8px;border:1px solid #d0d5dd;border-radius:8px;margin-bottom:8px;'
+    'width:100%;min-height:44px;padding:8px;border:1px solid #d0d5dd;border-radius:8px;margin-bottom:8px;'
   );
   for (const key of Object.keys(PERSONAS)) {
     const opt = document.createElement('option');
@@ -682,14 +935,14 @@ function mountPersonaSwitcher() {
   loadBtn.textContent = 'Load this sample customer';
   loadBtn.setAttribute(
     'style',
-    'width:100%;padding:9px;border:0;border-radius:8px;background:#0F6CBD;color:#fff;font-weight:650;cursor:pointer;margin-bottom:8px;'
+    'width:100%;min-height:44px;padding:9px;border:0;border-radius:8px;background:#0F6CBD;color:#fff;font-weight:650;cursor:pointer;margin-bottom:8px;'
   );
 
   const clearBtn = document.createElement('button');
   clearBtn.textContent = 'Clear to an empty app';
   clearBtn.setAttribute(
     'style',
-    'width:100%;padding:9px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#10161f;font-weight:650;cursor:pointer;'
+    'width:100%;min-height:44px;padding:9px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#10161f;font-weight:650;cursor:pointer;'
   );
 
   loadBtn.onclick = async () => {
@@ -702,7 +955,15 @@ function mountPersonaSwitcher() {
     }
     loadBtn.disabled = true;
     loadBtn.textContent = 'Loading...';
-    await loadPersona(select.value);
+    try {
+      await loadPersona(select.value);
+    } catch (error) {
+      console.error('Sample customer could not be loaded.', error);
+      showMsg('Sample customer could not be loaded. Check the console, then try again.');
+      loadBtn.disabled = false;
+      loadBtn.textContent = 'Load this sample customer';
+      await refresh();
+    }
   };
 
   clearBtn.onclick = async () => {
@@ -715,7 +976,15 @@ function mountPersonaSwitcher() {
     }
     clearBtn.disabled = true;
     clearBtn.textContent = 'Clearing...';
-    await clearPersona(true);
+    try {
+      await clearPersona(true);
+    } catch (error) {
+      console.error('Sample customer data could not be cleared.', error);
+      showMsg('Sample customer data could not be cleared. Check the console, then try again.');
+      clearBtn.disabled = false;
+      clearBtn.textContent = 'Clear to an empty app';
+      await refresh();
+    }
   };
 
   panel.appendChild(title);
@@ -729,7 +998,7 @@ function mountPersonaSwitcher() {
   const pill = document.createElement('button');
   pill.setAttribute(
     'style',
-    'display:block;padding:8px 12px;background:#B4460E;color:#fff;border:0;border-radius:999px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(16,24,40,.18);'
+    'display:block;min-height:44px;padding:8px 12px;background:#B4460E;color:#fff;border:0;border-radius:999px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(16,24,40,.18);opacity:.32;transition:opacity .15s;'
   );
 
   const refresh = async () => {
@@ -737,13 +1006,24 @@ function mountPersonaSwitcher() {
     if (current) {
       status.textContent =
         'Now showing: ' + (PERSONA_LABELS[current] || current) + ' (sample data)';
-      pill.textContent = 'Sample: ' + current;
+      pill.textContent = 'Sample: ' + ((PERSONAS[current] && PERSONAS[current].firstName) || current);
       if (PERSONAS[current] && select.value !== current) select.value = current;
     } else {
       status.textContent = 'No sample data loaded.';
       pill.textContent = 'Sample data';
     }
   };
+
+  for (const [ev, o] of [
+    ['pointerenter', '1'],
+    ['pointerleave', '.32'],
+    ['focus', '1'],
+    ['blur', '.32'],
+  ]) {
+    pill.addEventListener(ev, () => {
+      pill.style.opacity = panel.style.display === 'block' ? '1' : o;
+    });
+  }
 
   pill.onclick = () => {
     const open = panel.style.display === 'block';

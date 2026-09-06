@@ -77,8 +77,8 @@ function baseData() {
     seq: 2,
   });
   const card = [{ date: '2025-06-12', kind: 'spend', amount: 40000, category: 'Groceries' }];
-  const cardStatements = [{ statementKey: '2025-06', newBalance: 40000, creditLimit: 500000 }];
-  return { bank, card, cardStatements };
+  const _cardStatements = [{ statementKey: '2025-06', newBalance: 40000, creditLimit: 500000 }];
+  return { bank, card, _cardStatements };
 }
 
 console.log('='.repeat(74));
@@ -144,9 +144,9 @@ console.log('='.repeat(74));
 //     forecast's starting balance (all read liquidBalance)
 // ============================================================================
 {
-  const { bank, cardStatements } = baseData();
+  const { bank, _cardStatements } = baseData();
   const lb = liquidBalance(bank, opts, asOf); // Overview available-now
-  const cd = cashAndDebt({ bankRecords: bank, cardStatements, cfg, asOf }); // Position
+  const cd = cashAndDebt({ bankRecords: bank, _cardStatements, cfg, asOf }); // Position
   note(
     lb.total === cd.liquid,
     `LIQUID AGREES: available-now liquid (${lb.total}) == Position cash (${cd.liquid})`
@@ -200,7 +200,7 @@ console.log('='.repeat(74));
 //     nothing on any surface (income, spending, committed, liquid all unchanged)
 // ============================================================================
 {
-  const { bank, cardStatements } = baseData();
+  const { bank, _cardStatements } = baseData();
   const withTransfer = bank.concat([
     {
       date: '2025-06-18',
@@ -246,7 +246,7 @@ console.log('='.repeat(74));
 //     figure any surface shows
 // ============================================================================
 {
-  const { bank, cardStatements } = baseData();
+  const { bank, _cardStatements } = baseData();
   const withUSD = bank.concat([
     {
       date: '2025-06-28',
@@ -266,13 +266,19 @@ console.log('='.repeat(74));
   );
   const cdAfter = cashAndDebt({
     bankRecords: withUSD,
-    cardStatements,
+    _cardStatements,
     cfg,
     asOf,
   });
   note(
     cdAfter.liquid === lbBefore.total,
     'Position cash stays base-currency-only with USD present'
+  );
+  note(
+    cdAfter.accounts.some(
+      (account) => account.currency === 'USD' && account.nativeBalance === 3000
+    ),
+    'Position account view keeps the USD account visible without blending it into JMD cash'
   );
 }
 

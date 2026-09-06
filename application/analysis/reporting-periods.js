@@ -34,13 +34,19 @@ import {
   formatDisplayDate,
   medianDayOfMonth,
   addDaysIso,
+  daysBetweenIso,
+  isoToday,
   isoDay,
+  namedMonths,
   detectSustainedRise,
+  median,
+  typicalMonthlyValue,
+  sortedCardStatements,
 } from '../core/shared-helpers.js';
 import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
 
-import { MONTH_LONG, isUnrecognised } from './reporting-core.js';
+import { MONTH_LONG, cardFlowTotals, isUnrecognised } from './reporting-core.js';
 /* ===========================================================================
  * The ONE attention-item builder, read identically by Right Now's full
  * "Worth a look" queue and Overview's decision-forcing "Needs attention"
@@ -58,6 +64,8 @@ import { MONTH_LONG, isUnrecognised } from './reporting-core.js';
  * Overview lead card renders: its lead figure going negative IS the
  * shortfall, single-sourced, never a second calculation.
  * ======================================================================== */
+export const ATTENTION_LIMIT = 3;
+
 export function buildAttentionItems(deps) {
   const {
     cardRows = [],
@@ -72,6 +80,8 @@ export function buildAttentionItems(deps) {
     splits = [],
     fallback = 'Uncategorised',
     availableNow = null,
+    causes = null,
+    openEvidence = null,
     money0,
     formatDisplayDate,
     isUnrecognised,
@@ -79,8 +89,17 @@ export function buildAttentionItems(deps) {
     detectCategorySpikes,
     dismissReview,
     pickStatements,
+    openImportedFiles,
+    openRulesSection,
+    statementNudges = [],
+    openStatementNudge,
     drillToTransactions,
   } = deps;
+  // A statement that did not add up is not fixed by adding another statement:
+  // re-adding the same PDF is deduped by its hash, so the button offered did
+  // nothing at all. The file itself, and the way to drop and replace it, live
+  // in the imported-files list.
+  const showFile = openImportedFiles || pickStatements;
 
   const items = [];
 
@@ -94,14 +113,18 @@ export function buildAttentionItems(deps) {
     typeof availableNow.lead.amount === 'number' &&
     availableNow.lead.amount < 0
   ) {
+    const estimated = availableNow.confidence === 'incomplete';
     items.push({
       tone: 'blocking',
       title: `Cash may run short before your next income by ${money0(Math.abs(availableNow.lead.amount))}`,
-      detail:
-        availableNow.confidence === 'incomplete'
-          ? 'This is an estimate - a missing statement or income date could change it. Add what is missing to firm it up.'
-          : 'Known commitments before your next income come to more than the cash expected to cover them.',
-      actions: [{ label: 'Add statement', onClick: pickStatements, variant: 'ghost' }],
+      detail: estimated
+        ? 'This is an estimate - a missing statement or income date could change it. Add what is missing to firm it up.'
+        : 'Known fixed expenses before your next income come to more than the cash expected to cover them.',
+      onClick: estimated ? pickStatements : null,
+      // Only when something IS missing. On a complete figure the shortfall is
+      // real and adding a statement changes nothing about it, so the item
+      // offered a button that could not act on what it had just said.
+      actions: estimated ? [{ label: 'Add', onClick: pickStatements, variant: 'ghost' }] : [],
     });
   }
 
@@ -113,16 +136,56 @@ export function buildAttentionItems(deps) {
     items.push({
       tone: 'blocking',
       title: `Card statement not reconciled${s.period ? ` (${s.period})` : ''}`,
-      detail: s.reconNote || '',
-      actions: [{ label: 'Add statement', onClick: pickStatements, variant: 'ghost' }],
+      detail: [s.reconNote || '', s.source_file ? `Read from ${s.source_file}.` : '']
+        .filter(Boolean)
+        .join(' '),
+      onClick: showFile,
+      actions: [{ label: 'Show the file', onClick: showFile, variant: 'ghost' }],
     });
   for (const s of bankUnrec)
     items.push({
       tone: 'blocking',
       title: `Account statement not reconciled${s.period ? ` (${s.period})` : ''}`,
-      detail: s.reconNote || '',
-      actions: [{ label: 'Add statement', onClick: pickStatements, variant: 'ghost' }],
+      detail: [s.reconNote || '', s.source_file ? `Read from ${s.source_file}.` : '']
+        .filter(Boolean)
+        .join(' '),
+      onClick: showFile,
+      actions: [{ label: 'Show the file', onClick: showFile, variant: 'ghost' }],
     });
+
+  const dueNudges = (statementNudges || []).filter(
+    (nudge) => nudge && (nudge.status === 'due' || nudge.status === 'overdue')
+  );
+  if (dueNudges.length && openStatementNudge) {
+    const single = dueNudges.length === 1 ? dueNudges[0] : null;
+    const kind = single && single.ledger === 'card' ? 'credit card statement' : 'account statement';
+    items.push({
+      tone: 'blocking',
+      title: single ? `Add your next ${kind}` : 'Add your next statements',
+      detail: single && single.status === 'overdue' ? 'This statement is past its expected date.' : 'This statement is due about now.',
+      destination: 'statement-nudge',
+      onClick: openStatementNudge,
+      actions: [{ label: 'Open', onClick: openStatementNudge, variant: 'ghost' }],
+    });
+  }
+
+  const blockingCount = items.length;
+  if (causes && Array.isArray(causes.candidates)) {
+    const room = Math.max(0, ATTENTION_LIMIT - blockingCount);
+    for (const candidate of causes.candidates.slice(0, room)) {
+      items.push({
+        tone: candidate.tone === 'watch' ? 'watch' : 'cause',
+        cause: true,
+        title: candidate.cause,
+        detail: candidate.detail || '',
+        onClick: candidate.link && openEvidence ? () => openEvidence(candidate.link) : null,
+        actions:
+          candidate.link && openEvidence
+            ? [{ label: 'Details', onClick: () => openEvidence(candidate.link), variant: 'ghost' }]
+            : [],
+      });
+    }
+  }
 
   // 3) OPTIONAL: purchases worth a second look. Totals already count them, so
   // refining is optional tidying, not a blocker.
@@ -135,20 +198,23 @@ export function buildAttentionItems(deps) {
   const reviewRows = [...uncategorised, ...needsReviewRows];
   if (reviewRows.length) {
     const reviewTotal = reviewRows.reduce((s, r) => s + r.amount, 0);
+    const reviewDestination = openRulesSection || (() => drillToTransactions({ reviewOnly: true, category: 'all' }));
     items.push({
       tone: 'optional',
-      title: `${reviewRows.length} purchase${reviewRows.length === 1 ? '' : 's'} could use a second look (${money0(reviewTotal)})`,
+      title: `Transactions to categorise (${money0(reviewTotal)})`,
       detail:
-        'The totals already count them, so refining is optional. Tap any of them for the reason.',
+        'Choose a category when you are ready.',
+      destination: openRulesSection ? 'rules' : null,
+      onClick: reviewDestination,
       actions: [
         {
-          label: 'Looks fine',
+          label: 'Dismiss',
           onClick: () => dismissReview(reviewRows),
           variant: 'ghost',
         },
         {
-          label: 'Refine',
-          onClick: () => drillToTransactions({ reviewOnly: true, category: 'all' }),
+          label: openRulesSection ? 'Review' : 'Refine',
+          onClick: reviewDestination,
           variant: 'primary',
         },
       ],
@@ -161,10 +227,11 @@ export function buildAttentionItems(deps) {
     items.push({
       tone: 'optional',
       title: `Possible duplicate: ${d.label}, ${money0(d.amount)} charged twice`,
-      detail: `${formatDisplayDate(d.dates[0])} and ${formatDisplayDate(d.dates[1])}. Worth confirming this is not a double charge.`,
+      detail: `${formatDisplayDate(d.dates[0])} and ${formatDisplayDate(d.dates[1])}.`,
+      onClick: () => drillToTransactions({ category: 'all', reviewOnly: false }),
       actions: [
         {
-          label: 'Looks fine',
+          label: 'Dismiss',
           onClick: () => dismissReview(d.ids.map((id) => ({ id }))),
           variant: 'ghost',
         },
@@ -177,8 +244,9 @@ export function buildAttentionItems(deps) {
   for (const sp of spikes) {
     items.push({
       tone: 'optional',
-      title: `${sp.category} spending is much higher than usual this period (${money0(sp.amount)} vs a typical ${money0(sp.typical)})`,
+      title: `${sp.category} spending is higher than usual this period (${money0(sp.amount)} vs a typical ${money0(sp.typical)})`,
       detail: 'No single charge stands out, but the category total does.',
+      onClick: () => drillToTransactions({ category: sp.category, reviewOnly: false }),
       actions: [
         {
           label: 'Refine',
@@ -204,10 +272,10 @@ export function buildAttentionItems(deps) {
 // interaction cues stay inline where hiding them would cost more than it saves.
 export function renderExplainer(el, body, opts = {}) {
   const d = el('details', {
-    class: 'explainer' + (opts.class ? ' ' + opts.class : ''),
+    class: 'disclosure explainer' + (opts.class ? ' ' + opts.class : ''),
   });
   d.append(el('summary', {}, opts.label || 'How this is worked out'));
-  d.append(el('div', { class: 'explainer-body muted small' }, body));
+  d.append(el('div', { class: 'disclosure-body explainer-body muted small' }, body));
   return d;
 }
 
@@ -241,12 +309,6 @@ export function addMonthsYM(ym, delta) {
 function dayOfIso(iso) {
   const m = /^\d{4}-\d{2}-(\d{2})$/.exec(iso);
   return m ? +m[1] : 0;
-}
-function median(nums) {
-  if (!nums.length) return 0;
-  const s = nums.slice().sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
 /* ===========================================================================
@@ -300,7 +362,7 @@ function coverageIsoMs(s) {
 
 // Parse the two "DD Mon YYYY" dates out of a bank period string -> [startMs,
 // endMs], or null when fewer than two dates are present/parseable.
-function coverageBankSpan(period) {
+export function coverageBankSpan(period) {
   const re = /(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/g;
   const found = [];
   let m;
@@ -337,6 +399,31 @@ function coverageMonthStatus(spans, ym) {
   return reach >= lastMs ? 'full' : 'partial';
 }
 
+export function uncoveredDayRanges(spans, ym) {
+  const [year, month] = String(ym || '').split('-').map(Number);
+  if (!year || !month || month > 12) return [];
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const covered = new Set();
+  for (const [start, end] of spans || []) {
+    for (let day = 1; day <= lastDay; day++) {
+      const date = Date.UTC(year, month - 1, day);
+      if (date >= start && date <= end) covered.add(day);
+    }
+  }
+  const ranges = [];
+  for (let day = 1; day <= lastDay;) {
+    if (covered.has(day)) {
+      day++;
+      continue;
+    }
+    const start = day;
+    while (day < lastDay && !covered.has(day + 1)) day++;
+    ranges.push([start, day]);
+    day++;
+  }
+  return ranges;
+}
+
 // Build the coverage map. cardMonths/bankMonths are the Sets of 'YYYY-MM' that
 // actually carry transactions on each ledger, so a month with no data on a
 // ledger reads 'absent' (never blocking completeness) rather than 'none'.
@@ -362,6 +449,10 @@ export function buildStatementCoverage(
     months[ym] = {
       card: cardMonths.has(ym) ? coverageMonthStatus(cardSpans, ym) : 'absent',
       bank: bankMonths.has(ym) ? coverageMonthStatus(bankSpans, ym) : 'absent',
+      dayGaps: {
+        card: uncoveredDayRanges(cardSpans, ym),
+        bank: uncoveredDayRanges(bankSpans, ym),
+      },
     };
   }
   return { months };
@@ -415,15 +506,20 @@ export function periodCoverage(coverage, period) {
   if (!coverage || !period || !period.from || !period.to || period.from === period.to) return null;
   let total = 0,
     full = 0;
+  // WHICH months, not just how many. "3 months are only partly imported" is
+  // not something a person can act on until they know which three, and the
+  // verdict that decides it is already being computed here.
+  const partial = [];
   let ym = period.from;
   while (true) {
     total++;
     if (monthCoverageVerdict(coverage, ym) !== 'partial') full++;
+    else partial.push(ym);
     if (ym === period.to) break;
     ym = addMonthsYM(ym, 1);
   }
   if (full >= total) return null;
-  return { full, total };
+  return { full, total, partial };
 }
 
 // The plain-language sentence built from periodCoverage, above - the fixed
@@ -432,10 +528,29 @@ export function periodCoverage(coverage, period) {
 // wording, one place it is built, so it can never drift between the three
 // tabs that each show it.
 export function periodCoverageNote(coverage, period) {
+  const parts = periodCoverageParts(coverage, period);
+  return parts ? `${parts.headline}. ${parts.detail}` : null;
+}
+
+/* The same sentence, split at the seam between the FACT and the CAVEAT.
+ *
+ * On screen the fact is worth a line of its own ("Based on 18 of 21 months")
+ * and the caveat is worth an (i): a person who trusts the figure never needs
+ * to read why it might be a little low. Printed output still wants both in one
+ * sentence, so periodCoverageNote above composes these rather than restating
+ * them - the wording is still built in exactly one place. */
+export function periodCoverageParts(coverage, period) {
   const c = periodCoverage(coverage, period);
   if (!c) return null;
   const missing = c.total - c.full;
-  return `Based on ${c.full} of ${c.total} months. ${missing === 1 ? 'One month is' : `${missing} months are`} only partly imported, so this total may be a little higher.`;
+  const named = namedMonths(c.partial, monthName, 3);
+  return {
+    headline: `Based on ${c.full} of ${c.total} months`,
+    months: c.partial,
+    detail: named
+      ? `${named} ${c.partial.length === 1 ? 'is' : 'are'} only partly imported, so this total may be a little higher.`
+      : `${missing === 1 ? 'One month is' : `${missing} months are`} only partly imported, so this total may be a little higher.`,
+  };
 }
 
 /* Which month, if any, looks incomplete. The latest month is flagged when it
@@ -484,7 +599,10 @@ export function detectIncompleteMonth(rows, months, now = new Date(), opts = {})
   if (prior.length >= 2) {
     const [y, m] = latest.split('-').map(Number);
     const dim = DAYS_IN_MONTH(y, m);
-    const med = median(prior.map((mm) => spendByMonth[mm] || 0));
+    // A typical prior month, by the one shared rule. median(gaps) further down
+    // stays a plain median: those are DAY GAPS between charges, not money, so
+    // "which amount repeats" is not the question being asked there.
+    const med = typicalMonthlyValue(prior.map((mm) => spendByMonth[mm] || 0)).amount;
     const latestTotal = spendByMonth[latest] || 0;
     if (lastDay > 0 && lastDay < dim - dayMargin && med > 0 && latestTotal < spendRatio * med) {
       return { month: latest, reason: 'partial' };
@@ -560,16 +678,63 @@ export function resolvePeriod(sel, rows, months, now = new Date(), coverage = nu
       return mk(
         from,
         to,
-        `${monthName(from)} - ${monthName(to)}`,
+        // A month is a month, not a range from itself to itself. Tapping a
+        // bar on a chart now lands here constantly, and it was reading
+        // "Showing March 2026 - March 2026".
+        from === to ? monthName(from) : `${monthName(from)} - ${monthName(to)}`,
         addMonthsYM(from, -span),
         addMonthsYM(to, -span),
-        'range'
+        from === to ? 'month' : 'range'
       );
     }
     case 'all':
     default:
       return mk(first, last, 'All time', null, null, 'all');
   }
+}
+
+/* Which of the offered reporting periods actually select something.
+ *
+ * The list is fixed, the data is not. With one statement imported, "Latest
+ * complete month", "Current month", "Last 3 months", "Last 6 months", "This
+ * year" and "All time" all resolve to the same single month, and "Previous
+ * month" resolves to a window with nothing in it - eight choices where there is
+ * one, on the first control a new person meets. A control offering a decision
+ * that has already been made for it is noise, so an option only appears when it
+ * names a window no other option already names.
+ *
+ * `custom` always stays: it is not a preset window, it is the way to ask for
+ * one this list does not hold. The type currently selected always stays too, so
+ * the control can never lose its own value. Where two options resolve to the
+ * same window, "All time" wins - it is the only label that is true whatever the
+ * import happens to cover - and otherwise the earlier of the two does.
+ *
+ * Pure, and a function of the same inputs resolvePeriod itself takes.
+ */
+export function usablePeriodOptions(options, selectedType, rows, months, now = new Date(), coverage = null) {
+  const offered = options || [];
+  if (!months || !months.length) return offered;
+  const rank = (type) => (type === 'all' ? -1 : offered.findIndex(([t]) => t === type));
+  const kept = new Map();
+  for (const option of offered) {
+    const [type] = option;
+    if (type === 'custom') continue;
+    const window = resolvePeriod({ type }, rows, months, now, coverage);
+    if (!window || !window.from || !window.to || window.from > window.to) {
+      if (type === selectedType) kept.set(`keep:${type}`, option);
+      continue;
+    }
+    const key = `${window.from}|${window.to}`;
+    const held = kept.get(key);
+    if (!held) {
+      kept.set(key, option);
+      continue;
+    }
+    if (type === selectedType || (held[0] !== selectedType && rank(type) < rank(held[0])))
+      kept.set(key, option);
+  }
+  const survivors = new Set([...kept.values()].map(([type]) => type));
+  return offered.filter(([type]) => type === 'custom' || type === selectedType || survivors.has(type));
 }
 
 function monthSpanCount(from, to) {
@@ -598,17 +763,11 @@ export function analysePeriod(rows, period, opts = {}) {
   } = opts;
   const inP = rows.filter((r) => inRange(r.month, period.from, period.to));
   const spend = inP.filter((r) => r.kind === 'spend');
-
-  const totalSpend = roundMoney(spend.reduce((a, r) => a + r.amount, 0));
-  const totalPayments = roundMoney(
-    inP.filter((r) => r.kind === 'payment').reduce((a, r) => a - r.amount, 0)
-  );
-  const totalRefunds = roundMoney(
-    inP.filter((r) => r.kind === 'refund').reduce((a, r) => a - r.amount, 0)
-  );
-  const totalFees = roundMoney(
-    inP.filter((r) => r.kind === 'fee').reduce((a, r) => a + r.amount, 0)
-  );
+  const flow = cardFlowTotals(inP);
+  const totalSpend = flow.spend;
+  const totalPayments = flow.payments;
+  const totalRefunds = flow.refunds;
+  const totalFees = flow.fees;
 
   const monthsInP = [...new Set(inP.map((r) => r.month))].sort();
 
@@ -624,8 +783,7 @@ export function analysePeriod(rows, period, opts = {}) {
     }))
     .sort((a, b) => b.amount - a.amount);
 
-  const byMonth = {};
-  for (const r of spend) byMonth[r.month] = roundMoney((byMonth[r.month] || 0) + r.amount);
+  const byMonth = flow.byMonthSpend;
 
   const merch = {};
   for (const r of spend) {
@@ -689,10 +847,12 @@ export function analysePeriod(rows, period, opts = {}) {
     total_payments: totalPayments,
     total_refunds: totalRefunds,
     total_fees: totalFees,
+    total_outflow: flow.outflow,
     n_purchases: spend.length,
     n_transactions: inP.length,
     by_category: byCategory,
     by_month: byMonth,
+    by_month_outflow: flow.byMonthOutflow,
     merchants,
     leading,
     prev_total: prevTotal,
@@ -786,7 +946,10 @@ export function detectRecurring(
     // from an irregular large purchase that merely repeated a few times.
     if (maxConsecutiveGap(monthsSeen) > maxGapMonths) continue;
     const amounts = Object.values(byM);
-    const typical = median(amounts);
+    // The centre a recurring charge is judged against: the amount that repeats,
+    // not the one that happens to sort to the middle. The consistency count
+    // below is only as good as this centre.
+    const typical = typicalMonthlyValue(amounts).amount;
     if (typical <= 0) continue;
     const consistent = amounts.filter((a) => Math.abs(a - typical) <= typical * tolerance).length;
     if (consistent >= minMonths) {
@@ -862,6 +1025,21 @@ export function monthlyCommitmentsTotal(cardRecurring, bankStandingDebits) {
   return { total, items, lapsed };
 }
 
+export function commitmentLink(item) {
+  if (!item) return null;
+  if (item.source === 'card')
+    return {
+      kind: 'merchant',
+      patch: {
+        merchant: merchantRuleKeyFromDescription(item.label),
+        merchantLabel: item.label,
+        category: 'all',
+      },
+    };
+  if (item.key) return { kind: 'payee', key: item.key, label: item.label };
+  return null;
+}
+
 export function projectCashFlow(opts = {}) {
   const cashPosition = opts.cashPosition;
   if (cashPosition == null || !Number.isFinite(cashPosition)) return null;
@@ -917,34 +1095,74 @@ export function projectCashFlow(opts = {}) {
   };
 }
 
-export function nextStatementNudge(cardStatements, bankStatements, opts = {}, now = new Date()) {
+export function staleStatementNudges(cardStatements, bankStatements, opts = {}, now = new Date()) {
   const toleranceDays = opts.toleranceDays == null ? 4 : opts.toleranceDays;
-  const ends = [];
+  const streams = new Map();
+  const add = (statement, ledger, endMs) => {
+    if (endMs == null) return;
+    const account = String((statement && statement.account) || 'default');
+    const key = `${ledger}:${account}`;
+    if (!streams.has(key)) streams.set(key, []);
+    streams.get(key).push({ statement, ledger, endMs });
+  };
   for (const s of cardStatements || []) {
-    const ms = coverageIsoMs(s.periodEnd);
-    if (ms != null) ends.push(ms);
+    add(s, 'card', coverageIsoMs(s.periodEnd));
   }
   for (const s of bankStatements || []) {
     const span = coverageBankSpan(s.period);
-    if (span) ends.push(span[1]);
+    if (span) add(s, 'bank', span[1]);
   }
-  if (ends.length < 2) return null;
-  ends.sort((a, b) => a - b);
-  const gaps = [];
-  for (let i = 1; i < ends.length; i++) gaps.push((ends[i] - ends[i - 1]) / 86400000);
-  const cadenceDays = Math.round(median(gaps));
-  if (cadenceDays <= 0) return null;
-  const latestEndMs = ends[ends.length - 1];
-  const daysSinceLast = Math.round((now.getTime() - latestEndMs) / 86400000);
-  let status = 'ontrack';
-  if (daysSinceLast >= cadenceDays + toleranceDays) status = 'overdue';
-  else if (daysSinceLast >= cadenceDays - toleranceDays) status = 'due';
-  return {
-    status,
-    cadenceDays,
-    daysSinceLast,
-    latestEndDate: new Date(latestEndMs).toISOString().slice(0, 10),
-  };
+  const accountCounts = new Map();
+  for (const entries of streams.values()) {
+    const ledger = entries[0] && entries[0].ledger;
+    if (ledger) accountCounts.set(ledger, (accountCounts.get(ledger) || 0) + 1);
+  }
+  const candidates = [];
+  for (const entries of streams.values()) {
+    const byEnd = new Map(entries.map((entry) => [entry.endMs, entry]));
+    const ordered = [...byEnd.values()].sort((a, b) => a.endMs - b.endMs);
+    if (ordered.length < 2) continue;
+    const gaps = [];
+    for (let i = 1; i < ordered.length; i++) {
+      const gap = (ordered[i].endMs - ordered[i - 1].endMs) / 86400000;
+      if (gap > 0) gaps.push(gap);
+    }
+    if (!gaps.length) continue;
+    const cadenceDays = Math.round(median(gaps));
+    if (cadenceDays <= 0) continue;
+    const latest = ordered[ordered.length - 1];
+    const latestEndDate = new Date(latest.endMs).toISOString().slice(0, 10);
+    const daysSinceLast = daysBetweenIso(latestEndDate, isoToday(now));
+    let status = 'ontrack';
+    if (daysSinceLast >= cadenceDays + toleranceDays) status = 'overdue';
+    else if (daysSinceLast >= cadenceDays - toleranceDays) status = 'due';
+    candidates.push({
+      status,
+      cadenceDays,
+      daysSinceLast,
+      latestEndDate,
+      ledger: latest.ledger,
+      sourceFile: latest.statement.source_file || '',
+      account: latest.statement.account || '',
+      accountCount: accountCounts.get(latest.ledger) || 1,
+      statementKey: latest.statement.statementKey || latest.statement.period || '',
+    });
+  }
+  const rank = { overdue: 2, due: 1, ontrack: 0 };
+  candidates.sort(
+    (a, b) =>
+      rank[b.status] - rank[a.status] ||
+      b.daysSinceLast - b.cadenceDays - (a.daysSinceLast - a.cadenceDays) ||
+      String(b.latestEndDate).localeCompare(String(a.latestEndDate))
+  );
+  return opts.includeOnTrack ? candidates : candidates.filter((c) => c.status !== 'ontrack');
+}
+
+/* The single worst stream, for callers that want one line rather than a list.
+ * Kept as the name it always had, now a one-line read of the list above so the
+ * cadence rule lives in exactly one place. */
+export function nextStatementNudge(cardStatements, bankStatements, opts = {}, now = new Date()) {
+  return staleStatementNudges(cardStatements, bankStatements, opts, now)[0] || null;
 }
 
 // A robust "typical month's Cash outflow" from the roll-up trend (each row's
@@ -961,9 +1179,11 @@ export function typicalMonthlyOutflow(trend, currentYm = null) {
     .map((t) => Number(t.spending) || 0)
     .filter((v) => v > 0);
   if (!use.length) return 0;
-  const s = use.slice().sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  // The ONE typical-monthly rule (shared-helpers.js). This used to be a bare
+  // median of the last six months; it now asks which month actually repeats,
+  // and is protected on short histories, along with every other typical figure
+  // in the app.
+  return typicalMonthlyValue(use).amount;
 }
 
 // How many days the cash on hand would last at a typical recent monthly
@@ -1019,22 +1239,6 @@ export function insightDriver(current, previous, cfg = {}) {
   return top.delta >= share * positiveSum ? { label: top.label, kind: top.kind } : null;
 }
 
-/* Detect a consistent pay-in-full cardholder (Round 1, A5). A copy of the
- * statements is sorted by statementKey exactly the way renderCardStatementHealth
- * sorts them (String(a.statementKey).localeCompare(String(b.statementKey))), the
- * most recent 3 are taken, and the result is true only when every one of them is
- * payingInFull === true. With fewer than 3 present the decision is made on those
- * present; any revolving statement in that window makes it false. Pure. */
-export function payingInFullPattern(cardStatements) {
-  const sorted = (cardStatements || [])
-    .slice()
-    .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)));
-  const window = sorted.slice(-3);
-  if (!window.length) return false;
-  if (window.some((s) => s.revolving === true)) return false;
-  return window.every((s) => s.payingInFull === true);
-}
-
 // The observed card-BEHAVIOUR state, decided from evidence the statements
 // actually carry - never an assumption about intent. The credit-card
 // literature defines the split by INTEREST, not by balance: a transactor pays
@@ -1047,9 +1251,7 @@ export function payingInFullPattern(cardStatements) {
 export function cardBehaviourState(cardStatements, opts = {}) {
   const interestFloor = opts.interestFloor == null ? 1 : opts.interestFloor;
   const minCycles = opts.minCycles == null ? 2 : opts.minCycles;
-  const sorted = (cardStatements || [])
-    .slice()
-    .sort((a, b) => String(a.statementKey).localeCompare(String(b.statementKey)));
+  const sorted = sortedCardStatements(cardStatements);
   if (!sorted.length) return 'insufficient';
   const window = sorted.slice(-3);
   const withInterest = window.filter(
@@ -1119,12 +1321,6 @@ export function cardPayoffSeries(balance, eairFrac, payment, maxMonths = 120) {
   return { series, neverClears, clearedMonth };
 }
 
-export function totalCardInterest(cardStatements) {
-  return roundMoney(
-    (cardStatements || []).reduce((s, st) => s + (Number(st.interestCharges) || 0), 0)
-  );
-}
-
 // Round 4: lifted out of cards-render.js's private normEair/medianPayment so
 // the goal-tracking logic below (the "clear the card by" goal type) can share
 // the EXACT same reading of a card's rate and recent payment behaviour that
@@ -1150,5 +1346,5 @@ export function medianRecentPayment(cardStatements) {
     .map((s) => Math.abs(Number(s.payments) || 0))
     .filter((v) => v > 0);
   if (!pays.length) return 0;
-  return median(pays);
+  return typicalMonthlyValue(pays).amount;
 }

@@ -17,6 +17,7 @@ import {
 } from '../../settings/category-rules.js';
 import { categorise, smartTitle, merchantLabel } from '../statements/categorise.js';
 import { transactionIdentity } from '../statements/read-statements.js';
+import { isConfirmed } from './confirmations.js';
 import {
   analyseBankActivity,
   analyseCombinedOverview,
@@ -36,6 +37,9 @@ import {
   addDaysIso,
   isoDay,
   detectSustainedRise,
+  markProportional,
+  median,
+  modifiedZ,
 } from '../core/shared-helpers.js';
 import { renderReport, renderBankReport, renderOverviewReport } from '../output/report-render.js';
 import { categoryTotalsWithSplits, splitsByTxnId, validateSplit } from './transaction-splits.js';
@@ -74,6 +78,10 @@ export function buildRows(records, compiled, options = {}) {
     merchants = null, // compiled MERCHANT LIST for GROUPING (merchantGroupKey/displayLabel)
     resolver = null, // the identity door for categorise() only
     brandRules = [], // compiled config brand rules (empty in shipped config); merchant intel wins first
+    // The shared answer store (analysis/confirmations.js). "This one has been
+    // looked at" is a person's answer, so it is read from there rather than
+    // carried as a flag on the transaction record.
+    confirmations = [],
   } = options;
 
   const rows = records.map((t) => {
@@ -107,8 +115,9 @@ export function buildRows(records, compiled, options = {}) {
     else kind = t.amount > 0 ? 'spend' : 'refund'; // // a credit sign alone can't distinguish refund from cashback/goodwill/dispute credit (industry-wide, not just here), so 'refund' is the only defensible catch-all kind
     // displayName is the ONE canonical, cleaned merchant/place name shown to a user on every transaction surface (Recent, the Explorer, Spent abroad, the printed report). It is computed IDENTICALLY to the Top Places label (merchantBrandLabel via the researched merchant list, falling back to the structural merchantLabel of the first segment), so a single row reads the same "Amazon" in the transaction list and in Top Places instead of the raw "Www.Amazon* 113-217508". Display-layer only: description and raw_description are unchanged, so categorisation, matching, grouping, totals and identity are all untouched. The full statement wording is still preserved verbatim on raw_description for the detail panel's "Original statement text" field.
     const description = smartTitle(t.description, keepUpper, smallWords);
+    const id = t.id || transactionIdentity(t);
     return {
-      id: t.id || transactionIdentity(t),
+      id,
       date: t.txn_date,
       month: monthKey(t.txn_date),
       description,
@@ -131,7 +140,7 @@ export function buildRows(records, compiled, options = {}) {
       confidence,
       foreign: t.foreign || '',
       overridden: !!t.categoryOverride,
-      reviewDismissed: !!t.reviewDismissed,
+      reviewDismissed: isConfirmed(confirmations, 'review', [id]),
       // Scotiabank card rows carry a reference number; NCB card rows and every
       // bank row do not - '' there.
       ref: t.ref || '',
@@ -141,6 +150,37 @@ export function buildRows(records, compiled, options = {}) {
   });
   rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return rows;
+}
+
+export function rowNeedsReview(row, fallback = 'Uncategorised') {
+  return !!row && (row.category === fallback || !!row.needsReview || !!row.categoryNeedsReview);
+}
+
+export function cardFlowTotals(rows) {
+  const totals = { spend: 0, payments: 0, refunds: 0, fees: 0 };
+  const byMonthSpend = {};
+  const byMonthOutflow = {};
+  for (const row of rows || []) {
+    const amount = Number(row.amount) || 0;
+    if (row.kind === 'spend') {
+      totals.spend += amount;
+      byMonthSpend[row.month] = (byMonthSpend[row.month] || 0) + amount;
+      byMonthOutflow[row.month] = (byMonthOutflow[row.month] || 0) + amount;
+    } else if (row.kind === 'fee') {
+      totals.fees += amount;
+      byMonthOutflow[row.month] = (byMonthOutflow[row.month] || 0) + amount;
+    } else if (row.kind === 'payment') totals.payments -= amount;
+    else if (row.kind === 'refund') totals.refunds -= amount;
+  }
+  for (const key of Object.keys(totals)) totals[key] = roundMoney(totals[key]);
+  for (const values of [byMonthSpend, byMonthOutflow])
+    for (const month of Object.keys(values)) values[month] = roundMoney(values[month]);
+  return {
+    ...totals,
+    outflow: roundMoney(totals.spend + totals.fees),
+    byMonthSpend,
+    byMonthOutflow,
+  };
 }
 
 export function summarise(rows, options = {}) {
@@ -153,10 +193,11 @@ export function summarise(rows, options = {}) {
     splits = [],
   } = options;
   const spend = rows.filter((r) => r.kind === 'spend');
-  const totalSpend = spend.reduce((a, r) => a + r.amount, 0);
-  const totalPayments = rows.filter((r) => r.kind === 'payment').reduce((a, r) => a - r.amount, 0);
-  const totalRefunds = rows.filter((r) => r.kind === 'refund').reduce((a, r) => a - r.amount, 0);
-  const totalFees = rows.filter((r) => r.kind === 'fee').reduce((a, r) => a + r.amount, 0);
+  const flow = cardFlowTotals(rows);
+  const totalSpend = flow.spend;
+  const totalPayments = flow.payments;
+  const totalRefunds = flow.refunds;
+  const totalFees = flow.fees;
   const months = [...new Set(rows.filter((r) => r.month !== 'unknown').map((r) => r.month))].sort();
   const nMonths = Math.max(months.length, 1);
 
@@ -175,9 +216,13 @@ export function summarise(rows, options = {}) {
   );
 
   const byMonthRaw = Object.fromEntries(months.map((m) => [m, 0]));
-  for (const r of spend) if (r.month in byMonthRaw) byMonthRaw[r.month] += r.amount;
+  for (const [month, amount] of Object.entries(flow.byMonthSpend))
+    if (month in byMonthRaw) byMonthRaw[month] += amount;
   const byMonth = Object.fromEntries(
     Object.entries(byMonthRaw).map(([k, v]) => [k, roundMoney(v)])
+  );
+  const byMonthOutflow = Object.fromEntries(
+    months.map((month) => [month, roundMoney(flow.byMonthOutflow[month] || 0)])
   );
 
   const byMerchant = {};
@@ -212,6 +257,7 @@ export function summarise(rows, options = {}) {
     total_payments: roundMoney(totalPayments),
     total_refunds: roundMoney(totalRefunds),
     total_fees: roundMoney(totalFees),
+    total_outflow: flow.outflow,
     n_transactions: rows.length,
     n_spend: spend.length,
     n_months: nMonths,
@@ -219,6 +265,7 @@ export function summarise(rows, options = {}) {
     months,
     by_category: byCategory,
     by_month: byMonth,
+    by_month_outflow: byMonthOutflow,
     top_merchants: topMerchants,
     coverage_pct: round1(coverage),
     n_uncategorised_spend,
@@ -229,31 +276,6 @@ export function summarise(rows, options = {}) {
  * 6) Insights  (plain-language observations for the top of the dashboard)
  * ======================================================================== */
 
-/* The "new this month" merchants, as a reusable pure function (Round 1, A2). seenBefore is the set of first-segment keys (r.description.split(',')[0].trim().toUpperCase()) over spend rows in months earlier than `month`. Any spend row in `month` whose key is not in that set is a new merchant, and its amount is aggregated by key. Returns [{ key, label, amount }] sorted by amount desc, where label is the original (untidied) first segment of a matching row. Empty array when none. Pure. */
-export function detectNewMerchants(rows, month, brandRules = [], merchants = null) {
-  const spendRows = (rows || []).filter((r) => r.kind === 'spend');
-  const keyOf = (r) => merchantGroupKey(r.description, brandRules, merchants);
-  const seenBefore = new Set(spendRows.filter((r) => r.month < month).map(keyOf));
-  const amountByKey = {};
-  const labelByKey = {};
-  for (const r of spendRows.filter((r) => r.month === month)) {
-    const key = keyOf(r);
-    if (seenBefore.has(key)) continue;
-    amountByKey[key] = (amountByKey[key] || 0) + r.amount;
-    // Display label only: tidy the first-segment token ("Amazon Mktpl*..." ->
-    // "Amazon"). The key (keyOf) and dedup above are untouched, so grouping and
-    // identity are unaffected. Empty sets still strip the "*..."/MKTPL/trailing-
-    // digit junk without needing config here.
-    if (!(key in labelByKey))
-      labelByKey[key] = merchantDisplayLabel(r.description, brandRules, merchants);
-  }
-  return Object.keys(amountByKey)
-    .map((key) => ({ key, label: labelByKey[key], amount: amountByKey[key] }))
-    .sort((a, b) => b.amount - a.amount);
-}
-
-/* The merchants that FIRST appeared inside the current period (Bug 1 fix). detectNewMerchants above compares one month against everything before it, which cannot answer "new in this period" honestly on an all-time or first-ever view: there is no month strictly before the earliest one, so every merchant would read as new. This function instead asks, for each merchant group, when it FIRST appeared across the WHOLE rows array, and only counts it as new when that true first-ever month falls inside the period (period.from to period.to inclusive). Returns [] immediately when period.prevFrom is falsy. That is the all-time / first-period case with no genuine prior period to compare against, and the correct behaviour is to surface nothing rather than everything. Groups by merchantGroupKey (the same key the rest of the analytics use). Sums each qualifying merchant's amount within the period, and resolves its display label via merchantBrandLabel, falling back to merchantLabel when no brand label exists. *
- * Returns [{ key, label, amount }] sorted by amount descending. Pure. */
 export function detectPeriodNewMerchants(rows, period, brandRules = [], merchants = null) {
   if (!period || !period.prevFrom) return [];
   const spendRows = (rows || []).filter((r) => r.kind === 'spend');
@@ -287,14 +309,9 @@ export function isUnrecognised(row, fallback = 'Uncategorised') {
 }
 
 // The ONE place the class-driven "why is this worth a second look" sentence is generated - consolidating what Round 2 wrote inline inside attentionItems(). Now that a second consumer needs the identical wording (the transaction detail panel, cards-render.js's toggleDetail), inlining it twice would recreate the exact duplication this session has spent several rounds removing. Two classes, both fully generic - no merchant-specific template, no jargon, no confidence number: isUnrecognised(row) means nothing matched at all, so the honest statement is that the app genuinely does not know what this is; row.needsReview means categorise() DID resolve something (a real merchant match it could not confidently categorise, e.g. a payment processor whose underlying business the descriptor never reveals; or the refund-fallback branch, which knows the money came back but not from whom) - branches on whether row.merchant is present, since that is the one fact that actually differs between those two needsReview cases, rather than inventing a third bucket to describe them. Returns null when neither applies, so a caller can skip rendering entirely rather than showing an empty or placeholder line.
-export function reviewReasonText(
-  row,
-  fallback = 'Uncategorised',
-  brandRules = [],
-  merchants = null
-) {
+export function reviewReasonText(row, fallback = 'Uncategorised') {
   if (isUnrecognised(row, fallback)) {
-    return `We're not sure what this is: ${merchantDisplayLabel(row.description, brandRules, merchants)}. Is this right?`;
+    return `We're not sure who this merchant is. Can you confirm?`;
   }
   if (row.needsReview) {
     return row.merchant
@@ -302,6 +319,10 @@ export function reviewReasonText(
       : `We're not fully sure about this one - worth a quick check.`;
   }
   return null;
+}
+
+export function largeChargeSentence(row, money) {
+  return `A ${row.displayName} charge of ${money(row.amount)} on ${formatDisplayDate(row.date)} is larger than usual for that place.`;
 }
 
 export function attentionItems(rows, cfg = {}, brandRules = [], merchants = null) {
@@ -317,15 +338,8 @@ export function attentionItems(rows, cfg = {}, brandRules = [], merchants = null
   );
   // Reads the SAME config path FALLBACK()/buildRows() read (state.cfg.special.
   // fallback), so "unrecognised" means the exact same category name everywhere
-  // in the app. cfg.special is absent when this runs via reviewItems()'s empty
-  // {} call, so the shipped default 'Uncategorised' is used there, matching
-  // isUnrecognised's own default and config.json's actual configured value.
+  // in the app.
   const fallback = (cfg.special && cfg.special.fallback) || 'Uncategorised';
-  const med = (a) => {
-    const s = a.slice().sort((x, y) => x - y);
-    const m = s.length >> 1;
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  };
   const byMerchant = {};
   const keyByRow = new Map();
   for (const r of rows.filter((r) => r.kind === 'spend')) {
@@ -339,26 +353,26 @@ export function attentionItems(rows, cfg = {}, brandRules = [], merchants = null
     const peers = byMerchant[k];
     const others = peers.filter((p) => p.id !== r.id).map((p) => p.amount);
     if (others.length >= t.largeChargeMinPeers && r.amount >= t.largeChargeMin) {
-      const centre = med(others);
-      const mad = med(others.map((x) => Math.abs(x - centre)));
+      const centre = median(others);
+      const mad = median(others.map((x) => Math.abs(x - centre)));
       // Two guards, both required, so a charge is flagged only when it is BOTH
       // statistically unusual and materially larger than normal for that payee:
-      //  1) robust z-score (0.6745*(x-median)/MAD) over the largeChargeZ cut, the
-      //     Iglewicz-Hoaglin modified z. When MAD is 0 (identical peers) the score
-      //     is infinite, so this reduces to guard 2 alone;
+      //  1) robust z-score (modifiedZ, shared-helpers.js) over the largeChargeZ
+      //     cut, the Iglewicz-Hoaglin modified z. When MAD is 0 (identical
+      //     peers) the score is infinite, so this reduces to guard 2 alone;
       //  2) at least largeChargeMultiple x the median. This defends the MAD->0
       //     degenerate case: a payee whose charges cluster tightly (e.g. an
       //     a payee whose charges cluster tightly) has a tiny MAD, so a trivially higher
       //     $29k would otherwise score just over the z-cut - guard 2 stops that,
       //     while a genuine jump (a genuine jump far above the payee's median) sails
       //     through both. Verified against the real card export.
-      const zOk = mad > 0 ? (0.6745 * (r.amount - centre)) / mad >= t.largeChargeZ : true;
+      const zOk = modifiedZ(r.amount, centre, mad) >= t.largeChargeZ;
       const multipleOk = centre > 0 && r.amount >= centre * t.largeChargeMultiple;
       if (zOk && multipleOk) {
         flags.push({
           id: r.id,
           type: 'large',
-          text: `This ${merchantDisplayLabel(r.description, brandRules, merchants)} charge is larger than usual - worth a look?`,
+          text: `This ${merchantDisplayLabel(r.description, brandRules, merchants)} charge is larger than usual.`,
           row: r,
         });
       }
@@ -380,76 +394,12 @@ export function attentionItems(rows, cfg = {}, brandRules = [], merchants = null
     // reviewReasonText above), so the dashboard's insight list and a
     // person's own tap-to-expand view can never quietly drift into two
     // different explanations for the identical fact.
-    const reviewText = reviewReasonText(r, fallback, brandRules, merchants);
+    const reviewText = reviewReasonText(r, fallback);
     if (reviewText) {
       flags.push({ id: r.id, type: 'uncertain', text: reviewText, row: r });
     }
   }
   return flags;
-}
-
-/* Assemble the monthly review list (Round 1, A2b). Assembles only; it recomputes
- * nothing. Large charges come from attentionItems over ALL rows (it needs full
- * history to judge "larger than usual"), then narrowed to type 'large' whose row
- * sits in `month`. New merchants come from detectNewMerchants(rows, month).
- * Unreconciled statements are the card/bank statement records not marked
- * reconciled. Returns ONE flat array of
- * { kind:'unreconciled'|'large'|'new', id?, label, detail }, ordered by severity
- * so the item most likely to be real money is never below noise: all
- * unreconciled first, then large, then new. Empty array when nothing qualifies.
- * Pure. */
-export function reviewItems({
-  rows,
-  month,
-  cardStatements,
-  bankStatements,
-  brandRules = [],
-  merchants = null,
-} = {}) {
-  const allRows = rows || [];
-  const out = [];
-  const addUnreconciled = (list, source) => {
-    for (const s of list || []) {
-      if (s.reconciled) continue;
-      out.push({
-        kind: 'unreconciled',
-        id: s.hash != null ? s.hash : undefined,
-        label: `${source} statement not reconciled`,
-        detail: [s.account ? `account ${s.account}` : '', s.period || '', s.reconNote || '']
-          .filter(Boolean)
-          .join(' · '),
-      });
-    }
-  };
-  addUnreconciled(cardStatements, 'Card');
-  addUnreconciled(bankStatements, 'Bank');
-  for (const it of attentionItems(allRows, {}, brandRules, merchants)) {
-    if (it.type === 'large' && it.row && it.row.month === month) {
-      out.push({
-        kind: 'large',
-        id: it.id,
-        label: merchantDisplayLabel(it.row.description, brandRules, merchants),
-        detail: it.text,
-      });
-    } else if (it.type === 'uncertain' && it.row && it.row.month === month) {
-      out.push({
-        kind: 'uncertain',
-        id: it.id,
-        label: merchantDisplayLabel(it.row.description, brandRules, merchants),
-        detail: it.text,
-      });
-    }
-  }
-
-  for (const nm of detectNewMerchants(allRows, month, brandRules, merchants)) {
-    out.push({
-      kind: 'new',
-      id: nm.key,
-      label: nm.label,
-      detail: 'New place this month',
-    });
-  }
-  return out;
 }
 
 /* Ordering for the category picker (pure, presentation-only).
@@ -516,27 +466,58 @@ export function appendExpandable(el, parent, items, renderItem, opts = {}) {
   const rest = items.slice(initial);
   for (const item of shown) parent.append(renderItem(item));
   if (!rest.length) return;
-  const restNodes = rest.map(renderItem);
+  /*
+   * A renderItem may return ONE node or a DocumentFragment holding several
+   * (the merged transaction ledger returns a row plus its detail row). A
+   * fragment is EMPTIED the moment it is inserted, so keeping the fragment
+   * itself left `restNodes` holding spent, parentless objects: "Hide all"
+   * removed nothing, and re-revealing inserted nothing. Each item is captured
+   * as its real node list up front, so reveal and collapse both operate on
+   * the nodes that are actually in the document.
+   */
+  const toNodes = (rendered) => {
+    if (rendered == null || rendered === false) return [];
+    if (rendered.nodeType === 11) return Array.from(rendered.childNodes);
+    return [rendered];
+  };
+  const restNodes = rest.map((item) => toNodes(renderItem(item)));
   let visible = 0;
   const moreBtn = el('button', { class: 'btn sm ghost' }, 'See more');
   const allBtn = el('button', { class: 'btn sm' }, 'See all');
   const hideBtn = el('button', { class: 'btn sm ghost' }, 'Hide all');
   const controls = el('div', { class: 'show-more show-more-multi' }, moreBtn, allBtn, hideBtn);
   const anchor = opts.wrapToggle ? opts.wrapToggle(controls) : controls;
+  // The counts are the point: "See all" gave no idea whether it opened three
+  // more rows or three hundred, so the safe move was always to leave it shut.
   const sync = () => {
     const remaining = rest.length - visible;
     moreBtn.hidden = remaining <= 0;
-    allBtn.hidden = remaining <= 0;
+    allBtn.hidden = remaining <= step;
     hideBtn.hidden = visible <= 0;
+    // Reset the labels when a group empties too, or a collapsed control keeps
+    // advertising the count it had before it was collapsed.
+    if (remaining > 0) {
+      const next = Math.min(step, remaining);
+      moreBtn.textContent = `See ${next} more`;
+      allBtn.textContent = `See all ${remaining}`;
+    } else {
+      moreBtn.textContent = 'See more';
+      allBtn.textContent = 'See all';
+    }
+    hideBtn.textContent = visible > 0 ? `Hide ${visible}` : 'Hide all';
   };
   const reveal = (n) => {
     const end = Math.min(visible + n, restNodes.length);
-    for (let i = visible; i < end; i++) anchor.before(restNodes[i]);
+    for (let i = visible; i < end; i++) {
+      for (const node of restNodes[i]) anchor.before(node);
+    }
     visible = end;
     sync();
   };
   const collapse = () => {
-    for (let i = 0; i < visible; i++) restNodes[i].remove();
+    for (let i = 0; i < visible; i++) {
+      for (const node of restNodes[i]) if (node.remove) node.remove();
+    }
     visible = 0;
     sync();
     // Removing many revealed rows shifts everything below the toggle upward
@@ -549,7 +530,9 @@ export function appendExpandable(el, parent, items, renderItem, opts = {}) {
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    if (typeof anchor.scrollIntoView === 'function') {
+      anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    }
   };
   moreBtn.addEventListener('click', () => reveal(step));
   allBtn.addEventListener('click', () => {
@@ -583,21 +566,42 @@ export function renderKindTag(el, label, cls) {
     el('span', { class: 'klabel' }, label)
   );
 }
+// The category identity palette, retuned for the v2.0 visual system. Same
+// fourteen slots, same stable name -> colour mapping, so a category keeps its
+// identity across the treemap, the share bars and every chip. What changed is
+// the chroma: the previous set mixed a bright primary blue and a saturated
+// gold against muted mid-tones, so a spending map read as a set of competing
+// signals rather than one picture. These sit at an even lightness and a
+// restrained, consistent chroma - distinguishable from each other, quiet
+// together, and legible in both themes with the existing readableInk contrast
+// pass unchanged.
+/* Category colours.
+ *
+ * RESERVED HUES: the Plan tab's three bands own their colours app-wide -
+ * --band-setaside is a pink/magenta (#b0567f) and --band-free a blue accent.
+ * A category tile painted in a near-identical hue reads as related to a band it
+ * has nothing to do with, and colour is one of the few anchors carried between
+ * these tabs. #a8697e sat close enough to the set-aside pink that "Auto &
+ * Vehicle" and "Savings & investments" looked like the same idea on two
+ * screens; it is replaced below by a teal that no band uses.
+ *
+ * Anything added here must stay clear of the band tokens in premium.css.
+ */
 export const SHARE_PALETTE = [
-  '#2f6fb0',
-  '#3f9d6b',
-  '#c98a1b',
-  '#a05fb4',
-  '#4aa3a3',
-  '#c65b7c',
-  '#6b8e3d',
-  '#b5642e',
-  '#5a78c2',
-  '#8a8f2f',
-  '#3e8fb0',
-  '#9a5aa8',
-  '#c0603f',
-  '#557f9e',
+  '#3f6d9a',
+  '#4e8b78',
+  '#b0854e',
+  '#856a9e',
+  '#4d8b9e',
+  '#3d8080',
+  '#6e8759',
+  '#a97455',
+  '#5b6f9f',
+  '#87874f',
+  '#487e94',
+  '#7b6791',
+  '#a06455',
+  '#5b7183',
 ];
 // Cash inflow is one green family and Cash outflow is one orange family, matching the
 // app's colour language (green = toward you, warm = away). Each is a single-hue
@@ -718,7 +722,10 @@ export function renderShareBar(el, opts = {}) {
     }
     track.append(seg);
   }
-  const bar = el('div', { class: 'share-bar' }, track);
+  // A proportional track IS a figure drawn as shape. Marked at construction
+  // so the private view can withdraw the comparison (privacy.js), rather than
+  // relying on a stylesheet to recognise this component's class name.
+  const bar = markProportional(el('div', { class: 'share-bar' }, track));
   if (opts.centerValue != null || opts.centerLabel != null) {
     const cap = el('div', { class: 'share-bar-cap muted small' });
     if (opts.centerValue != null)
@@ -729,137 +736,6 @@ export function renderShareBar(el, opts = {}) {
   return bar;
 }
 
-export function renderFlowArrow(el, icons, direction) {
-  const isIn = direction === 'in';
-  return el('span', {
-    class: 'flow-arrow ' + (isIn ? 'in' : 'out'),
-    'aria-hidden': 'true',
-    html: isIn ? icons.up() : icons.down(),
-  });
-}
-
-// The ONE shared "active filters" chip row, used by Cards' All-transactions
-// explorer and Accounts' Transactions card. Previously each ledger built this
-// independently: Cards as a proper wrapping chip row, Accounts as concatenated
-// title text plus one button per active facet with no wrap behaviour - so two
-// simultaneous Accounts facets (an account + a payee) plus its Show/Hide button
-// overflowed the header on a narrow phone. Chips wrap by construction (.chips
-// is already flex-wrap), so any future combination of facets, on either tab,
-// degrades safely on any width instead of clipping. items is
-// [{ label, onClear }]; returns a real .chips node, or null when nothing is
-// active so the caller can omit an empty row entirely.
-export function renderFilterChips(el, iconX, items, onClearAll) {
-  if (!items.length) return null;
-  const chips = items.map(({ label, onClear }) =>
-    el(
-      'button',
-      { class: 'chip removable', onclick: onClear },
-      label,
-      el('span', { class: 'chip-x', html: iconX() })
-    )
-  );
-  return el(
-    'div',
-    { class: 'chips' },
-    el('span', { class: 'muted small' }, 'Filters:'),
-    ...chips,
-    el('button', { class: 'linkbtn', onclick: onClearAll }, 'Clear all')
-  );
-}
-
-// One shared fact chip for the hero facts row, replacing the two near-identical
-// hand-rolled builders that had drifted apart: Cards' `fact(value, label,
-// onClick, colour, cls)` and Accounts' `bankFact(label, value, cls)` (note the
-// argument order even disagreed). Takes a pure-data fact and renders the exact
-// same DOM both produced, so a fact reads and behaves identically on every tab.
-function heroFact(el, f) {
-  const attrs = {
-    class: 'fact' + (f.onClick ? ' clickable' : '') + (f.tone ? ' ' + f.tone : ''),
-  };
-  if (f.onClick) attrs.onclick = f.onClick;
-  const v = el(
-    'div',
-    { class: 'fact-value' },
-    f.colour ? el('span', { class: 'swatch', style: `background:${f.colour}` }) : null,
-    el('span', {}, f.value)
-  );
-  return el(f.onClick ? 'button' : 'div', attrs, v, el('div', { class: 'fact-label' }, f.label));
-}
-
-// The ONE shared top-of-tab hero builder. Previously each tab hand-built its
-// own hero inline (Cards' renderHero, the Accounts block inside renderAccounts,
-// the Overview block inside renderOverview), in three different orders - which
-// is exactly how the Overview hero came to render its "what needs tidying"
-// chore block ABOVE net cash flow, inverting the dashboard hierarchy (status/
-// headline first, chores and detail after). This builder emits ONE fixed order
-// that encodes the Level 1-4 hierarchy as code structure, so no tab can put
-// chores above the headline again:
-//   1. eyebrow + title (+ optional caution pill)
-//   2. verdict sub-headline (optional)
-//   3. hero-body: the ONE lead figure (+ any comparison extras) and the facts row
-//   4. attention line - the single, calm "what could use a look" line, ALWAYS
-//      below the numbers, never above
-//   5. note - a muted caveat
-// The spec is plain data (functions in onClick are fine - it is never
-// serialised). Interactive/prebuilt nodes (lead.extra, attention, note) are
-// built by the caller, which owns the closures; the builder owns only WHERE
-// each slot goes, which is what enforces the hierarchy.
-export function buildHeroSection(el, icon, iconInfo, spec) {
-  const sec = el('section', {
-    class: 'card hero' + (spec.verdict ? ' verdict' : ''),
-  });
-  const head = el(
-    'div',
-    { class: 'hero-head' },
-    el(
-      'div',
-      {},
-      el('div', { class: 'hero-eyebrow' }, spec.eyebrow),
-      el('h2', { class: 'hero-title' }, spec.title)
-    )
-  );
-  if (spec.pill)
-    head.append(
-      el(
-        'span',
-        { class: 'pill caution', title: spec.pill.title },
-        icon(iconInfo()),
-        spec.pill.text
-      )
-    );
-  sec.append(head);
-  if (spec.pill && spec.pill.subline)
-    sec.append(el('p', { class: 'muted small mobile-context' }, spec.pill.subline));
-  if (spec.verdict) {
-    sec.append(
-      el(
-        'div',
-        { class: 'hero-verdict' },
-        el('span', { class: `attn-dot ${spec.verdict.tone}` }),
-        ' ',
-        spec.verdict.text
-      )
-    );
-    if (spec.verdict.comparison) sec.append(el('p', { class: 'muted' }, spec.verdict.comparison));
-  }
-  const figure = el(
-    'div',
-    { class: 'hero-figure' },
-    el('div', { class: 'hero-amount' }, spec.lead.amount),
-    el('div', { class: 'hero-amount-label' }, spec.lead.label),
-    ...(spec.lead.extra || []).filter(Boolean)
-  );
-  const facts = el(
-    'div',
-    { class: 'hero-facts' },
-    ...spec.facts.filter(Boolean).map((f) => heroFact(el, f))
-  );
-  sec.append(el('div', { class: 'hero-body' }, figure, facts));
-  if (spec.attention) sec.append(spec.attention);
-  if (spec.note) sec.append(spec.note);
-  return sec;
-}
-
 // The ONE shared "insights" card, replacing three byte-identical copies
 // (cards-render's renderInsightCards, accounts-render's renderBankInsightsCard,
 // app.js's renderOverviewInsightsCard) that only differed in which insight
@@ -867,45 +743,47 @@ export function buildHeroSection(el, icon, iconInfo, spec) {
 // now renders one way everywhere. Each insight is { tone, icon (html string),
 // text, onClick }, the shape all three insight engines already produce.
 export function renderInsightList(el, icon, opts) {
-  const { title, iconBulb, iconChevron, insights, emptyText } = opts;
+  const { title, iconBulb, iconChevron, insights, emptyText, wrapCard, summary, name, alwaysOpen, foldAll } = opts;
+  const body = el('div', { class: 'insights' });
+  if (!insights.length) {
+    body.append(el('p', { class: 'muted pad' }, emptyText));
+  } else {
+    const list = el('div', { class: 'insight-list' });
+    for (const i of insights)
+      list.append(
+        el(
+          'button',
+          { class: 'insight tone-' + i.tone, onclick: i.onClick },
+          el('span', { class: 'insight-icon', html: i.icon }),
+          el('span', { class: 'insight-text' }, i.text),
+          el('span', { class: 'insight-go', html: iconChevron() })
+        )
+      );
+    body.append(list);
+  }
+  if (wrapCard) {
+    const card = wrapCard(el, {
+      title,
+      icon: icon(iconBulb()),
+      summary,
+      body,
+      name,
+      alwaysOpen,
+      foldAll,
+    });
+    if (card) card.classList.add('insights');
+    return card;
+  }
   const sec = el('section', { class: 'card insights' });
   sec.append(
-    el('div', { class: 'card-head' }, el('h3', { class: 'card-title' }, icon(iconBulb()), title))
+    el('div', { class: 'card-head' }, el('h3', { class: 'card-title' }, icon(iconBulb()), title)),
+    body
   );
-  if (!insights.length) {
-    sec.append(el('p', { class: 'muted pad' }, emptyText));
-    return sec;
-  }
-  const list = el('div', { class: 'insight-list' });
-  for (const i of insights)
-    list.append(
-      el(
-        'button',
-        { class: 'insight tone-' + i.tone, onclick: i.onClick },
-        el('span', { class: 'insight-icon', html: i.icon }),
-        el('span', { class: 'insight-text' }, i.text),
-        el('span', { class: 'insight-go', html: iconChevron() })
-      )
-    );
-  sec.append(list);
   return sec;
 }
 
-// The ONE shared standalone "needs attention" card, the twin of renderInsightList
-// for the attention surface. Cards' "Worth a look" is exactly this shape - a
-// dot-toned list of one-line items, each with an optional muted detail and a
-// row of action buttons - so this primitive owns that presentation once, giving
-// every standalone attention card the same dot convention, the same body layout
-// and the same button vocabulary. Reuses the existing .card.attention /
-// .attn-item / .attn-dot / .attn-body / .attn-actions styles verbatim, so no new
-// CSS is introduced. Each item is { tone: 'blocking'|'optional'|'good', title,
-// detail?, actions?[{ label, onClick, variant }] }, where tone maps to the quiet
-// dot (blocking->warn, optional->review, good->good) that is always paired with
-// the text beside it, and variant maps to the existing .btn treatments (primary
-// is the plain .btn.sm, ghost and danger add their class). A caller with no
-// items either passes calmText for a reassuring line or omits the card itself.
 export function renderAttentionList(el, icon, opts) {
-  const { title, iconInfo, items, calmText } = opts;
+  const { title, iconInfo, items, calmText, closing } = opts;
   const sec = el('section', { class: 'card attention' });
   sec.append(
     el('div', { class: 'card-head' }, el('h3', { class: 'card-title' }, icon(iconInfo()), title))
@@ -915,13 +793,17 @@ export function renderAttentionList(el, icon, opts) {
     return sec;
   }
   for (const it of items) {
-    const dot = it.tone === 'blocking' ? 'warn' : it.tone === 'good' ? 'good' : 'review';
+    const dot =
+      it.tone === 'blocking' ? 'warn' : it.tone === 'watch' ? 'watch' : it.tone === 'good' ? 'neutral' : 'review';
     const actionNodes = (it.actions || []).map((a) =>
       el(
         'button',
         {
           class: 'btn sm' + (a.variant && a.variant !== 'primary' ? ' ' + a.variant : ''),
-          onclick: a.onClick,
+          onclick: (event) => {
+            event.stopPropagation();
+            a.onClick();
+          },
         },
         a.label
       )
@@ -929,7 +811,22 @@ export function renderAttentionList(el, icon, opts) {
     sec.append(
       el(
         'div',
-        { class: 'attn-item' },
+        {
+          class: 'attn-item' + (it.onClick ? ' is-actionable' : ''),
+          ...(it.onClick
+            ? {
+                role: 'button',
+                tabindex: '0',
+                onclick: it.onClick,
+                onkeydown: (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    it.onClick();
+                  }
+                },
+              }
+            : {}),
+        },
         el('span', { class: 'attn-dot ' + dot }),
         el(
           'div',
@@ -941,5 +838,6 @@ export function renderAttentionList(el, icon, opts) {
       )
     );
   }
+  if (closing) sec.append(el('p', { class: 'muted small' }, closing));
   return sec;
 }

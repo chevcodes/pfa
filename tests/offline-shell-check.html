@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PFA offline shell check</title>
+<pre id="out">Checking the offline shell…</pre>
+<script type="module">
+  const out = document.getElementById('out');
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const source = await (await fetch('../service-worker.js')).text();
+    const version = /const VERSION = '([^']+)'/.exec(source)[1];
+    const paths = [...source.matchAll(/^\s*'\.\/([^']*)',?$/gm)].map((match) => '../' + match[1]);
+    const cache = await caches.open(version);
+    const missing = [];
+    const mismatched = [];
+    const digest = async (response) => {
+      const bytes = await crypto.subtle.digest('SHA-256', await response.arrayBuffer());
+      return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    };
+    for (const path of paths) {
+      const fresh = await fetch(path, { cache: 'reload' });
+      const cached = await cache.match(new URL(path, location.href));
+      if (!cached || !fresh.ok) missing.push(path);
+      else if (await digest(fresh) !== await digest(cached)) mismatched.push(path);
+    }
+    out.textContent = `${version}\nWorker: ${registration.active?.state}\nShell files: ${paths.length}\nMissing: ${missing.length}\nSHA-256 mismatches: ${mismatched.length}\n${missing.concat(mismatched).join('\n')}`;
+  } catch (error) {
+    out.textContent = String(error.stack || error);
+  }
+</script>
