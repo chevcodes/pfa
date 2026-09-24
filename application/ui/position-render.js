@@ -1,6 +1,7 @@
 import { staggerIn } from './motion.js';
 import { commitAndRender } from './reversible.js';
-import { chartInfo, collapsibleCard, createDecisionHeader, placeFoldAll } from './decision-header.js';
+import { createDecisionHeader, placeFoldAll } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { pairCards } from './chart-helpers.js';
 /*
  * PROVENANCE RULE (applies to every render surface, not just this file):
@@ -166,7 +167,7 @@ export function createPositionRenderer(ctx) {
         ...[
           el('span', { class: 'account-name-text' + (textClass ? ` ${textClass}` : '') }, friendly || fallback),
           friendly
-            ? chartInfo(el, '', figuresHidden() ? 'The account number is hidden while private view is on.' : about)
+            ? chartInfoReact(el, '', figuresHidden() ? 'The account number is hidden while private view is on.' : about)
             : null,
           el('button', {
             type: 'button',
@@ -298,7 +299,7 @@ export function createPositionRenderer(ctx) {
                 // person reading a converted figure here was told the number
                 // they wanted was under a different card, which is the app
                 // asking them to remember something and go looking for it.
-                chartInfo(el, 'How this is converted', conversionNote())
+                chartInfoReact(el, 'How this is converted', conversionNote())
               )
       )
     );
@@ -447,7 +448,13 @@ export function createPositionRenderer(ctx) {
     // foreign accounts beside it rather than folding them in silently; the
     // rows below still show every account, in its own currency.
     const foreignAccounts = accounts.filter((account) => (account.currency || base) !== base);
-    return collapsibleCard(el, {
+    // Pilot: the first real screen wired to the new React disclosure shell
+    // (react-ui/components/pfa-card-disclosure.jsx via
+    // application/ui/react-bridge.js), replacing collapsibleCard's native
+    // <details> for this one card. Everything inside - the account rows,
+    // rename controls - is unchanged vanilla DOM; only the collapse/expand
+    // shell around it is now React.
+    return collapsibleCardReact(el, {
       title: 'Where your cash sits',
       summary: foreignAccounts.length
         ? `${moneyShort(baseCash)} in ${base}, plus ${foreignAccounts.length} account${foreignAccounts.length === 1 ? '' : 's'} in another currency`
@@ -510,7 +517,7 @@ export function createPositionRenderer(ctx) {
           'span',
           { class: 'recurring-name' },
           label,
-          rateText ? el('span', { class: 'position-rate-inline' }, chartInfo(el, '', rateText)) : null
+          rateText ? el('span', { class: 'position-rate-inline' }, chartInfoReact(el, '', rateText)) : null
         ),
         meta.length
           ? el('span', { class: 'recurring-months muted small' }, meta.join(' \u00b7 '))
@@ -589,7 +596,7 @@ export function createPositionRenderer(ctx) {
     }
 
     sec.append(renderAddDisclosure(notIncluded));
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Recorded assets and debts',
       summary: ((nw && nw.included) || []).join(', ') || 'Recorded details',
       icon: icon(iconStore()),
@@ -819,7 +826,7 @@ export function createPositionRenderer(ctx) {
             el(
               'span',
               { class: 'muted small' },
-              chartInfo(el, 'About this figure', 'The headline figure included when this summary is copied.')
+              chartInfoReact(el, 'About this figure', 'The headline figure included when this summary is copied.')
             )
           ),
           el('strong', { class: 'position-summary-hero-value num metric-value metric--major' }, figure(netWorth))
@@ -895,7 +902,7 @@ export function createPositionRenderer(ctx) {
     }
     sec.append(panels);
 
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Shareable financial summary',
       summary: 'Ready to copy',
       explain: [summary.disclaimer, 'The copied version also includes dates, sources, and coverage.'].filter(Boolean).join(' '),

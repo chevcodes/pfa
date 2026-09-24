@@ -43,7 +43,8 @@ import { categoriseBankRows } from '../analysis/bank-categorise.js';
 import { monthTickOf } from './chart-helpers.js';
 import { rulesToMerchantOverrides } from '../../settings/category-rules.js';
 import { makeProseMoney, currencyPrefix } from '../core/money-format.js';
-import { chartInfo, collapsibleCard, subhead, secItem } from './decision-header.js';
+import { subhead, secItem } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 
 
 // Shared, empty keep-upper / small-words set for smartTitle when tidying a bank
@@ -371,7 +372,7 @@ export function createAccountsRenderer(ctx) {
             'p',
             { class: 'muted small review-note' },
             `${prose(a.cashDeposits)} in cash/ABM deposits is not counted as income`,
-            chartInfo(
+            chartInfoReact(
               el,
               '',
               'A machine deposit can be your own cash or cash for someone else, so it is not counted as income until you say so. Answer each one and it stays answered.'
@@ -397,7 +398,7 @@ export function createAccountsRenderer(ctx) {
             'p',
             { class: 'muted small review-note', style: 'margin-top:8px' },
             `${prose(a.refunds)} came back as refunds or reversals`,
-            chartInfo(
+            chartInfoReact(
               el,
               '',
               'A refund is money returned rather than earned, so it is not counted as income until you say so. Answer each one and it stays answered.'
@@ -441,7 +442,7 @@ export function createAccountsRenderer(ctx) {
         answers
       );
     }
-    const card = collapsibleCard(el, {
+    const card = collapsibleCardReact(el, {
       title: 'Review & adjustments',
       icon: icon(iconFlag()),
       summary: waiting ? `${waiting} to address` : 'All addressed',

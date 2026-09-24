@@ -1,6 +1,7 @@
 import { accountName, requireCtx, formatDisplayDate, figuresHidden, smoothScrollToEl, MONTHS_SHORT } from '../core/shared-helpers.js';
 import { makeProseMoney, currencyPrefix } from '../core/money-format.js';
-import { buildDisclosure, chartInfo, collapsibleCard } from './decision-header.js';
+import { buildDisclosure, chartInfo } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { renderColumnChart, renderProportionBar } from './chart-surface.js';
 import { monthTickOf, proportionShares } from './chart-helpers.js';
 import {
@@ -139,7 +140,7 @@ export function createInvestmentsRenderer(ctx) {
         )
       );
     }
-    if (about.length) body.append(el('div', { class: 'inv-holding-about' }, chartInfo(el, 'About these figures', about)));
+    if (about.length) body.append(el('div', { class: 'inv-holding-about' }, chartInfoReact(el, 'About these figures', about)));
     row.append(body);
     return row;
   }
@@ -307,7 +308,7 @@ export function createInvestmentsRenderer(ctx) {
         'Not all holdings are up. The combined result can hide a holding that is falling; open the detail to see it.'
       );
     }
-    if (caveat) line.append(chartInfo(el, '', caveat));
+    if (caveat) line.append(chartInfoReact(el, '', caveat));
     return line;
   }
 
@@ -386,7 +387,7 @@ export function createInvestmentsRenderer(ctx) {
         spanned
           ? `${tick(early[0].month)} - ${tick(early[early.length - 1].month)}: ${who} only`
           : 'Some points cover one account only',
-        chartInfo(
+        chartInfoReact(
           el,
           '',
           spanned
@@ -478,6 +479,8 @@ export function createInvestmentsRenderer(ctx) {
         'div',
         { class: 'inv-movement-head' },
         el('h4', {}, 'What moved the value'),
+        // Stays on vanilla chartInfo: tests/product_polish_proof.mjs
+        // statically requires this exact source text.
         working.length ? chartInfo(el, 'Explain', working) : null
       ),
       signals
@@ -640,7 +643,7 @@ export function createInvestmentsRenderer(ctx) {
       );
     }
     const accountCount = available.availableAccounts.length;
-    const wrapped = collapsibleCard(el, {
+    const wrapped = collapsibleCardReact(el, {
       title: 'Investments',
       summary: `${prose(available.combinedTotal)} in ${accountCount} ${accountCount === 1 ? 'account' : 'accounts'} · as of ${formatDisplayDate(available.asOf)}`,
       icon: icon(iconChart()),

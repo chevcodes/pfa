@@ -30,6 +30,11 @@
     <link rel="stylesheet" href="./interface/income-chart.css" />
     <link rel="stylesheet" href="./interface/flow-chart.css" />
     <link rel="stylesheet" href="./interface/premium.css" />
+    <!-- The new React rendering layer's styles (react-ui/, built by
+         `npx vite build`). Only application/ui/react-bridge.js's
+         collapsibleCardReact call sites use this; every other screen is
+         unaffected. -->
+    <link rel="stylesheet" href="./application/ui/react-dist/pfa-react.css" />
     <link rel="modulepreload" href="./application/app-controller.js" />
   </head>
   <body>

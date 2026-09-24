@@ -1,0 +1,36 @@
+/* Additive rules for PfaInfoPopover (react-ui/components/pfa-info-popover.jsx).
+   The root ".chart-info" wrapper and ".chart-info-icon"/".chart-info-body"
+   content classes are reused verbatim from interface/flow-chart.css and
+   interface/feature-additions.css - only the trigger (native <summary> ->
+   Radix's Trigger button) needs new rules, matching that file's own
+   ".chart-info > summary" treatment exactly. */
+
+.pfa-info-trigger {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.pfa-info-trigger.is-icon-only {
+  width: 22px;
+  height: 22px;
+  justify-content: center;
+}
+
+.pfa-info-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Matches ".chart-info[open] > .chart-info-body" (interface/flow-chart.css) -
+   data-state="open" is Radix's equivalent of native <details>'s [open]. */
+@media (max-width: 639px) {
+  .chart-info-body[data-state='open'] {
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+}

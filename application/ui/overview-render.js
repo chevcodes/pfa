@@ -31,7 +31,7 @@ import {
   requireCtx,
   formatDisplayDate,
 } from '../core/shared-helpers.js';
-import { chartInfo } from './decision-header.js';
+import { chartInfoReact } from './react-bridge.js';
 import { createAvailableNow } from './available-now-preview.js';
 
 export function createOverviewRenderer(ctx) {
@@ -235,7 +235,7 @@ export function createOverviewRenderer(ctx) {
             },
             covParts.headline
           ),
-          chartInfo(el, '', covParts.detail)
+          chartInfoReact(el, '', covParts.detail)
         )
       );
     }

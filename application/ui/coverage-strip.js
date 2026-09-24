@@ -1,6 +1,6 @@
 import { formatMonthYear, namedMonths, requireCtx, STATEMENT_COVERAGE_ID } from '../core/shared-helpers.js';
 import { coverageSummary } from '../analysis/coverage-map.js';
-import { chartInfo } from './decision-header.js';
+import { chartInfoReact } from './react-bridge.js';
 
 const LEDGER_LABEL = { card: 'Card', bank: 'Bank', investment: 'Investments' };
 
@@ -47,7 +47,7 @@ export function createCoverageStrip(ctx) {
     const wrap = el('div', { class: 'cov-ledger' });
     const head = el('div', { class: 'cov-head' });
     head.append(el('span', { class: 'cov-name' }, LEDGER_LABEL[ledger] || ledger));
-    head.append(chartInfo(el, '', coverageDetail(timeline, ledger)));
+    head.append(chartInfoReact(el, '', coverageDetail(timeline, ledger)));
     head.append(
       el(
         'span',
