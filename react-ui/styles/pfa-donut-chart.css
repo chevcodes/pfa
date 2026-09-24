@@ -1,0 +1,24 @@
+/* Additive rules for PfaDonutChart (react-ui/components/pfa-donut-chart.jsx).
+   Every other class here (.donut, .donut-figure, .donut-centre,
+   .donut-legend*, .donut-key) is reused verbatim from
+   interface/flow-chart.css. Only this file is new, because Recharts' Pie
+   draws filled arc <path> sectors, not the original's stroked <circle>
+   ring - interface/flow-chart.css's ".donut-arc.is-committed { stroke:
+   var(--chart-neutral) }" targets a stroke a filled shape doesn't have.
+   Same three tokens, same tone names, just the `fill` property instead. */
+
+.pfa-donut-arc.is-committed {
+  fill: var(--chart-neutral);
+}
+
+.pfa-donut-arc.is-out {
+  fill: var(--chart-out);
+}
+
+.pfa-donut-arc.is-in {
+  fill: var(--chart-in);
+}
+
+.pfa-donut-arc.is-neutral {
+  fill: var(--chart-neutral);
+}

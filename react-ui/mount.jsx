@@ -2,10 +2,12 @@ import { Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PfaCardDisclosure } from './components/pfa-card-disclosure.jsx';
 import { PfaInfoPopover } from './components/pfa-info-popover.jsx';
+import { PfaDonutChart } from './components/pfa-donut-chart.jsx';
 import { VanillaBody } from './vanilla-body.jsx';
 import './styles/tailwind.css';
 import './styles/pfa-card-disclosure.css';
 import './styles/pfa-info-popover.css';
+import './styles/pfa-donut-chart.css';
 
 // The production entry point. Built as a single fixed-name ES module
 // (see vite.config.js's build.lib) so a vanilla render file can
@@ -84,6 +86,23 @@ export function mountInfoPopover(container, { label, content, tone }) {
 }
 
 export function unmountInfoPopover(container) {
+  const root = roots.get(container);
+  if (!root) return;
+  root.unmount();
+  roots.delete(container);
+}
+
+export function mountDonutChart(container, { label, segments, total, centre, money }) {
+  if (!container) return;
+  let root = roots.get(container);
+  if (!root) {
+    root = createRoot(container);
+    roots.set(container, root);
+  }
+  root.render(<PfaDonutChart label={label} segments={segments} total={total} centre={centre} money={money} />);
+}
+
+export function unmountDonutChart(container) {
   const root = roots.get(container);
   if (!root) return;
   root.unmount();

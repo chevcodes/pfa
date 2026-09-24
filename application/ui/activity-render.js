@@ -1,5 +1,5 @@
 import { buildDisclosure, createDecisionHeader, placeFoldAll, surfaceTone } from './decision-header.js';
-import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
+import { collapsibleCardReact, chartInfoReact, donutChartReact } from './react-bridge.js';
 import { makeProseMoney } from '../core/money-format.js';
 /*
  * activity-render.js  -  the "Activity" surface's distinctive analysis cards,
@@ -382,7 +382,7 @@ export function createActivityRenderer(ctx) {
     const totalSpend = committedAmt + spentAmt;
     const ring =
       totalSpend > 0
-        ? renderDonutChart(
+        ? donutChartReact(
             { el, money0 },
             {
               label: 'Fixed and discretionary spending this period',

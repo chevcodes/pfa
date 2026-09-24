@@ -15,6 +15,8 @@
  * once loaded.
  */
 import { chartInfo } from './decision-header.js';
+import { chartIsHidden, renderHiddenChart } from './chart-helpers.js';
+import { makeMoneyShort } from '../core/money-format.js';
 
 let modulePromise = null;
 function loadReactModule() {
@@ -61,6 +63,28 @@ export function chartInfoReact(el, label, content, tone) {
   const container = el('span', { class: 'pfa-react-root' });
   loadReactModule().then(({ mountInfoPopover }) => {
     mountInfoPopover(container, { label, content, tone });
+  });
+  return container;
+}
+
+/*
+ * Mirrors application/ui/chart-surface.js's renderDonutChart(ctx, spec)
+ * signature and return contract exactly. The privacy-mode hidden state and
+ * empty-data guard are evaluated here, synchronously, in vanilla - same
+ * behaviour as the original, which also checks chartIsHidden() and the
+ * segment/total guard before building anything.
+ */
+export function donutChartReact(ctx, spec) {
+  const { el } = ctx;
+  if (chartIsHidden()) return renderHiddenChart(el, spec.label, { height: '190px' });
+  const money = spec.money || ctx.money0 || makeMoneyShort();
+  const segments = (spec.segments || []).filter((s) => Number(s.amount) > 0);
+  const total = Number(spec.total) || segments.reduce((sum, s) => sum + Number(s.amount), 0);
+  if (!segments.length || total <= 0) return null;
+
+  const container = el('div', { class: 'pfa-react-root' });
+  loadReactModule().then(({ mountDonutChart }) => {
+    mountDonutChart(container, { label: spec.label, segments, total, centre: spec.centre, money });
   });
   return container;
 }
