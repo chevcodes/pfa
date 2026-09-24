@@ -1,0 +1,61 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* This app switches theme via [data-theme="dark"] on <html>, set by
+   app-controller.js (see index.html data-theme="auto" + theme-btn), not via
+   a Tailwind/shadcn ".dark" class. Point Tailwind's dark: variant at the
+   real mechanism instead of adopting shadcn's default. */
+@custom-variant dark (&:is([data-theme="dark"] *, [data-theme="dark"]));
+
+/* shadcn/Radix expect a fixed set of token names (--background, --primary,
+   --border, --radius, ...). This project already has a complete, themed
+   token set in interface/foundation.css (--bg, --panel, --fg, --accent,
+   --edge, --radius, ...) driven by config.json at boot. Per the "one
+   number, one source" rule, shadcn's names are aliased onto the app's own
+   variables below - nothing here redefines a colour or a spacing value.
+   foundation.css must stay loaded before this file for these to resolve. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+
+  --color-card: var(--panel);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--fg);
+
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+
+  --color-secondary: var(--panel-2);
+  --color-secondary-foreground: var(--fg);
+
+  --color-muted: var(--panel-2);
+  --color-muted-foreground: var(--dim);
+
+  --color-accent: var(--panel-2);
+  --color-accent-foreground: var(--fg);
+
+  --color-destructive: var(--warn);
+  --color-destructive-foreground: var(--accent-ink);
+
+  --color-border: var(--edge);
+  --color-input: var(--edge);
+  --color-ring: var(--accent);
+
+  --radius-sm: calc(var(--radius-sm) - 2px);
+  --radius-md: var(--radius-sm);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans:
+    'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial,
+    sans-serif;
+
+  --spacing: 4px; /* aligns Tailwind's 4px scale with the app's --s1..--s8 8pt-based steps */
+}
+
+/* React-mounted islands only: this stylesheet is scoped to containers the
+   React layer mounts into, so it never repaints unmigrated vanilla screens. */
+.pfa-react-root {
+  color: var(--fg);
+}
