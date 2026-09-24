@@ -1,8 +1,11 @@
+import { Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PfaCardDisclosure } from './components/pfa-card-disclosure.jsx';
+import { PfaInfoPopover } from './components/pfa-info-popover.jsx';
 import { VanillaBody } from './vanilla-body.jsx';
 import './styles/tailwind.css';
 import './styles/pfa-card-disclosure.css';
+import './styles/pfa-info-popover.css';
 
 // The production entry point. Built as a single fixed-name ES module
 // (see vite.config.js's build.lib) so a vanilla render file can
@@ -51,6 +54,36 @@ export function mountCollapsibleCard(container, { title, summary, icon, hasExpla
 }
 
 export function unmountCollapsibleCard(container) {
+  const root = roots.get(container);
+  if (!root) return;
+  root.unmount();
+  roots.delete(container);
+}
+
+export function mountInfoPopover(container, { label, content, tone }) {
+  if (!container) return;
+  let root = roots.get(container);
+  if (!root) {
+    root = createRoot(container);
+    roots.set(container, root);
+  }
+  // content is one or more items - each is either a raw vanilla DOM node
+  // (chartInfo(el, label, content, tone) built with el(), grafted the same
+  // way bodyNode is above) or a plain string (React renders those
+  // natively; VanillaBody's appendChild would throw on a non-Node).
+  const nodes = Array.isArray(content) ? content : [content];
+  root.render(
+    <PfaInfoPopover
+      label={label}
+      tone={tone}
+      content={nodes.map((n, i) =>
+        n instanceof Node ? <VanillaBody key={i} node={n} /> : <Fragment key={i}>{n}</Fragment>
+      )}
+    />
+  );
+}
+
+export function unmountInfoPopover(container) {
   const root = roots.get(container);
   if (!root) return;
   root.unmount();

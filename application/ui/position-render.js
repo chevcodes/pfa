@@ -1,7 +1,7 @@
 import { staggerIn } from './motion.js';
 import { commitAndRender } from './reversible.js';
 import { chartInfo, createDecisionHeader, placeFoldAll } from './decision-header.js';
-import { collapsibleCardReact } from './react-bridge.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { pairCards } from './chart-helpers.js';
 /*
  * PROVENANCE RULE (applies to every render surface, not just this file):
@@ -299,7 +299,7 @@ export function createPositionRenderer(ctx) {
                 // person reading a converted figure here was told the number
                 // they wanted was under a different card, which is the app
                 // asking them to remember something and go looking for it.
-                chartInfo(el, 'How this is converted', conversionNote())
+                chartInfoReact(el, 'How this is converted', conversionNote())
               )
       )
     );

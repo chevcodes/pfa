@@ -51,3 +51,16 @@ export function collapsibleCardReact(el, { title, summary, icon: iconNode, expla
   });
   return container;
 }
+
+/*
+ * Mirrors application/ui/decision-header.js's chartInfo(el, label, content,
+ * tone) signature and return contract (a DOM node, returned synchronously)
+ * exactly, so a call site switches by changing only the function name.
+ */
+export function chartInfoReact(el, label, content, tone) {
+  const container = el('span', { class: 'pfa-react-root' });
+  loadReactModule().then(({ mountInfoPopover }) => {
+    mountInfoPopover(container, { label, content, tone });
+  });
+  return container;
+}
