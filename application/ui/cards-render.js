@@ -1,5 +1,5 @@
 import { buildDisclosure, subhead } from './decision-header.js';
-import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
+import { collapsibleCardReact, chartInfoReact, donutChartReact } from './react-bridge.js';
 /*
  * cards-render.js  -  card-side building blocks reused by Right Now.
  *
@@ -66,7 +66,7 @@ import { chartIsHidden, renderHiddenChart,
   monthTickOf,
   yearSpanLabel,
 } from './chart-helpers.js';
-import { renderColumnChart, chartTooltip, chartSvg, renderDonutChart } from './chart-surface.js';
+import { renderColumnChart, chartTooltip, chartSvg } from './chart-surface.js';
 import { staggerIn, drawPath, growIn } from './motion.js';
 import { makeForeignMoney, makeProseMoney } from '../core/money-format.js';
 
@@ -682,7 +682,7 @@ export function createCardsRenderer(ctx) {
     const top = list.slice(0, 5);
     const named = top.reduce((sum, m) => sum + m.amount, 0);
     const remainder = Math.max(0, total - named);
-    const ring = renderDonutChart(
+    const ring = donutChartReact(
       { el, money0 },
       {
         label: `Card spending split across ${list.length} place${list.length === 1 ? '' : 's'}`,
