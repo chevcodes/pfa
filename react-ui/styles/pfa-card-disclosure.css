@@ -1,0 +1,114 @@
+/* Additive rules for PfaCardDisclosure (react-ui/components/pfa-card-disclosure.jsx).
+   Reuses .card, .card-title and .disclosure-body from interface/foundation.css
+   and interface/premium.css untouched. Only the trigger row and chevron are
+   new, because Radix's Header/Trigger DOM shape (an <h3> wrapping a <button>)
+   doesn't match native <details>'s flat <summary>, so the existing
+   ".disclosure.card-disclosure > summary" selector (a three-column grid -
+   see interface/feature-additions.css's own "title left, summary right, one
+   row - always" note, plus the "section.card.card-collapsible { padding: 0 }"
+   double-inset fix right above it) can't apply here structurally. This
+   reproduces that same grid and padding, reading the same --s4/--dim/--fg
+   tokens, instead of inventing a new layout. */
+
+.pfa-card-disclosure-header {
+  margin: 0;
+}
+
+.pfa-card-disclosure-trigger {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  color: var(--dim);
+  min-height: var(--tap-min);
+  padding: var(--s4, 14px);
+}
+
+/* Matches interface/feature-additions.css's own
+   "#app .card.card-collapsible:not(.card-compact) > .card-disclosure >
+   summary" breakpoint exactly (padding-block: var(--s5), padding-inline:
+   var(--s6) from 640px up) - compact cards are not yet a PfaCardDisclosure
+   prop, so only the non-compact case is reproduced here. */
+@media (width >= 640px) {
+  .pfa-card-disclosure-trigger {
+    padding-block: var(--s5);
+    padding-inline: var(--s6);
+  }
+}
+
+.pfa-card-disclosure-trigger .card-title {
+  color: var(--fg);
+}
+
+.pfa-card-disclosure-trigger:hover .pfa-card-disclosure-chevron {
+  color: var(--fg);
+}
+
+.pfa-card-disclosure-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.pfa-card-disclosure-chevron {
+  /* Always the grid's last column, even when the middle (note) slot is
+     absent - otherwise a title-only trigger would collapse it into column 2. */
+  grid-column: -1;
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.18s var(--ease, ease);
+  opacity: 0.7;
+  color: var(--dim);
+}
+
+.pfa-card-disclosure-trigger[data-state='open'] .pfa-card-disclosure-chevron {
+  transform: rotate(45deg);
+}
+
+.pfa-card-disclosure-content {
+  overflow: hidden;
+}
+
+.pfa-card-disclosure-content[data-state='open'] {
+  animation: pfa-disclosure-open 0.2s ease-out;
+}
+
+.pfa-card-disclosure-content[data-state='closed'] {
+  animation: pfa-disclosure-close 0.2s ease-out;
+}
+
+@keyframes pfa-disclosure-open {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes pfa-disclosure-close {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pfa-card-disclosure-chevron,
+  .pfa-card-disclosure-content[data-state='open'],
+  .pfa-card-disclosure-content[data-state='closed'] {
+    transition: none;
+    animation: none;
+  }
+}

@@ -12,10 +12,10 @@
   },
   "iconLibrary": "lucide",
   "aliases": {
-    "components": "react-ui/components",
-    "utils": "react-ui/lib/utils",
-    "ui": "react-ui/components/ui",
-    "lib": "react-ui/lib",
-    "hooks": "react-ui/hooks"
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
   }
 }

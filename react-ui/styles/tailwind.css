@@ -42,8 +42,13 @@
   --color-input: var(--edge);
   --color-ring: var(--accent);
 
-  --radius-sm: calc(var(--radius-sm) - 2px);
-  --radius-md: var(--radius-sm);
+  /* CSS custom properties can't read their own prior value (unlike a Sass
+     var), so these must derive from --radius, never from themselves -
+     --radius-sm: calc(var(--radius-sm) - ...) would be circular and compute
+     to invalid. --radius itself is never redefined here, so it still
+     resolves to foundation.css's 14px. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
@@ -52,6 +57,26 @@
     sans-serif;
 
   --spacing: 4px; /* aligns Tailwind's 4px scale with the app's --s1..--s8 8pt-based steps */
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
 }
 
 /* React-mounted islands only: this stylesheet is scoped to containers the
