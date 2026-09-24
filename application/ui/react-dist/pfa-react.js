@@ -10226,59 +10226,59 @@ zt(pn, "getState");
 var mn = qt, hn = on, gn = cn, _n = un, vn = fn;
 //#endregion
 //#region react-ui/components/pfa-card-disclosure.jsx
-function yn({ name: e, title: t, icon: n, summary: r, hasExplain: i = !1, compact: a = !1, alwaysOpen: o = !1, defaultOpen: s = !1, children: c }) {
-	let [l, u] = b.useState(o || s), d = l ? "open" : "closed", f = b.useCallback((e) => {
-		o && e !== "open" || u(e === "open");
-	}, [o]), p = i ? [typeof t == "string" ? t : "", r].filter(Boolean).join(" - ") : void 0;
-	return /* @__PURE__ */ (0, x.jsx)("section", {
+function yn({ name: e, title: t, icon: n, summary: r, hasExplain: i = !1, compact: a = !1, alwaysOpen: o = !1, defaultOpen: s = !1, bare: c = !1, children: l }) {
+	let [u, d] = b.useState(o || s), f = u ? "open" : "closed", p = b.useCallback((e) => {
+		o && e !== "open" || d(e === "open");
+	}, [o]), m = i ? [typeof t == "string" ? t : "", r].filter(Boolean).join(" - ") : void 0, h = /* @__PURE__ */ (0, x.jsx)(mn, {
+		type: "single",
+		collapsible: !o,
+		value: f,
+		onValueChange: p,
+		className: "pfa-card-disclosure",
+		"data-always-open": o ? "true" : void 0,
+		children: /* @__PURE__ */ (0, x.jsxs)(hn, {
+			value: "open",
+			className: "pfa-card-disclosure-item",
+			children: [/* @__PURE__ */ (0, x.jsx)(gn, {
+				className: "pfa-card-disclosure-header",
+				children: /* @__PURE__ */ (0, x.jsxs)(_n, {
+					className: "pfa-card-disclosure-trigger",
+					"aria-label": m,
+					onClick: (e) => {
+						o && e.preventDefault();
+					},
+					onKeyDown: (e) => {
+						o && (e.key === "Enter" || e.key === " ") && e.preventDefault();
+					},
+					children: [
+						/* @__PURE__ */ (0, x.jsxs)("span", {
+							className: "card-title",
+							children: [n, t]
+						}),
+						r ? /* @__PURE__ */ (0, x.jsx)("span", {
+							className: "card-disclosure-note muted small",
+							children: r
+						}) : null,
+						/* @__PURE__ */ (0, x.jsx)("span", {
+							className: "pfa-card-disclosure-chevron",
+							"aria-hidden": "true"
+						})
+					]
+				})
+			}), /* @__PURE__ */ (0, x.jsx)(vn, {
+				className: "pfa-card-disclosure-content",
+				children: /* @__PURE__ */ (0, x.jsx)("div", {
+					className: "disclosure-body",
+					children: l
+				})
+			})]
+		})
+	});
+	return c ? h : /* @__PURE__ */ (0, x.jsx)("section", {
 		className: "card card-collapsible" + (a ? " card-compact" : ""),
 		id: e || void 0,
 		tabIndex: e ? -1 : void 0,
-		children: /* @__PURE__ */ (0, x.jsx)(mn, {
-			type: "single",
-			collapsible: !o,
-			value: d,
-			onValueChange: f,
-			className: "pfa-card-disclosure",
-			"data-always-open": o ? "true" : void 0,
-			children: /* @__PURE__ */ (0, x.jsxs)(hn, {
-				value: "open",
-				className: "pfa-card-disclosure-item",
-				children: [/* @__PURE__ */ (0, x.jsx)(gn, {
-					className: "pfa-card-disclosure-header",
-					children: /* @__PURE__ */ (0, x.jsxs)(_n, {
-						className: "pfa-card-disclosure-trigger",
-						"aria-label": p,
-						onClick: (e) => {
-							o && e.preventDefault();
-						},
-						onKeyDown: (e) => {
-							o && (e.key === "Enter" || e.key === " ") && e.preventDefault();
-						},
-						children: [
-							/* @__PURE__ */ (0, x.jsxs)("span", {
-								className: "card-title",
-								children: [n, t]
-							}),
-							r ? /* @__PURE__ */ (0, x.jsx)("span", {
-								className: "card-disclosure-note muted small",
-								children: r
-							}) : null,
-							/* @__PURE__ */ (0, x.jsx)("span", {
-								className: "pfa-card-disclosure-chevron",
-								"aria-hidden": "true"
-							})
-						]
-					})
-				}), /* @__PURE__ */ (0, x.jsx)(vn, {
-					className: "pfa-card-disclosure-content",
-					children: /* @__PURE__ */ (0, x.jsx)("div", {
-						className: "disclosure-body",
-						children: c
-					})
-				})]
-			})
-		})
+		children: h
 	});
 }
 //#endregion
@@ -10309,6 +10309,7 @@ function Sn(e, { title: t, summary: n, icon: r, hasExplain: i, alwaysOpen: a, co
 		alwaysOpen: a,
 		compact: o,
 		name: s,
+		bare: !0,
 		children: /* @__PURE__ */ (0, x.jsx)(bn, { node: c })
 	}));
 }

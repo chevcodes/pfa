@@ -1,6 +1,7 @@
 import { accountName, requireCtx, formatDisplayDate, figuresHidden, smoothScrollToEl, MONTHS_SHORT } from '../core/shared-helpers.js';
 import { makeProseMoney, currencyPrefix } from '../core/money-format.js';
-import { buildDisclosure, chartInfo, collapsibleCard } from './decision-header.js';
+import { buildDisclosure, chartInfo } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 import { renderColumnChart, renderProportionBar } from './chart-surface.js';
 import { monthTickOf, proportionShares } from './chart-helpers.js';
 import {
@@ -640,7 +641,7 @@ export function createInvestmentsRenderer(ctx) {
       );
     }
     const accountCount = available.availableAccounts.length;
-    const wrapped = collapsibleCard(el, {
+    const wrapped = collapsibleCardReact(el, {
       title: 'Investments',
       summary: `${prose(available.combinedTotal)} in ${accountCount} ${accountCount === 1 ? 'account' : 'accounts'} · as of ${formatDisplayDate(available.asOf)}`,
       icon: icon(iconChart()),

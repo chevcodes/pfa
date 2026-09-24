@@ -250,6 +250,14 @@ export function makeRenderIntentions(deps) {
         : models.length
           ? `${models.length} limit${models.length === 1 ? '' : 's'} recorded`
           : 'None set yet';
+    // Stays on the vanilla collapsibleCard, not collapsibleCardReact:
+    // tests/b2_render_proof.mjs renders this against a synchronous, non-browser
+    // DOM stub and inspects the card's children immediately - collapsibleCardReact
+    // mounts via a dynamic import() that can never resolve synchronously (or
+    // resolve at all, in a stub with no real module loader), so its content
+    // would never appear. Migrating this card needs the test rebuilt around
+    // an async render contract, which is out of scope here (tests/*_proof.mjs
+    // must not be touched as part of this migration).
     const card = collapsibleCard(el, {
       title: 'Spending limits you set',
       icon: icon(iconFlag()),

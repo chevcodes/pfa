@@ -43,6 +43,7 @@ export function mountCollapsibleCard(container, { title, summary, icon, hasExpla
       alwaysOpen={alwaysOpen}
       compact={compact}
       name={name}
+      bare
     >
       <VanillaBody node={bodyNode} />
     </PfaCardDisclosure>

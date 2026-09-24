@@ -1,4 +1,5 @@
-import { buildDisclosure, chartInfo, collapsibleCard, subhead } from './decision-header.js';
+import { buildDisclosure, chartInfo, subhead } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 /*
  * cards-render.js  -  card-side building blocks reused by Right Now.
  *
@@ -486,7 +487,7 @@ export function createCardsRenderer(ctx) {
     const avg = histMonthlyAverage();
     const p = resolved();
     const card = (body) =>
-      collapsibleCard(el, {
+      collapsibleCardReact(el, {
         title: 'Spending over time',
         icon: icon(iconChart()),
         summary: avg > 0 ? `Typically ${prose(avg)} a month on card` : `${shown.length} month${shown.length === 1 ? '' : 's'} of card purchases`,
@@ -1039,7 +1040,7 @@ export function createCardsRenderer(ctx) {
       );
     }
     const risen = combined.items.filter((item) => item.risen).length;
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Fixed expenses',
       icon: icon(iconRepeat()),
       explain: `${combined.items.length} regular commitment${combined.items.length === 1 ? '' : 's'}${combined.lapsed.length ? `; ${combined.lapsed.length} may have ended` : ''}. This is a typical month across your history, not the selected period.`,
@@ -1185,7 +1186,7 @@ export function createCardsRenderer(ctx) {
     };
     appendExpandable(el, list, groupList, renderForeignGroup, { initial: 3 });
     sec.append(list);
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Spent abroad',
       icon: icon(iconGlobe()),
       summary: `${prose(fx.totalJmd)} in ${ccyText}`,
@@ -1385,7 +1386,7 @@ export function createCardsRenderer(ctx) {
     const latest = stmts[stmts.length - 1];
     const sec = el('div', {});
     const card = (summary) => {
-      const shell = collapsibleCard(el, {
+      const shell = collapsibleCardReact(el, {
         title: 'How your card is doing',
         icon: icon(iconReceipt()),
         summary,

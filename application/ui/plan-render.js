@@ -8,7 +8,8 @@ import {
   smoothScrollToEl,
   sortedCardStatements,
 } from '../core/shared-helpers.js';
-import { collapsibleCard, createDecisionHeader, chartInfo, surfaceTone } from './decision-header.js';
+import { createDecisionHeader, chartInfo, surfaceTone } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 import { commitAndRender } from './reversible.js';
 import { renderProportionBar } from './chart-surface.js';
 import {
@@ -859,7 +860,7 @@ export function createPlanRenderer(ctx) {
       : unsavedWork
         ? 'Unsaved changes'
         : `${model.targetTotalText || ''} on plan`.trim();
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'My plan',
       summary,
       icon: icon(iconPie()),

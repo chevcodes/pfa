@@ -1,6 +1,6 @@
 import { staggerIn } from './motion.js';
 import { commitAndRender } from './reversible.js';
-import { chartInfo, collapsibleCard, createDecisionHeader, placeFoldAll } from './decision-header.js';
+import { chartInfo, createDecisionHeader, placeFoldAll } from './decision-header.js';
 import { collapsibleCardReact } from './react-bridge.js';
 import { pairCards } from './chart-helpers.js';
 /*
@@ -596,7 +596,7 @@ export function createPositionRenderer(ctx) {
     }
 
     sec.append(renderAddDisclosure(notIncluded));
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Recorded assets and debts',
       summary: ((nw && nw.included) || []).join(', ') || 'Recorded details',
       icon: icon(iconStore()),
@@ -902,7 +902,7 @@ export function createPositionRenderer(ctx) {
     }
     sec.append(panels);
 
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Shareable financial summary',
       summary: 'Ready to copy',
       explain: [summary.disclaimer, 'The copied version also includes dates, sources, and coverage.'].filter(Boolean).join(' '),

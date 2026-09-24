@@ -1,4 +1,5 @@
-import { buildDisclosure, collapsibleCard, createDecisionHeader, chartInfo, placeFoldAll, surfaceTone } from './decision-header.js';
+import { buildDisclosure, createDecisionHeader, chartInfo, placeFoldAll, surfaceTone } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 import { makeProseMoney } from '../core/money-format.js';
 /*
  * activity-render.js  -  the "Activity" surface's distinctive analysis cards,
@@ -519,7 +520,7 @@ export function createActivityRenderer(ctx) {
     // Per-merchant drill-down is unaffected - clicking a category tile still
     // opens that category's transactions (drillToTransactions, below).
     const largest = m.categories[0];
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Where it went',
       icon: icon(iconPie()),
       summary: `Largest: ${largest.name}, ${prose(largest.amount)}`,
@@ -684,7 +685,7 @@ export function createActivityRenderer(ctx) {
     }
 
     sec.append(renderTagForm());
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Custom labels',
       icon: icon(iconList()),
       explain: 'Group spending that belongs together but spans categories and months - a renovation, a holiday, a trip.',
@@ -1585,7 +1586,7 @@ export function createActivityRenderer(ctx) {
         : income.typicalAmount != null && income.stepChange === 'down'
           ? `, below usual ${prose(income.typicalAmount)}`
           : '';
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Your income pattern',
       icon: icon(iconSpark()),
       summary: `Latest ${prose(income.lastAmount)}${usual}`,
@@ -1687,7 +1688,7 @@ export function createActivityRenderer(ctx) {
       step: 40,
       duration: 460,
     });
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Biggest payments',
       icon: icon(iconList()),
       summary: `Largest: ${merged[0].label}, ${prose(merged[0].amount)}`,
@@ -1719,7 +1720,7 @@ export function createActivityRenderer(ctx) {
       iconChevron,
       insights: merged,
       emptyText: 'No material change was detected against the usual pattern.',
-      wrapCard: collapsibleCard,
+      wrapCard: collapsibleCardReact,
       summary: merged.length
         ? `${merged.length} material change${merged.length === 1 ? '' : 's'} detected`
         : 'No material change detected',
@@ -1948,7 +1949,7 @@ export function createActivityRenderer(ctx) {
         : filtered
           ? `${accountName(state.accountNames, 'bank', current) || `Account ${String(current).slice(-4)}`} only`
           : 'All accounts';
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Filter by account',
       explain,
       summary: activeLabel,
@@ -2219,7 +2220,7 @@ export function createActivityRenderer(ctx) {
       categoryFilter.append(el('span', { class: 'tx-hint-cats' }, transferChip));
     }
     const categoryCard = categoryFilter.childNodes.length
-      ? collapsibleCard(el, {
+      ? collapsibleCardReact(el, {
           title: 'Categories in use',
           explain: categoryExplain,
           summary: chosenSummary(),

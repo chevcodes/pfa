@@ -39,6 +39,15 @@ export function PfaCardDisclosure({
   compact = false,
   alwaysOpen = false,
   defaultOpen = false,
+  // When true, skips the outer <section class="card card-collapsible">
+  // wrapper - used by react-bridge.js's collapsibleCardReact, whose mount
+  // container synchronously IS that section (name/compact set on it
+  // directly), because several vanilla call sites mutate the returned
+  // node afterward (card.classList.add(...), card.id = ...) the same way
+  // they do with collapsibleCard's real <details> return value. The
+  // standalone comparison harness (AccordionComparison.jsx) still wants
+  // the wrapper, so it stays the default.
+  bare = false,
   children,
 }) {
   const [open, setOpen] = React.useState(alwaysOpen || defaultOpen);
@@ -59,12 +68,7 @@ export function PfaCardDisclosure({
     ? [typeof title === 'string' ? title : '', summary].filter(Boolean).join(' - ')
     : undefined;
 
-  return (
-    <section
-      className={'card card-collapsible' + (compact ? ' card-compact' : '')}
-      id={name || undefined}
-      tabIndex={name ? -1 : undefined}
-    >
+  const root = (
       <AccordionPrimitive.Root
         type="single"
         collapsible={!alwaysOpen}
@@ -100,6 +104,17 @@ export function PfaCardDisclosure({
           </AccordionPrimitive.Content>
         </AccordionPrimitive.Item>
       </AccordionPrimitive.Root>
+  );
+
+  if (bare) return root;
+
+  return (
+    <section
+      className={'card card-collapsible' + (compact ? ' card-compact' : '')}
+      id={name || undefined}
+      tabIndex={name ? -1 : undefined}
+    >
+      {root}
     </section>
   );
 }

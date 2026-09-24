@@ -43,7 +43,8 @@ import { categoriseBankRows } from '../analysis/bank-categorise.js';
 import { monthTickOf } from './chart-helpers.js';
 import { rulesToMerchantOverrides } from '../../settings/category-rules.js';
 import { makeProseMoney, currencyPrefix } from '../core/money-format.js';
-import { chartInfo, collapsibleCard, subhead, secItem } from './decision-header.js';
+import { chartInfo, subhead, secItem } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 
 
 // Shared, empty keep-upper / small-words set for smartTitle when tidying a bank
@@ -441,7 +442,7 @@ export function createAccountsRenderer(ctx) {
         answers
       );
     }
-    const card = collapsibleCard(el, {
+    const card = collapsibleCardReact(el, {
       title: 'Review & adjustments',
       icon: icon(iconFlag()),
       summary: waiting ? `${waiting} to address` : 'All addressed',

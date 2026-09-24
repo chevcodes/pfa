@@ -36,12 +36,16 @@ export function collapsibleCardReact(el, { title, summary, icon: iconNode, expla
   // helper, so it happens here, in vanilla code, same as the original.
   const head = explain ? chartInfo(el, '', explain) : iconNode || null;
 
-  // Bare mount point only - PfaCardDisclosure itself renders the
-  // ".card.card-collapsible" section (see react-ui/components/
-  // pfa-card-disclosure.jsx), matching collapsibleCard's own contract
-  // exactly. A second .card wrapper here would double the border/padding/
-  // shadow and duplicate `name` as two elements' id.
-  const container = el('div', { class: 'pfa-react-root' });
+  // This element IS the returned "card" - matching collapsibleCard's own
+  // contract exactly, including letting a call site mutate it afterward
+  // (card.classList.add(...), card.id = ...), the same way several already
+  // do with collapsibleCard's real <details> return value. mountCollapsibleCard
+  // passes { bare: true } to PfaCardDisclosure so it doesn't render a
+  // second, nested .card.card-collapsible section inside this one.
+  const container = el('div', {
+    class: 'card card-collapsible pfa-react-root' + (compact ? ' card-compact' : ''),
+    ...(name ? { id: name, tabindex: '-1' } : {}),
+  });
   loadReactModule().then(({ mountCollapsibleCard }) => {
     mountCollapsibleCard(container, { title, summary, icon: head, hasExplain: !!explain, alwaysOpen, compact, name, bodyNode });
   });

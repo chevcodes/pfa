@@ -18,7 +18,8 @@ import {
   snapshotRecords,
   statementsPhrase,
 } from '../analysis/balance-updates.js';
-import { chartInfo, collapsibleCard, createDecisionHeader } from './decision-header.js';
+import { chartInfo, createDecisionHeader } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 import { commitAndRender } from './reversible.js';
 
 export function createBalanceUpdates(ctx) {
@@ -298,7 +299,7 @@ export function createBalanceUpdates(ctx) {
       : fresh && fresh.asOf
         ? `From statements · latest ${formatDisplayDate(fresh.asOf)}`
         : 'From statements';
-    const card = collapsibleCard(el, {
+    const card = collapsibleCardReact(el, {
       title: 'Update balances',
       summary,
       explain:

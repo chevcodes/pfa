@@ -1,4 +1,5 @@
-import { chartInfo, collapsibleCard, placeFoldAll } from './decision-header.js';
+import { chartInfo, placeFoldAll } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 import { projectionReadiness } from '../analysis/coverage-map.js';
 /*
  * ahead-render.js  -  the "Ahead" destination: Coming Up (Round 2) and Where
@@ -300,7 +301,7 @@ export function createAheadRenderer(ctx) {
       sec.append(list);
     }
     if (!rows.length) {
-      return collapsibleCard(el, {
+      return collapsibleCardReact(el, {
         title: 'Expected payments',
         icon: icon(iconRepeat()),
         summary: `${beforeIncome.length} before next income · ${prose(beforeIncome.reduce((sum, item) => sum + (Number(item.amount) || 0), 0))}`,
@@ -443,7 +444,7 @@ export function createAheadRenderer(ctx) {
     const nextOutSummary = nextOut
       ? `${prose(Math.abs(Number(nextOut.amount)))} on ${formatDisplayDate(nextOut.date)}`
       : '';
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Expected payments',
       icon: icon(iconRepeat()),
       summary: beforeIncome.length
@@ -569,7 +570,7 @@ export function createAheadRenderer(ctx) {
       );
     }
     const overdue = list.filter((n) => n.status === 'overdue').length;
-    const card = collapsibleCard(el, {
+    const card = collapsibleCardReact(el, {
       title: current ? 'Your statements' : `Add your next ${kind}`,
       icon: icon(iconGap()),
       summary: current
@@ -747,7 +748,7 @@ export function createAheadRenderer(ctx) {
       // every time they open the tab.
       sec.append(el('p', { class: 'muted small goal-intro' }, 'Choose one goal. You can change it whenever you need to.'));
       sec.append(renderGoalForm());
-      return collapsibleCard(el, {
+      return collapsibleCardReact(el, {
         title: 'Your goal',
         icon: icon(iconFlag()),
         summary: 'None set yet',
@@ -759,7 +760,7 @@ export function createAheadRenderer(ctx) {
     renderGoalCardNewEngine(sec, migrated);
 
     const standing = goalCardStanding(migrated);
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Your goal',
       icon: icon(iconFlag()),
       summary: standing.summary,
@@ -1235,7 +1236,7 @@ export function createAheadRenderer(ctx) {
       );
     }
     sec.append(list);
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Monthly check-in',
       icon: icon(iconGap()),
       summary: `${shown.length} month${shown.length === 1 ? '' : 's'} recorded`,
@@ -1505,7 +1506,7 @@ export function createAheadRenderer(ctx) {
 
     sec.append(resultHost);
     recompute();
-    return collapsibleCard(el, {
+    return collapsibleCardReact(el, {
       title: 'Try a change',
       icon: icon(iconChart()),
       summary: 'See how long your cash could last',
