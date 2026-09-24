@@ -30,7 +30,12 @@ export function PfaCardDisclosure({
   title,
   icon,
   summary,
-  explain,
+  // hasExplain mirrors collapsibleCard's own `explain ? chartInfo(...) :
+  // iconNode` branch (application/ui/decision-header.js): building the
+  // actual chartInfo popover needs the vanilla `el()` helper, so the caller
+  // builds that DOM node and passes it as `icon` - this flag only decides
+  // whether the aria-label composes the same way collapsibleCard's does.
+  hasExplain = false,
   compact = false,
   alwaysOpen = false,
   defaultOpen = false,
@@ -50,7 +55,7 @@ export function PfaCardDisclosure({
     [alwaysOpen]
   );
 
-  const label = explain
+  const label = hasExplain
     ? [typeof title === 'string' ? title : '', summary].filter(Boolean).join(' - ')
     : undefined;
 

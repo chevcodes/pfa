@@ -1,6 +1,7 @@
 import { staggerIn } from './motion.js';
 import { commitAndRender } from './reversible.js';
 import { chartInfo, collapsibleCard, createDecisionHeader, placeFoldAll } from './decision-header.js';
+import { collapsibleCardReact } from './react-bridge.js';
 import { pairCards } from './chart-helpers.js';
 /*
  * PROVENANCE RULE (applies to every render surface, not just this file):
@@ -447,7 +448,13 @@ export function createPositionRenderer(ctx) {
     // foreign accounts beside it rather than folding them in silently; the
     // rows below still show every account, in its own currency.
     const foreignAccounts = accounts.filter((account) => (account.currency || base) !== base);
-    return collapsibleCard(el, {
+    // Pilot: the first real screen wired to the new React disclosure shell
+    // (react-ui/components/pfa-card-disclosure.jsx via
+    // application/ui/react-bridge.js), replacing collapsibleCard's native
+    // <details> for this one card. Everything inside - the account rows,
+    // rename controls - is unchanged vanilla DOM; only the collapse/expand
+    // shell around it is now React.
+    return collapsibleCardReact(el, {
       title: 'Where your cash sits',
       summary: foreignAccounts.length
         ? `${moneyShort(baseCash)} in ${base}, plus ${foreignAccounts.length} account${foreignAccounts.length === 1 ? '' : 's'} in another currency`
