@@ -2,118 +2,19 @@
 
 Written by a prior Claude Code session after independently re-verifying every claim below against the real repository (git log, git diff, grep, a live test run) rather than trusting its own memory. Where a prior belief and the re-audit disagreed, the re-audit wins and is stated explicitly.
 
-## 0. AGENTS.md / Agents-Design-Principles.md — read first, and two discrepancies to know about
+## 0. AGENTS.md / Agents-Design-Principles.md — now real files at the repo root, read them directly
 
-Neither file exists in the repo (`find . -iname AGENTS.md` and `-iname Agents-Design-Principles.md` return nothing). They were supplied to the prior session as pasted/uploaded reference documents, not repo files. Their content is reproduced in full below because Codex has no other way to see them. Two places this migration knowingly deviates from them, both pre-approved by the user for this migration only:
+Both files now exist for real at the repo root: `AGENTS.md` and `Agents-Design-Principles.md`. Read them directly — this section no longer reproduces their text (an earlier version of this document did; that copy was a stopgap for when they existed only as pasted reference material supplied to the session, not as committed files). Read them fully before making any change, same as AGENTS.md itself says.
+
+**Known conflict, surfaced rather than silently resolved**: `.gitignore` (line 47) lists `AGENTS.md`, added by an earlier commit on `main` titled "Ignore repository agent instructions and correct assistant output paths" — a deliberate prior decision to keep that file untracked. Committing `AGENTS.md` for real (this pass, on explicit user instruction) required `git add -f` to override that ignore rule. The file is now tracked and on `main`, but the `.gitignore` entry itself was left as-is (not removed) since removing it wasn't explicitly asked for and touches a decision this session doesn't have the context to second-guess. This means a future plain `git status` won't flag local edits to `AGENTS.md` as untracked changes needing `-f` again, but the ignore rule and the tracked file now coexist in a slightly unusual state — worth a human decision on whether to remove the `.gitignore` line outright.
+
+Three places this migration knowingly deviates from `AGENTS.md`, all worth knowing before touching anything further:
 
 - **"Do not add packages, dependencies, or build steps."** — Violated deliberately. This migration adds React, Vite, Radix, Recharts and a build step (`npx vite build`), scoped only to `application/ui/` rendering and `react-ui/`. The user explicitly authorised this exception at the start of the migration. Do not extend it to any other part of the app without asking.
 - **"Commit completed, verified work directly on `main`."** — Not followed. All work landed via feature branch + PR (`claude/confident-goldberg-9k0goe` → `main`), because this Claude Code Remote session's own branch instructions required it. If Codex runs under a similar remote-session branch mandate, follow that mandate over this line of AGENTS.md; if Codex has full direct-to-main access, AGENTS.md's instruction is the default to return to.
 - **"Remove comments from any code you touch. Do not add new ones."** — Also violated in the new `react-ui/` component files (e.g. `pfa-donut-chart.jsx` carries a multi-line JSDoc-style block comment). This was not an approved exception, just an oversight. Flagging it rather than silently leaving it — Codex should decide whether to strip these comments as a small cleanup pass, or leave them since they explain non-obvious CSS-class-reuse decisions that AGENTS.md itself says elsewhere ("find the existing rule before writing a new one") are worth recording somewhere. Not urgent, but don't add further new comments without a reason stronger than "explains what it does."
 
-Everything else in both documents (reproduced below) still reads as accurate and unaffected by this migration — the "one number, one source," "one concept, one master list," collapsible-by-default, and confirmation-mechanism principles all describe the underlying analysis/statement logic, which this migration did not touch.
-
-<details>
-<summary>Full text of AGENTS.md (reference only, not a repo file)</summary>
-
-```
-# AGENTS.md
-Instructions for any AI coding agent working in this repository (Personal Finance Analyser / PFA). Read this fully before making any change.
-
-## What this project is
-A privacy-first, offline-first personal finance app that processes Jamaican bank and credit card statements (Scotiabank, NCB). Built in vanilla JavaScript ES modules, shipped as both a PWA and an Electron desktop app. There are no external API calls and no build step. Treat the codebase as plain modules loaded directly.
-
-## How to work in this codebase
-- You have direct access to the files. Make changes in place, in the actual files. Editing the real code is the job; do not stop at proposing changes or pasting suggestions for someone else to apply.
-- Commit completed, verified work directly on `main`. Do not create branches unless the user explicitly requests one, and do not leave completed changes uncommitted.
-- Make the smallest change that fully solves the problem. Prefer reversible, incremental edits over large rewrites.
-- Before a large or multi-file sweep, create a restore point so any change can be undone: use git if it is available (a commit or a branch), otherwise copy the files you are about to touch. State which you used.
-- Do not leave the tree in a broken or half-edited state at the end of a round. If a change cannot be finished safely, revert that piece and say so plainly.
-- Preserve existing indentation style, casing, and formatting exactly. Do not reformat or rename anything that was not explicitly asked for.
-- Remove comments from any code you touch. Do not add new ones.
-- Do not add packages, dependencies, or build steps. Prefer solutions with the fewest moving parts, each independently testable and replaceable.
-
-## Find the existing rule before writing a new one
-- Before adding a style, a helper, a constant or a derived label, search for the shared one that already exists. This codebase deliberately centralises these, and re-implementing one is a defect even when the result looks correct: the copy silently misses whatever the shared version has learned.
-- Known shared contracts to check first: the `:where(...)` groups in `interface/premium.css` (full-width and wrapping behaviour for prose and labels), the design tokens at the top of `premium.css` and `foundation.css`, `CARD_FACETS` / `BANK_FACETS` in `app-controller.js` (the one declared list of filter fields), `application/core/shared-helpers.js`, and the per-concern helpers in `application/ui/chart-helpers.js`.
-- `interface/premium.css` holds cross-cutting contracts; `interface/feature-additions.css` is for genuinely new components. If a rule you are about to write would apply to a class of component rather than one component, it belongs in the shared group - join the selector list, do not restate its declarations.
-- Never re-list a field name a registry already declares. A cache key, a reset, a count or a signature must be DERIVED from the declared source, or it will drift out of step with it silently.
-- A label describing a chart, list or period must be derived from what is actually RENDERED, not from the data it was built from. Most charts here slice their input before drawing, so a label taken from the source names a range that is not on screen.
-- When a rewrite removes a component, remove its CSS in the same pass. Orphaned rules are checked by `tests/wiring_contracts_proof.mjs`.
-- Find more details in "Agents-Design-Principles.md"
-
-## How to show what you changed
-- Edit the files directly, then present the change as a scoped before-and-after diff covering only the lines touched. The diff is how the change gets reviewed; it is not a substitute for making the edit, and making the edit is not a substitute for showing the diff.
-- Do not paste whole updated files into the report. Keep the shown diff tight: the changed lines plus just enough surrounding context to locate them.
-- When one change spans several files, group the diffs by file so the full picture is easy to follow.
-- List every file you touched, including one-line changes, so nothing is edited silently.
-
-## How to verify before calling anything done
-- Never claim a fix is correct without running an actual check. "Should work" or "this preserves behaviour" is not acceptable on its own.
-- Run the project's test command (`node --test tests/*_proof.mjs`) against the tree after your changes and report the exact command and the exact result.
-- When restructuring or splitting files, run the same test command before and after and compare the results directly, not just confirm the files parse.
-- For behavioural or output parity, prefer SHA-256 hash comparison of generated output over visual inspection alone.
-- Do not label a failing test "pre-existing" without proof. Run the identical test against the untouched original and confirm it fails there too, for the same reason.
-- If a runtime is missing and a script cannot run, do not stop and report failure. State what the script would have run, then run the closest equivalent with an available runtime.
-- For anything behavioural or visual, confirm it by actually performing it in the running app, not by asserting that it holds.
-- Check for circular imports and duplicated logic whenever files are split or merged. A function copied into two places instead of shared through one import is a defect, since it will drift later.
-- When a service worker or cache version is involved, state the previous and the new version strings explicitly, and bump once. Do not assume a bump happened.
-- Before flagging a fix complete, check whether the same class of problem appears elsewhere. Fix every instance, not just the one reported.
-
-## Communication style for reports back
-- State what was actually run (exact command, exact result), not what should be true in theory.
-- Separate confirmed fact from assumption. If something was not independently checked, say so rather than presenting it as verified.
-- Use plain, non-technical language: describe what a person using the app would see or feel, not internal architecture. The reader is a product owner, not an engineer.
-- No hedging filler, no generic caveats, no restating the brief. Be concise and specific.
-
-## Privacy, persona, and sample-data rules
-- You may open and test against the real NCB and Scotiabank statement samples to check the parser, the screens, the loading path, and real parse-error states.
-- The hard line: no real merchant name, amount, account number, or other identifying detail may be written into any code, comment, sample data, or persona. Test with real files; commit nothing identifying.
-- Never reuse a niche independent business that has appeared in real statement data, even disguised. Nationally recognised chains with no identifying fingerprint may be used in mock or sample data.
-- Do not use income-segment or affluence-level framing in any user-facing text. That framing is internal working context only.
-
-## Scope and decisions
-- Do not restructure architecture unless it removes a real operational problem, cuts real cost, or shortens delivery. Avoid speculative refactors.
-- Prefer reversible, incremental changes over large rewrites.
-- If a decision can reasonably be made from context already in the repository, make it, state the reasoning in one line, and proceed. Do not defer straightforward decisions back as open questions.
-```
-</details>
-
-<details>
-<summary>Full text of Agents-Design-Principles.md (reference only, not a repo file)</summary>
-
-```
-Guiding Principles for App-Wide Consistency and Calm
-
-This is a standing design direction, not a bug list. It applies everywhere in the app, not just to screens already discussed in this thread. Make the calls yourself, act on your own judgement across the whole codebase, and only come back if something is genuinely ambiguous or needs a decision only I can make.
-
-Principle 1: One number, one source, always
-Any figure that could plausibly appear on more than one screen must be calculated once, in one place, and read from that same place everywhere it's shown. Where two screens genuinely need to answer different questions that happen to look like the same number, label each one honestly rather than forcing a match. Applies retroactively — go looking for this pattern, not just cases already caught.
-
-Principle 2: One concept, one master list, everywhere it's used
-Anything attachable to a transaction, account, or goal must live in exactly one authoritative list, read by every screen that touches it. Nothing creatable in one corner of the app should be invisible elsewhere.
-
-Principle 3: One concept, one wording, everywhere it appears
-Any single idea should be generated from one function and reused, never typed out separately in multiple templates. Mismatched wording for the same concept signals two code paths where one should exist — consolidate, don't patch the symptom.
-
-Principle 4: Quiet by default, depth available on request
-Every screen opens with one true, calm thing — a number and a short sentence. Everything else starts collapsed. The one exception: anything requiring a decision right now (overdue payment, statement gap, a goal badly off track) stays visible without interaction, per the existing "Needs attention" pattern.
-
-Principle 5: One way to expand, used consistently everywhere
-Reuse whichever expand/collapse mechanism already works well, rather than inventing a new one per screen. Fix the shared pattern once rather than letting each screen grow its own variant.
-
-Principle 6: A glance answers the question; a tap begins a journey
-The first thing seen on any screen must be understandable at a glance. Once someone taps in, the screen is free to be as detailed as the feature needs.
-
-Principle 7: Aesthetics and low-effort interaction are equal priorities to correctness
-A technically correct fix that's visually inconsistent or effortful to use hasn't solved the real problem. Prefer the more thorough fix when proportionate.
-
-Principle 8: The app connects the dots; the person shouldn't have to
-Every stated fact should be the way into its own evidence, landing the person on exactly the rows/screen it describes. The same in reverse: the action belongs where the need becomes visible. Always reach first for the mechanism that already exists; where it genuinely can't carry the job, rebuild it rather than wiring a second thing beside it. A parallel mechanism is worse than a larger refactor.
-
-Principle 9: A person's answer outranks the app's guess, permanently, through one shared mechanism
-The app infers many things (internal transfers, genuine income, savings accounts, recurring commitments, merchant identity, ambiguous reversals). There must be exactly one shared mechanism for capturing an explicit human correction to any inference, read wherever that inference is consumed. Precedence: confirmation > inference, same as a manual category override outranks the categoriser. Silence is the default — most inferences are never questioned. A dismissed question stays dismissed. Nothing blocks on an answer. A confirmed answer survives contradicting data. Scope follows the inference's own natural level (merchant/transaction/account). No feature should be removed for simplification's sake — the goal is quieter surfacing, not less capability. Must be reversible via the existing toast-undo idiom, survive re-import/export/backup, and have a build-failing guard against a second private confirmation store ever growing.
-```
-</details>
+Everything else in both documents still reads as accurate and unaffected by this migration — the "one number, one source," "one concept, one master list," collapsible-by-default, and confirmation-mechanism principles all describe the underlying analysis/statement logic, which this migration did not touch.
 
 ## 1. Exact current state of `main` — independently re-confirmed against GitHub
 
