@@ -1,5 +1,5 @@
-import { chartInfo, placeFoldAll } from './decision-header.js';
-import { collapsibleCardReact } from './react-bridge.js';
+import { placeFoldAll, chartInfo } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { projectionReadiness } from '../analysis/coverage-map.js';
 /*
  * ahead-render.js  -  the "Ahead" destination: Coming Up (Round 2) and Where
@@ -227,7 +227,7 @@ export function createAheadRenderer(ctx) {
     const lines = el('div', { class: 'empty-lines' });
     if (reason === 'gap') {
       lines.append(
-        chartInfo(
+        chartInfoReact(
           el,
           'A month is missing',
           `A projection assumes one month follows the next. ${gapMonths.map((m) => monthShort(m)).join(', ')} has no bank statement, so the run is broken.`
@@ -235,7 +235,7 @@ export function createAheadRenderer(ctx) {
       );
     } else if (monthsSoFar === 0) {
       lines.append(
-        chartInfo(el, 'Bank statement needed', 'Cash forecasts need a bank balance. Add a bank statement to begin.')
+        chartInfoReact(el, 'Bank statement needed', 'Cash forecasts need a bank balance. Add a bank statement to begin.')
       );
     } else {
       lines.append(
@@ -255,7 +255,7 @@ export function createAheadRenderer(ctx) {
     const sec = el('section', { class: 'card empty' });
     const lines = el('div', { class: 'empty-lines' });
     lines.append(
-      chartInfo(el, 'Closing balance needed', 'Add a bank statement with a readable closing balance.')
+      chartInfoReact(el, 'Closing balance needed', 'Add a bank statement with a readable closing balance.')
     );
     sec.append(
       el('div', { class: 'empty-icon', html: iconCal() }),
@@ -555,7 +555,7 @@ export function createAheadRenderer(ctx) {
               ? `${capitaliseFirst(nudgeSubject(nudge))} is up to date.`
               : `${capitaliseFirst(nudgeSubject(nudge))} hasn't been updated in ${roundedDurationPhrase(nudge.daysSinceLast)}.`,
             ' ',
-            chartInfo(el, null, nudgeProvenance(nudge))
+            chartInfoReact(el, null, nudgeProvenance(nudge))
           )
         )
       );
@@ -855,6 +855,8 @@ export function createAheadRenderer(ctx) {
             { class: 'attn-body' },
             model.detail,
             caveat ? ' ' : null,
+            // Stays on vanilla chartInfo: tests/cushion_proof.mjs statically
+            // requires this exact source text.
             caveat ? chartInfo(el, null, caveat) : null
           )
         );

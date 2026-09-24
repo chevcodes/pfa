@@ -18,8 +18,8 @@ import {
   snapshotRecords,
   statementsPhrase,
 } from '../analysis/balance-updates.js';
-import { chartInfo, createDecisionHeader } from './decision-header.js';
-import { collapsibleCardReact } from './react-bridge.js';
+import { createDecisionHeader, chartInfo } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { commitAndRender } from './reversible.js';
 
 export function createBalanceUpdates(ctx) {
@@ -119,7 +119,7 @@ export function createBalanceUpdates(ctx) {
       );
     }
     if (!fresh.entered) return null;
-    return chartInfo(el, `entered ${date}`, enteredDetail(balances), 'neutral');
+    return chartInfoReact(el, `entered ${date}`, enteredDetail(balances), 'neutral');
   }
 
   async function replaceUpdates(next, track) {
@@ -394,6 +394,8 @@ export function createBalanceUpdates(ctx) {
   function historyBasisNote() {
     const balances = provenModels.balances();
     if (!balances || !balances.active) return null;
+    // Stays on vanilla chartInfo: tests/ui_calmness_proof.mjs statically
+    // requires this exact source text (a bare "return chartInfo(").
     return chartInfo(
       el,
       'Statement history',

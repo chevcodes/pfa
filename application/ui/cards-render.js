@@ -1,5 +1,5 @@
-import { buildDisclosure, chartInfo, subhead } from './decision-header.js';
-import { collapsibleCardReact } from './react-bridge.js';
+import { buildDisclosure, subhead } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 /*
  * cards-render.js  -  card-side building blocks reused by Right Now.
  *
@@ -1084,7 +1084,7 @@ export function createCardsRenderer(ctx) {
           },
           money0(fx.totalJmd)
         ),
-        chartInfo(el, '', [
+        chartInfoReact(el, '', [
           el(
             'p',
             {},
@@ -1377,7 +1377,7 @@ export function createCardsRenderer(ctx) {
     growIn(wrap, { opacity: 0 }, { opacity: 1 }, { duration: 220 });
     return el('div', {}, wrap, el('div', { class: 'chart-legend' },
       el('span', {}, clears != null ? `Clears: ${clears} months` : 'Balance remains'),
-      chartInfo(el, 'Payment ±15%', 'The band compares payments 15% above and below your recent payment. Dashes mark the more distant projection. No new purchases are assumed.')));
+      chartInfoReact(el, 'Payment ±15%', 'The band compares payments 15% above and below your recent payment. Dashes mark the more distant projection. No new purchases are assumed.')));
   }
 
   function renderCardFitness() {
@@ -1448,7 +1448,7 @@ export function createCardsRenderer(ctx) {
             'p',
             { class: 'muted small' },
             `Credit used, ${latest.utilisation}%. `,
-            chartInfo(
+            chartInfoReact(
               el,
               'What this means',
               'The share of your credit limit in use. It is an input to a credit score - not a measure of your spending, and not money you owe beyond the balance itself.'
@@ -1466,7 +1466,7 @@ export function createCardsRenderer(ctx) {
           const disclosedPct = Math.round(latest.purchaseAnnualPct);
           const monthlyPct = latest.purchaseMonthlyPct;
           sec.append(
-            chartInfo(
+            chartInfoReact(
               el,
               'Rate details',
               `Your statement shows a purchase rate of ${disclosedPct}% a year${monthlyPct != null ? ` (${monthlyPct}% a month)` : ''}. Carrying a balance would compound that monthly to a real yearly cost closer to ${eairPct}%, but clearing the statement each cycle means you pay none of it.`
@@ -1474,7 +1474,7 @@ export function createCardsRenderer(ctx) {
           );
         } else if (latest.eairEstimated) {
           sec.append(
-            chartInfo(
+            chartInfoReact(
               el,
               'Rate details',
               `Clearing the statement each cycle avoids interest at an estimated ${eairPct}% a year, worked out from the monthly rate printed on your statement.`
@@ -1487,7 +1487,7 @@ export function createCardsRenderer(ctx) {
             el(
               'div',
               { class: 'muted small' },
-              chartInfo(
+              chartInfoReact(
                 el,
                 'Why this matters',
                 `Clearing the statement each cycle avoids interest at about ${eairPct}% a year.`
@@ -1518,7 +1518,7 @@ export function createCardsRenderer(ctx) {
       const un = utilisationNote();
       if (un) sec.append(un);
       sec.append(
-        chartInfo(el, 'Payoff unavailable', 'Add more statement history with readable interest and rate details. Recorded figures remain exact.')
+        chartInfoReact(el, 'Payoff unavailable', 'Add more statement history with readable interest and rate details. Recorded figures remain exact.')
       );
       return card(owed == null ? 'Not enough history yet' : `Balance ${prose(owed)}`);
     }
@@ -1535,7 +1535,7 @@ export function createCardsRenderer(ctx) {
         secItem(el, 'Projected interest', money0(projection.totalInterest))));
       sec.append(el('p', { class: 'muted small' }, 'The estimate uses your current balance, typical recent payment and card rate. It assumes no new purchases.'));
     } else if (projection && projection.neverClears) {
-      sec.append(chartInfo(el, 'Balance barely moves', `At ${money0(typicalPayment)} per month, almost all of the payment goes toward interest.`));
+      sec.append(chartInfoReact(el, 'Balance barely moves', `At ${money0(typicalPayment)} per month, almost all of the payment goes toward interest.`));
     }
     const payoffCone = renderPayoffCone(owed, eairFrac, typicalPayment);
     if (payoffCone) sec.append(payoffCone);

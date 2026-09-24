@@ -4,7 +4,8 @@ import { spendableCategoryNames } from '../analysis/spendable-categories.js';
 import { asOfDayForMonth } from '../analysis/category-intentions.js';
 import { formatMonthYear, requireCtx } from '../core/shared-helpers.js';
 import { makeMoneyShort } from '../core/money-format.js';
-import { chartInfo, collapsibleCard, surfaceTone } from './decision-header.js';
+import { collapsibleCard, surfaceTone } from './decision-header.js';
+import { chartInfoReact } from './react-bridge.js';
 
 export function makeRenderIntentions(deps) {
   // Thirteen dependencies, previously taken on trust. Every comparable factory
@@ -87,7 +88,7 @@ export function makeRenderIntentions(deps) {
       'div', {},
       el('div', { class: 'manage-actions compact-form' }, catSelect, amtInput,
         el('button', { class: 'btn sm', onclick: confirm }, 'Set limit'),
-        chartInfo(
+        chartInfoReact(
           el,
           '',
           'Pick a category and a monthly amount, and this card tracks how much room is left as the month goes on.'

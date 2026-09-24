@@ -1,5 +1,5 @@
-import { buildDisclosure, createDecisionHeader, chartInfo, placeFoldAll, surfaceTone } from './decision-header.js';
-import { collapsibleCardReact } from './react-bridge.js';
+import { buildDisclosure, createDecisionHeader, placeFoldAll, surfaceTone } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { makeProseMoney } from '../core/money-format.js';
 /*
  * activity-render.js  -  the "Activity" surface's distinctive analysis cards,
@@ -492,7 +492,7 @@ export function createActivityRenderer(ctx) {
             // saying - but only to someone who has noticed the discrepancy and
             // gone looking. Behind the app's one ⓘ, it is there for them and
             // silent for everyone else.
-            chartInfo(el, 'Why these totals differ', [
+            chartInfoReact(el, 'Why these totals differ', [
               el(
                 'p',
                 { style: 'margin:0 0 8px' },

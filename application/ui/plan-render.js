@@ -8,8 +8,8 @@ import {
   smoothScrollToEl,
   sortedCardStatements,
 } from '../core/shared-helpers.js';
-import { createDecisionHeader, chartInfo, surfaceTone } from './decision-header.js';
-import { collapsibleCardReact } from './react-bridge.js';
+import { createDecisionHeader, surfaceTone } from './decision-header.js';
+import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { commitAndRender } from './reversible.js';
 import { renderProportionBar } from './chart-surface.js';
 import {
@@ -364,7 +364,7 @@ export function createPlanRenderer(ctx) {
             ? `the lowest of ${raw.income.monthsSeen} complete months because income varied`
             : 'the one complete month loaded';
     head.append(
-      chartInfo(
+      chartInfoReact(
         el,
         'How this works',
         `Every percentage uses your normal monthly take-home of ${model.takeHomeText}. It is ${incomeMethod}. Fixed expenses are money you owe; savings are money you move aside; everything else is discretionary spending. 60/20/20 is a starting point.`
@@ -844,7 +844,7 @@ export function createPlanRenderer(ctx) {
           ? footer.querySelector('.plan-foot-status')
           : null;
       (status || footer).append(
-        chartInfo(
+        chartInfoReact(
           el,
           '',
           'These are the edits you left unsaved last time, not your saved plan. Nothing is stored until you press Save my plan.'
@@ -965,7 +965,7 @@ export function createPlanRenderer(ctx) {
         { class: 'plan-dest-action' },
         btn,
         isCard
-          ? chartInfo(
+          ? chartInfoReact(
               el,
               '',
               'Only payments above the minimum count here. Paying off the card clears debt rather than putting money aside.'

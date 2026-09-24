@@ -1,6 +1,6 @@
 import { staggerIn } from './motion.js';
 import { commitAndRender } from './reversible.js';
-import { chartInfo, createDecisionHeader, placeFoldAll } from './decision-header.js';
+import { createDecisionHeader, placeFoldAll } from './decision-header.js';
 import { collapsibleCardReact, chartInfoReact } from './react-bridge.js';
 import { pairCards } from './chart-helpers.js';
 /*
@@ -167,7 +167,7 @@ export function createPositionRenderer(ctx) {
         ...[
           el('span', { class: 'account-name-text' + (textClass ? ` ${textClass}` : '') }, friendly || fallback),
           friendly
-            ? chartInfo(el, '', figuresHidden() ? 'The account number is hidden while private view is on.' : about)
+            ? chartInfoReact(el, '', figuresHidden() ? 'The account number is hidden while private view is on.' : about)
             : null,
           el('button', {
             type: 'button',
@@ -517,7 +517,7 @@ export function createPositionRenderer(ctx) {
           'span',
           { class: 'recurring-name' },
           label,
-          rateText ? el('span', { class: 'position-rate-inline' }, chartInfo(el, '', rateText)) : null
+          rateText ? el('span', { class: 'position-rate-inline' }, chartInfoReact(el, '', rateText)) : null
         ),
         meta.length
           ? el('span', { class: 'recurring-months muted small' }, meta.join(' \u00b7 '))
@@ -826,7 +826,7 @@ export function createPositionRenderer(ctx) {
             el(
               'span',
               { class: 'muted small' },
-              chartInfo(el, 'About this figure', 'The headline figure included when this summary is copied.')
+              chartInfoReact(el, 'About this figure', 'The headline figure included when this summary is copied.')
             )
           ),
           el('strong', { class: 'position-summary-hero-value num metric-value metric--major' }, figure(netWorth))
