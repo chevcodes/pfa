@@ -22,7 +22,7 @@
  * root location.
  */
 
-const VERSION = 'pfa-v0.07';
+const VERSION = 'pfa-v0.08';
 
 const CODE = [
   './',
